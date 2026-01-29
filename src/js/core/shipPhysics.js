@@ -562,6 +562,9 @@ function checkAndPreventCollision(ship, planetName, julianDate) {
         return false; // No radius data for this body
     }
 
+    const { a, e } = ship.orbitalElements;
+    const isHyperbolic = e >= 1;
+
     // Calculate periapsis
     const periapsisAU = getPeriapsis(ship.orbitalElements);
     const periapsisKm = periapsisAU * 149597870.7;
@@ -571,24 +574,37 @@ function checkAndPreventCollision(ship, planetName, julianDate) {
 
     // Check for collision
     if (periapsisKm < safeAltitudeKm) {
+        const safeRadiusAU = safeAltitudeKm / 149597870.7;
+
         console.warn(`\n⚠️ COLLISION PREVENTED: ${planetName}`);
         console.warn(`   Periapsis: ${periapsisKm.toFixed(0)} km (${(periapsisKm - bodyDisplay.physicalRadiusKm).toFixed(0)} km altitude)`);
         console.warn(`   Safe altitude: ${(safeAltitudeKm - bodyDisplay.physicalRadiusKm).toFixed(0)} km`);
-        console.warn(`   Auto-circularizing at safe altitude...`);
 
-        // Circularize at safe altitude
-        const safeRadiusAU = safeAltitudeKm / 149597870.7;
-        const mu = ship.orbitalElements.μ;
+        if (isHyperbolic) {
+            // For hyperbolic orbits: raise periapsis while preserving flyby
+            // Periapsis = -a(e-1) for hyperbolic (a is negative)
+            // To get new periapsis = safeRadius: a_new = -safeRadius / (e - 1)
+            const newA = -safeRadiusAU / (e - 1);
+            ship.orbitalElements.a = newA;
+            // Keep e, i, Ω, ω, M0 unchanged - flyby continues with safe periapsis
 
-        // For circular orbit: e = 0, a = r
-        ship.orbitalElements.a = safeRadiusAU;
-        ship.orbitalElements.e = 0;
-        ship.orbitalElements.M0 = 0; // Reset mean anomaly
+            const newPeriapsisKm = safeAltitudeKm;
+            console.warn(`   Hyperbolic flyby - raising periapsis only`);
+            console.warn(`   New orbit: hyperbolic with periapsis ${newPeriapsisKm.toFixed(0)} km, e=${e.toFixed(2)}`);
+            console.warn(`   Ship will continue flyby and exit SOI\n`);
+        } else {
+            // For elliptic orbits: circularize at safe altitude (emergency capture)
+            console.warn(`   Elliptic orbit - auto-circularizing at safe altitude...`);
 
-        // Preserve orientation (i, Ω, ω unchanged)
+            // For circular orbit: e = 0, a = r
+            ship.orbitalElements.a = safeRadiusAU;
+            ship.orbitalElements.e = 0;
+            ship.orbitalElements.M0 = 0; // Reset mean anomaly
+            // Preserve orientation (i, Ω, ω unchanged)
 
-        console.warn(`   New orbit: circular at ${safeRadiusAU.toFixed(6)} AU (${safeAltitudeKm.toFixed(0)} km)`);
-        console.warn(`   Ship is now in stable orbit around ${planetName}\n`);
+            console.warn(`   New orbit: circular at ${safeRadiusAU.toFixed(6)} AU (${safeAltitudeKm.toFixed(0)} km)`);
+            console.warn(`   Ship is now in stable orbit around ${planetName}\n`);
+        }
 
         return true;
     }
@@ -758,6 +774,15 @@ function handleSOIExit(ship, shipPosPlanet, shipVelPlanet, julianDate) {
 
     // Convert heliocentric state to orbital elements around Sun
     ship.orbitalElements = stateToElements(pos, vel, MU_SUN, julianDate);
+
+    // Validate orbital elements - critical check for rendering
+    const elements = ship.orbitalElements;
+    if (!isFinite(elements.a) || !isFinite(elements.e) || !isFinite(elements.i) ||
+        !isFinite(elements.Ω) || !isFinite(elements.ω) || !isFinite(elements.M0)) {
+        console.error('[SOI EXIT] CRITICAL: Orbital elements contain NaN!', elements);
+        console.error('[SOI EXIT] Input pos:', pos, 'vel:', vel);
+        // Don't return false - let it proceed but alert to the issue
+    }
 
     // Update SOI state
     ship.soiState = {
@@ -1047,7 +1072,23 @@ function checkForAnomalies(ship, position, velocity, thrust, julianDate) {
         const orbitDir = hz > 0 ? 'PRO' : 'RETRO';
 
         console.log(`[STATUS] ${fps.toFixed(1)} fps | JD=${julianDate.toFixed(2)} | SOI=${ship.soiState?.isInSOI ? ship.soiState.currentBody : 'SUN'}`);
-        console.log(`[STATUS] Orbit: a=${a.toFixed(4)} AU, e=${e.toFixed(4)}, i=${(i*180/Math.PI).toFixed(2)}° | v=${vKmS.toFixed(1)} km/s | ${orbitDir}`);
+        console.log(`[STATUS] Orbit: a=${a.toFixed(6)} AU, e=${e.toFixed(4)}, i=${(i*180/Math.PI).toFixed(2)}° | v=${vKmS.toFixed(1)} km/s | ${orbitDir}`);
+
+        // Extra logging when in SOI
+        if (ship.soiState?.isInSOI) {
+            const r = Math.sqrt(position.x**2 + position.y**2 + position.z**2);
+            const rKm = r * 149597870.7;
+            const periapsisAU = a * (1 - e);
+            const apoapsisAU = e < 1 ? a * (1 + e) : Infinity;
+            const periapsisKm = periapsisAU * 149597870.7;
+            const apoapsisKm = apoapsisAU * 149597870.7;
+            // Orbital period in hours (for planetocentric orbits)
+            const mu = ship.orbitalElements.μ;
+            const periodDays = e < 1 ? 2 * Math.PI * Math.sqrt(a * a * a / mu) : Infinity;
+            const periodHours = periodDays * 24;
+            console.log(`[STATUS] SOI: r=${rKm.toFixed(0)} km, periapsis=${periapsisKm.toFixed(0)} km, apoapsis=${e < 1 ? apoapsisKm.toFixed(0) + ' km' : '∞'}`);
+            console.log(`[STATUS] SOI: period=${periodHours < 1000 ? periodHours.toFixed(2) + ' hrs' : (periodHours/24).toFixed(2) + ' days'}, μ=${mu.toExponential(3)}`);
+        }
 
         // Warn if orbit is escaping or retrograde
         if (e >= 0.95) {

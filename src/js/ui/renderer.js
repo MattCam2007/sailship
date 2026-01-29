@@ -592,13 +592,29 @@ function drawLabel(text, x, y, color, isPlayer = false) {
  * Supports both elliptic (e < 1) and hyperbolic (e >= 1) orbits.
  */
 function drawShipOrbit(ship, centerX, centerY, scale) {
-    if (!displayOptions.showOrbits || !ship.orbitalElements) return;
+    if (!displayOptions.showOrbits) {
+        return;
+    }
+    if (!ship.orbitalElements) {
+        if (ship.isPlayer && rendererFrameCount % 300 === 0) {
+            console.warn('[RENDER] Player ship has no orbitalElements!');
+        }
+        return;
+    }
 
     // Hide orbits at extreme zoom (same as planet orbits)
     if (camera.zoom > 50) return;
 
     // Use visual elements for smooth rendering, fall back to actual if not available
     const elements = ship.visualOrbitalElements || ship.orbitalElements;
+
+    // Validate elements
+    if (!elements || !isFinite(elements.a) || !isFinite(elements.e)) {
+        if (ship.isPlayer && rendererFrameCount % 300 === 0) {
+            console.warn('[RENDER] Player ship has invalid orbital elements:', elements);
+        }
+        return;
+    }
 
     const segments = 64;
 
@@ -607,19 +623,18 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
     // Detect hyperbolic orbit
     const isHyperbolic = e >= 1;
 
-    // Debug logging for orbit rendering
-    if (rendererDebugEnabled && ship.isPlayer && rendererFrameCount % 60 === 0) {
-        console.log(`[RENDER] Ship orbit: e=${e.toFixed(4)} a=${a.toFixed(4)} isHyperbolic=${isHyperbolic}`);
-        console.log(`[RENDER]   elements: i=${(i*180/Math.PI).toFixed(2)}° Ω=${(Ω*180/Math.PI).toFixed(2)}° ω=${(ω*180/Math.PI).toFixed(2)}°`);
+    // Use different color when in planetary SOI
+    const isInSOI = ship.soiState?.isInSOI;
+
+    // Periodic diagnostic logging for orbit rendering (every ~5 seconds)
+    if (ship.isPlayer && rendererFrameCount % 300 === 0) {
+        console.log(`[RENDER] Ship orbit: e=${e.toFixed(4)} a=${a.toFixed(4)} AU, isHyperbolic=${isHyperbolic}, isInSOI=${isInSOI}, body=${ship.soiState?.currentBody || 'SUN'}`);
         if (isHyperbolic) {
             const nuMax = Math.acos(-1 / e);
             const p = Math.abs(a) * (e * e - 1);
             console.log(`[RENDER]   HYPERBOLIC: nuMax=${(nuMax*180/Math.PI).toFixed(2)}° p=${p.toFixed(6)} AU`);
         }
     }
-
-    // Use different color when in planetary SOI
-    const isInSOI = ship.soiState?.isInSOI;
 
     // Set visual style based on orbit type
     if (isHyperbolic) {
@@ -803,22 +818,39 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
         startTime: startTime,
         duration: duration,
         steps: steps,
-        soiState: ship.soiState  // For SOI boundary detection
+        soiState: ship.soiState,  // For SOI boundary detection
+        extremeFlybyState: ship.extremeFlybyState  // For extreme eccentricity linear interpolation
     });
 
-    if (!trajectory || trajectory.length < 2) return;
-
-    // Get parent position for SOI-aware rendering
-    let parentX = 0, parentY = 0, parentZ = 0;
-    const isInSOI = ship.soiState?.isInSOI;
-    if (isInSOI && ship.soiState.currentBody !== 'SUN') {
-        const parent = celestialBodies.find(b => b.name === ship.soiState.currentBody);
-        if (parent) {
-            parentX = parent.x;
-            parentY = parent.y;
-            parentZ = parent.z;
+    if (!trajectory || trajectory.length < 2) {
+        // Diagnostic logging for missing trajectory
+        if (ship.isPlayer && rendererFrameCount % 300 === 0) {
+            console.warn('[RENDER] Predicted trajectory too short or missing:', {
+                trajectoryLength: trajectory?.length || 0,
+                hasOrbitalElements: !!ship.orbitalElements,
+                hasSail: !!ship.sail,
+                soiState: ship.soiState
+            });
         }
+        return;
     }
+
+    // Diagnostic logging for trajectory rendering
+    if (ship.isPlayer && rendererFrameCount % 300 === 0) {
+        const first = trajectory[0];
+        const last = trajectory[trajectory.length - 1];
+        console.log('[RENDER] Predicted trajectory:', {
+            points: trajectory.length,
+            firstPos: { x: first.x.toFixed(4), y: first.y.toFixed(4), z: first.z.toFixed(4) },
+            lastPos: { x: last.x.toFixed(4), y: last.y.toFixed(4), z: last.z.toFixed(4) },
+            truncated: last.truncated || 'none',
+            soiState: ship.soiState
+        });
+    }
+
+    // NOTE: trajectory-predictor.js now outputs heliocentric coordinates always.
+    // When in SOI, it internally converts planetocentric → heliocentric.
+    // DO NOT add parent offset here - it's already included in trajectory positions.
 
     // Draw trajectory with gradient fade
     ctx.lineWidth = 2;
@@ -837,15 +869,13 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
         const p1 = trajectory[i];
         const p2 = trajectory[i + 1];
 
-        // Add parent offset for SOI-relative positions
-        // Note: trajectory positions are in the same frame as ship.orbitalElements
-        // When in SOI, they're planetocentric; when heliocentric, they're sun-relative
-        const x1 = p1.x + parentX;
-        const y1 = p1.y + parentY;
-        const z1 = p1.z + parentZ;
-        const x2 = p2.x + parentX;
-        const y2 = p2.y + parentY;
-        const z2 = p2.z + parentZ;
+        // Trajectory positions are already heliocentric (no offset needed)
+        const x1 = p1.x;
+        const y1 = p1.y;
+        const z1 = p1.z;
+        const x2 = p2.x;
+        const y2 = p2.y;
+        const z2 = p2.z;
 
         const proj1 = project3D(x1, y1, z1, centerX, centerY, scale);
         const proj2 = project3D(x2, y2, z2, centerX, centerY, scale);
@@ -863,9 +893,9 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
     if (trajectory.length > 0) {
         const start = trajectory[0];
         const startProj = project3D(
-            start.x + parentX,
-            start.y + parentY,
-            start.z + parentZ,
+            start.x,
+            start.y,
+            start.z,
             centerX, centerY, scale
         );
 
@@ -897,9 +927,9 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
         const last = trajectory[trajectory.length - 1];
         if (last.truncated) {
             const endProj = project3D(
-                last.x + parentX,
-                last.y + parentY,
-                last.z + parentZ,
+                last.x,
+                last.y,
+                last.z,
                 centerX, centerY, scale
             );
 
