@@ -18,6 +18,19 @@ It receives:
 - Relevant source files
 - Project conventions from CLAUDE.md
 
+## Quick Mode (Token-Efficient)
+
+When invoked with `--quick`, return ONLY:
+```markdown
+### Standards: PASS/ISSUES
+| Category | Status |
+|----------|--------|
+| Imports | OK |
+| Naming | 1 issue |
+| Style | OK |
+```
+Skip prose. Use for quick style checks.
+
 ## Standards Checklist
 
 ### Import Conventions

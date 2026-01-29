@@ -41,6 +41,7 @@ This project includes a modular framework of skills and subagents for structured
 
 Located in `.claude/skills/[name]/SKILL.md`:
 
+**Feature Development:**
 | Skill | Purpose |
 |-------|---------|
 | `/discovery [feature]` | Analyze existing systems, map architecture, identify gaps → Feature Spec |
@@ -48,6 +49,14 @@ Located in `.claude/skills/[name]/SKILL.md`:
 | `/review [feature]` | Orchestrate four-perspective review → Review Report |
 | `/implement [feature] [unit]` | Execute a single atomic unit of work |
 | `/verify [feature]` | Integration testing, edge case validation → Verification Report |
+
+**Bug Fixing (Fast Path):**
+| Skill | Purpose |
+|-------|---------|
+| `/diagnose [issue]` | Reproduce bug, create quantifiable test case → Diagnosis Report |
+| `/fix [issue]` | Apply fix with before/after verification → Verified commit |
+
+See `.claude/WORKFLOW.md` for orchestration patterns and token-saving strategies.
 
 ### Subagents
 
@@ -66,6 +75,14 @@ Located in `.claude/agents/[name].md`:
 |-------|-------|
 | `regression-checker` | Verify changes don't break existing functionality |
 | `best-practices` | Evaluate against project standards and conventions |
+
+**Verification & Optimization:**
+| Agent | Focus |
+|-------|-------|
+| `reproducer` | Create minimal, standalone test cases from bug reports |
+| `delta-verifier` | Quantifiably measure before/after state to prove fixes work |
+| `assertion-builder` | Convert vague requirements into testable assertions |
+| `context-optimizer` | Minimize token usage when passing context between skills |
 
 ### Usage
 

@@ -18,6 +18,18 @@ It receives:
 - Current feature context
 - Access to run test suites
 
+## Quick Mode (Token-Efficient)
+
+When invoked with `--quick`, return ONLY:
+```markdown
+### Regression: PASS/FAIL
+| Suite | Status | Notes |
+|-------|--------|-------|
+| orbital | 15/15 | |
+| trajectory | 8/8 | |
+```
+Skip prose. Use after individual units.
+
 ## Regression Checklist
 
 ### Core Functionality

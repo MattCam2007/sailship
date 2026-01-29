@@ -13,6 +13,17 @@ This agent is invoked by the `/review` skill as one of four perspectives. It rec
 - The Feature Specification
 - Relevant source files
 
+## Quick Mode (Token-Efficient)
+
+When invoked with `--quick`, return ONLY:
+```markdown
+### Functionality: [score]/10
+| ID | Sev | Issue | Fix |
+|----|-----|-------|-----|
+| F1 | C/I/N | [one line] | [one line] |
+```
+Skip all findings prose. Use for parallel dispatch.
+
 ## Review Checklist
 
 ### Goal Achievement
