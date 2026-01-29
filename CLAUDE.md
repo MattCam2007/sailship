@@ -33,6 +33,53 @@ Then provide a CLI summary with:
 - Overall confidence rating
 - Recommended next steps
 
+## Agentic Development Framework
+
+This project includes a modular framework of skills and subagents for structured development. Skills are composable tools that can be used in any order, repeated, or skipped as the work demands.
+
+### Skills
+
+Located in `.claude/skills/[name]/SKILL.md`:
+
+| Skill | Purpose |
+|-------|---------|
+| `/discovery [feature]` | Analyze existing systems, map architecture, identify gaps → Feature Spec |
+| `/planning [feature]` | Design solution, break into atomic units, assess risks → Implementation Plan |
+| `/review [feature]` | Orchestrate four-perspective review → Review Report |
+| `/implement [feature] [unit]` | Execute a single atomic unit of work |
+| `/verify [feature]` | Integration testing, edge case validation → Verification Report |
+
+### Subagents
+
+Located in `.claude/agents/[name].md`:
+
+**Review Perspectives:**
+| Agent | Focus |
+|-------|-------|
+| `physicist` | Physics/realism validation (formulas, units, accuracy) |
+| `architect` | Architecture evaluation (patterns, separation, extensibility) |
+| `functional-tester` | Functionality verification (code paths, test coverage) |
+| `failure-analyst` | Failure modes (edge cases, instability, performance) |
+
+**Quality Perspectives:**
+| Agent | Focus |
+|-------|-------|
+| `regression-checker` | Verify changes don't break existing functionality |
+| `best-practices` | Evaluate against project standards and conventions |
+
+### Usage
+
+Skills reference DEVELOPMENT_PROCESS.md as the source of truth for templates and standards. Each skill outputs deliverables to the `reports/` directory.
+
+Example workflow:
+```
+/discovery autopilot → reports/autopilot-spec-2026-01-29.md
+/planning autopilot → reports/autopilot-implementation-plan-2026-01-29.md
+/review autopilot → reports/autopilot-review-2026-01-29.md
+/implement autopilot all → code changes committed
+/verify autopilot → reports/autopilot-verification-2026-01-29.md
+```
+
 ## Running the Project
 
 ```bash
