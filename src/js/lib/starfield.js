@@ -30,11 +30,9 @@ let starCatalogLoaded = false;
  */
 export async function loadStarCatalog() {
     if (starCatalogLoaded && stars) {
-        console.log('[STARFIELD] Catalog already loaded:', stars.length, 'stars');
         return stars;
     }
 
-    console.log('[STARFIELD] Loading star catalog from data/stars/bsc5-processed.json');
     try {
         const response = await fetch('data/stars/bsc5-processed.json');
         if (!response.ok) {
@@ -42,11 +40,8 @@ export async function loadStarCatalog() {
         }
         stars = await response.json();
         starCatalogLoaded = true;
-        console.log(`[STARFIELD] Successfully loaded ${stars.length} stars`);
-        console.log('[STARFIELD] Sample star:', stars[0]);
         return stars;
     } catch (error) {
-        console.error('[STARFIELD] Failed to load star catalog:', error);
         stars = [];
         starCatalogLoaded = false;
         return stars;
