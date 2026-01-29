@@ -979,11 +979,10 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
     const player = getPlayerShip();
     if (!player) return;
 
-    // Filter to only show ghost planets for the currently targeted destination
-    // and respect body filters
+    // Show ghost planets for ALL orbital crossings (not just destination)
+    // This enables comprehensive trajectory planning - see where all planets
+    // will be when your trajectory crosses their orbits
     const targetedIntersections = cache.results.filter(intersection => {
-        if (intersection.bodyName !== destination) return false;
-
         // Check if body is visible based on category filter
         const body = celestialBodies.find(b => b.name === intersection.bodyName);
         if (body && body.category && !bodyFilters[body.category]) return false;
