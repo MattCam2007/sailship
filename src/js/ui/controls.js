@@ -41,6 +41,15 @@ const rotateState = {
     lastY: 0
 };
 
+// Touch state for mobile gestures
+const touchState = {
+    touches: [],           // Active touch points
+    gestureMode: null,     // 'pan' | 'rotate' | null
+    initialPinchDist: 0,   // Distance between fingers at pinch start
+    initialZoom: 1,        // Zoom level at pinch start
+    lastCenter: { x: 0, y: 0 }  // Center point for delta calculations
+};
+
 /**
  * Initialize all control event listeners
  * @param {HTMLCanvasElement} canvas
@@ -56,6 +65,7 @@ export function initControls(canvas) {
     initAutoPilotControls();
     initKeyboardShortcuts();
     initMouseControls(canvas);
+    initTouchControls(canvas);
     populateObjectList();
 }
 
@@ -593,6 +603,153 @@ function handleRotation(e) {
 
     rotateState.lastX = e.clientX;
     rotateState.lastY = e.clientY;
+}
+
+// ============================================================================
+// Touch Gesture Handlers (Mobile)
+// ============================================================================
+
+/**
+ * Handle camera panning from single-finger touch drag
+ * Mirrors handlePan() logic with touch coordinates
+ * @param {Touch} touch - Active touch point
+ */
+function handleTouchPan(touch) {
+    const deltaX = touch.clientX - touchState.lastCenter.x;
+    const deltaY = touch.clientY - touchState.lastCenter.y;
+
+    const scale = getScale();
+    const effectiveScale = scale * camera.zoom;
+
+    // Convert screen delta to view-space delta
+    const viewDeltaX = -deltaX / effectiveScale;
+    const viewDeltaY = deltaY / effectiveScale;
+
+    // Apply inverse rotation to convert screen-space to world-space
+    const cosZ = Math.cos(camera.angleZ);
+    const sinZ = Math.sin(camera.angleZ);
+
+    camera.target.x += viewDeltaX * cosZ + viewDeltaY * sinZ;
+    camera.target.y += -viewDeltaX * sinZ + viewDeltaY * cosZ;
+
+    touchState.lastCenter.x = touch.clientX;
+    touchState.lastCenter.y = touch.clientY;
+}
+
+/**
+ * Handle camera rotation from two-finger drag
+ * Center point movement controls rotation
+ * @param {Touch[]} touches - Array of two active touch points
+ */
+function handleTouchRotate(touches) {
+    const centerX = (touches[0].clientX + touches[1].clientX) / 2;
+    const centerY = (touches[0].clientY + touches[1].clientY) / 2;
+
+    const deltaX = centerX - touchState.lastCenter.x;
+    const deltaY = centerY - touchState.lastCenter.y;
+
+    // Rotation sensitivity (same as mouse)
+    const sensitivity = 0.005;
+
+    // Horizontal drag: orbital rotation around Z-axis
+    camera.angleZ += deltaX * sensitivity;
+    camera.angleZ = camera.angleZ % (2 * Math.PI);
+    if (camera.angleZ < 0) camera.angleZ += 2 * Math.PI;
+
+    // Vertical drag: tilt adjustment
+    camera.angleX -= deltaY * sensitivity;
+    camera.angleX = Math.max(0, Math.min(Math.PI / 2, camera.angleX));
+
+    touchState.lastCenter.x = centerX;
+    touchState.lastCenter.y = centerY;
+}
+
+/**
+ * Handle pinch-to-zoom gesture
+ * Distance between fingers controls zoom level
+ * @param {Touch[]} touches - Array of two active touch points
+ */
+function handlePinchZoom(touches) {
+    const dx = touches[1].clientX - touches[0].clientX;
+    const dy = touches[1].clientY - touches[0].clientY;
+    const currentDist = Math.sqrt(dx * dx + dy * dy);
+
+    // Require minimum initial distance to avoid division issues
+    if (touchState.initialPinchDist > 10) {
+        const scale = currentDist / touchState.initialPinchDist;
+        camera.zoom = touchState.initialZoom * scale;
+        // Clamp zoom to valid range
+        camera.zoom = Math.max(0.1, Math.min(1000, camera.zoom));
+    }
+}
+
+/**
+ * Set up touch controls for mobile devices
+ * @param {HTMLCanvasElement} canvas
+ */
+function initTouchControls(canvas) {
+    // Touchstart - initialize gesture
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        touchState.touches = Array.from(e.touches);
+
+        if (touchState.touches.length === 1) {
+            // Single finger: pan mode
+            touchState.gestureMode = 'pan';
+            touchState.lastCenter.x = touchState.touches[0].clientX;
+            touchState.lastCenter.y = touchState.touches[0].clientY;
+            stopFollowing();
+        } else if (touchState.touches.length >= 2) {
+            // Two fingers: rotate + pinch mode
+            touchState.gestureMode = 'rotate';
+
+            // Initialize pinch distance
+            const dx = touchState.touches[1].clientX - touchState.touches[0].clientX;
+            const dy = touchState.touches[1].clientY - touchState.touches[0].clientY;
+            touchState.initialPinchDist = Math.sqrt(dx * dx + dy * dy);
+            touchState.initialZoom = camera.zoom;
+
+            // Set center point
+            touchState.lastCenter.x = (touchState.touches[0].clientX + touchState.touches[1].clientX) / 2;
+            touchState.lastCenter.y = (touchState.touches[0].clientY + touchState.touches[1].clientY) / 2;
+        }
+    }, { passive: false });
+
+    // Touchmove - handle gestures
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        touchState.touches = Array.from(e.touches);
+
+        if (touchState.gestureMode === 'pan' && touchState.touches.length === 1) {
+            handleTouchPan(touchState.touches[0]);
+        } else if (touchState.gestureMode === 'rotate' && touchState.touches.length >= 2) {
+            handleTouchRotate(touchState.touches);
+            handlePinchZoom(touchState.touches);
+        }
+    }, { passive: false });
+
+    // Touchend - handle finger release
+    canvas.addEventListener('touchend', (e) => {
+        touchState.touches = Array.from(e.touches);
+
+        if (touchState.touches.length === 0) {
+            // All fingers released
+            touchState.gestureMode = null;
+            touchState.initialPinchDist = 0;
+        } else if (touchState.touches.length === 1 && touchState.gestureMode === 'rotate') {
+            // Transition from rotate to pan (one finger lifted)
+            touchState.gestureMode = 'pan';
+            touchState.lastCenter.x = touchState.touches[0].clientX;
+            touchState.lastCenter.y = touchState.touches[0].clientY;
+        }
+    }, { passive: false });
+
+    // Touchcancel - reset state
+    canvas.addEventListener('touchcancel', () => {
+        touchState.touches = [];
+        touchState.gestureMode = null;
+        touchState.initialPinchDist = 0;
+    }, { passive: false });
 }
 
 /**
