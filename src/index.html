@@ -322,5 +322,50 @@
     </div>
 
     <script type="module" src="js/main.js"></script>
+
+    <!-- Planning Mode Modal -->
+    <div id="planningModal" class="planning-modal" style="display: none;">
+        <div class="planning-content">
+            <div class="planning-header">
+                <span class="planning-title">PLANNING MODE // MISSION COMPUTER</span>
+                <button id="closePlanningMode" class="planning-close-btn" title="Close (Escape)">×</button>
+            </div>
+            <div id="planningCanvasContainer" class="planning-canvas-container">
+                <!-- Canvas will be shared with main view -->
+            </div>
+            <div class="planning-controls">
+                <div class="time-machine">
+                    <div class="time-machine-header">TIME MACHINE</div>
+                    <div class="time-slider-container">
+                        <span class="time-label">NOW</span>
+                        <input type="range" id="timeSlider" class="time-slider" min="0" max="730" value="0">
+                        <span class="time-label">+2 YRS</span>
+                    </div>
+                    <div class="time-display">
+                        <span id="timeOffsetDisplay">+0 days</span>
+                        <span id="sandboxDateDisplay"></span>
+                    </div>
+                    <div class="time-buttons">
+                        <button class="time-btn" data-adjust="-7" title="Back 1 week">◀◀</button>
+                        <button class="time-btn" data-adjust="-1" title="Back 1 day">◀</button>
+                        <button class="time-btn" data-adjust="1" title="Forward 1 day">▶</button>
+                        <button class="time-btn" data-adjust="7" title="Forward 1 week">▶▶</button>
+                    </div>
+                </div>
+                <div class="planning-options">
+                    <div class="mode-toggle">
+                        <span class="mode-label">MODE:</span>
+                        <button id="fixedModeBtn" class="mode-btn active">FIXED SHIP</button>
+                        <button id="driftModeBtn" class="mode-btn">DRIFT</button>
+                    </div>
+                    <div class="coords-display">
+                        <span class="coords-label">COORDS:</span>
+                        <span id="sandboxCoords">X: 0.000 Y: 0.000 Z: 0.000 AU</span>
+                    </div>
+                </div>
+                <div id="trajectoryWarning" class="trajectory-warning" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

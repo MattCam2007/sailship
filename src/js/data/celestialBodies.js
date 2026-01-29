@@ -896,9 +896,12 @@ export const celestialBodies = [
  * Uses Keplerian orbital mechanics via the orbital library.
  *
  * Note: Julian date is managed by gameState.js and accessed via getJulianDate().
+ *
+ * @param {number|null} overrideTime - Optional Julian date to use instead of current time.
+ *                                     Used by planning mode to calculate positions at sandbox time.
  */
-export function updateCelestialPositions() {
-    const jd = getJulianDate();
+export function updateCelestialPositions(overrideTime = null) {
+    const jd = overrideTime ?? getJulianDate();
 
     // First pass: update all non-moon bodies using Keplerian propagation
     celestialBodies.forEach(body => {
