@@ -1848,3 +1848,479 @@ body::after {
     color: var(--orange) !important;
 }
 
+/* ============================================================================
+   MOBILE RESPONSIVE STYLES
+   ============================================================================ */
+
+/* Mobile toggle buttons - fixed position controls to show/hide panels */
+.mobile-panel-toggle {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    width: 48px;
+    height: 48px;
+    background: var(--bg-panel);
+    border: 2px solid var(--coral);
+    color: var(--coral);
+    font-size: 20px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+        0 4px 12px rgba(0, 0, 0, 0.8),
+        0 0 12px rgba(232, 93, 76, 0.3);
+    transition: all 0.2s ease;
+}
+
+.mobile-panel-toggle:active {
+    transform: scale(0.95);
+    background: var(--coral);
+    color: var(--bg-dark);
+}
+
+.mobile-panel-toggle.active {
+    background: var(--coral);
+    color: var(--bg-dark);
+}
+
+#mobileLeftToggle {
+    bottom: 70px;
+    left: 12px;
+    border-radius: 8px;
+}
+
+#mobileRightToggle {
+    bottom: 70px;
+    right: 12px;
+    border-radius: 8px;
+}
+
+/* Mobile panel overlay backdrop */
+.mobile-panel-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 998;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.mobile-panel-overlay.visible {
+    opacity: 1;
+}
+
+/* Mobile quick actions bar */
+.mobile-quick-actions {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--bg-panel);
+    border-top: 2px solid var(--coral-dim);
+    z-index: 997;
+    padding: 8px 12px;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.6);
+}
+
+.mobile-quick-btn {
+    flex: 1;
+    max-width: 80px;
+    height: 40px;
+    background: transparent;
+    border: 1px solid var(--coral-dim);
+    color: var(--coral);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    transition: all 0.15s ease;
+}
+
+.mobile-quick-btn:active {
+    background: var(--coral);
+    color: var(--bg-dark);
+}
+
+.mobile-quick-btn.active {
+    background: var(--coral);
+    color: var(--bg-dark);
+    border-color: var(--coral);
+}
+
+.mobile-quick-btn .icon {
+    font-size: 16px;
+}
+
+/* Tablet breakpoint (768px - 1024px) */
+@media screen and (max-width: 1024px) {
+    .left-panel {
+        width: 180px;
+    }
+
+    .right-panel {
+        width: 200px;
+    }
+
+    .system-title {
+        font-size: 12px;
+        letter-spacing: 2px;
+    }
+
+    .system-status {
+        gap: 16px;
+        font-size: 10px;
+    }
+
+    .corner-label {
+        font-size: 9px;
+        padding: 6px 10px;
+    }
+}
+
+/* Mobile breakpoint (max-width: 768px) */
+@media screen and (max-width: 768px) {
+    /* Show mobile controls */
+    .mobile-panel-toggle {
+        display: flex;
+    }
+
+    .mobile-quick-actions {
+        display: flex;
+    }
+
+    .mobile-panel-overlay {
+        display: block;
+        pointer-events: none;
+    }
+
+    .mobile-panel-overlay.visible {
+        pointer-events: auto;
+    }
+
+    /* Hide header status on mobile */
+    .system-status {
+        display: none;
+    }
+
+    .system-title {
+        font-size: 11px;
+        letter-spacing: 1px;
+    }
+
+    .header-bar {
+        padding: 6px 12px;
+    }
+
+    /* Main container becomes full-width canvas */
+    .main-container {
+        flex-direction: column;
+        position: relative;
+    }
+
+    /* Canvas takes full space */
+    .canvas-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 56px; /* Leave room for quick actions */
+    }
+
+    /* Corner labels - smaller and repositioned */
+    .corner-label {
+        font-size: 8px;
+        padding: 4px 8px;
+    }
+
+    .corner-label.top-left {
+        top: 8px;
+        left: 8px;
+    }
+
+    .corner-label.top-right {
+        top: 8px;
+        right: 8px;
+    }
+
+    .corner-label.bottom-left {
+        bottom: 64px;
+        left: 8px;
+    }
+
+    .corner-label.bottom-right {
+        bottom: 64px;
+        right: 8px;
+    }
+
+    /* Left panel - slide in from left */
+    .left-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 56px;
+        width: 280px;
+        max-width: 85vw;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        z-index: 999;
+        padding: 12px;
+        overflow-y: auto;
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.8);
+    }
+
+    .left-panel.mobile-visible {
+        transform: translateX(0);
+    }
+
+    /* Right panel - slide in from right */
+    .right-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 56px;
+        width: 300px;
+        max-width: 90vw;
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+        z-index: 999;
+        padding: 12px;
+        overflow-y: auto;
+        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.8);
+    }
+
+    .right-panel.mobile-visible {
+        transform: translateX(0);
+    }
+
+    /* Touch-friendly controls */
+    .zoom-btn,
+    .speed-btn,
+    .preset-btn {
+        min-height: 44px;
+        font-size: 12px;
+    }
+
+    .tab-btn {
+        min-height: 44px;
+        font-size: 11px;
+        padding: 12px 8px;
+    }
+
+    /* Larger sliders for touch */
+    .sail-slider,
+    .config-slider {
+        height: 20px;
+        margin: 8px 0 12px 0;
+    }
+
+    .sail-slider::-webkit-slider-thumb,
+    .config-slider::-webkit-slider-thumb {
+        width: 28px;
+        height: 28px;
+    }
+
+    .sail-slider::-moz-range-thumb,
+    .config-slider::-moz-range-thumb {
+        width: 28px;
+        height: 28px;
+    }
+
+    /* Larger text for readability */
+    .data-row {
+        font-size: 12px;
+        padding: 6px 0;
+    }
+
+    .sail-control-row {
+        font-size: 12px;
+        padding: 4px 0;
+    }
+
+    .data-label,
+    .data-value {
+        font-size: 12px;
+    }
+
+    .panel-header {
+        font-size: 11px;
+        padding: 8px 4px;
+    }
+
+    /* Autopilot button larger */
+    .autopilot-btn {
+        padding: 16px;
+        font-size: 14px;
+    }
+
+    /* Display options - larger checkboxes */
+    .display-options label {
+        font-size: 12px;
+        padding: 8px 4px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+
+    .display-options input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+    }
+
+    /* Object list items larger */
+    .object-item {
+        padding: 10px 8px;
+        font-size: 12px;
+        min-height: 44px;
+    }
+
+    /* Hide bottom bar on mobile (replaced by quick actions) */
+    .bottom-bar {
+        display: none;
+    }
+
+    /* Tab content takes remaining height */
+    .tab-content {
+        max-height: calc(100vh - 180px);
+    }
+
+    /* Reduce animations on mobile for performance */
+    body::after {
+        animation: none;
+        opacity: 0.3;
+    }
+
+    .system-title {
+        animation: none;
+    }
+
+    .status-indicator {
+        animation: none;
+    }
+}
+
+/* Small mobile (max-width: 480px) */
+@media screen and (max-width: 480px) {
+    .left-panel,
+    .right-panel {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .corner-label {
+        font-size: 7px;
+        padding: 3px 6px;
+    }
+
+    .corner-label::after {
+        display: none; /* Hide blinking cursor on very small screens */
+    }
+
+    .mobile-panel-toggle {
+        width: 44px;
+        height: 44px;
+        font-size: 18px;
+    }
+
+    #mobileLeftToggle {
+        bottom: 66px;
+        left: 8px;
+    }
+
+    #mobileRightToggle {
+        bottom: 66px;
+        right: 8px;
+    }
+
+    .system-title {
+        font-size: 10px;
+    }
+
+    /* Stack zoom buttons 2x2 on very small screens */
+    .zoom-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+    }
+
+    .zoom-btn {
+        font-size: 10px;
+        padding: 10px 4px;
+    }
+}
+
+/* Landscape mobile orientation */
+@media screen and (max-width: 768px) and (orientation: landscape) {
+    .left-panel,
+    .right-panel {
+        width: 320px;
+        max-width: 50vw;
+    }
+
+    .mobile-panel-toggle {
+        bottom: 64px;
+    }
+
+    .canvas-container {
+        bottom: 48px;
+    }
+
+    .mobile-quick-actions {
+        height: 48px;
+        padding: 6px 12px;
+    }
+
+    .mobile-quick-btn {
+        height: 36px;
+    }
+
+    .corner-label.bottom-left,
+    .corner-label.bottom-right {
+        bottom: 56px;
+    }
+}
+
+/* Touch device hover state fix */
+@media (hover: none) and (pointer: coarse) {
+    .zoom-btn:hover:not(.active),
+    .speed-btn:hover:not(.active),
+    .preset-btn:hover,
+    .tab-btn:hover,
+    .object-item:hover,
+    .panel-header:hover,
+    .autopilot-btn:hover {
+        /* Reset hover states on touch devices */
+        background: inherit;
+        color: inherit;
+        transform: none;
+        box-shadow: inherit;
+    }
+
+    /* Add active states for touch feedback */
+    .zoom-btn:active:not(.active),
+    .speed-btn:active:not(.active) {
+        background: var(--coral-dim);
+        color: var(--bg-dark);
+    }
+
+    .tab-btn:active {
+        background: rgba(232, 93, 76, 0.2);
+    }
+
+    .object-item:active {
+        background: rgba(232, 93, 76, 0.1);
+    }
+}
+

@@ -154,3 +154,144 @@ function loadTabState(containerId) {
         return undefined;
     }
 }
+
+/**
+ * Mobile panel state
+ */
+let mobileState = {
+    leftPanelOpen: false,
+    rightPanelOpen: false
+};
+
+/**
+ * Initialize mobile panel controls
+ * Sets up toggle buttons for slide-in panels on mobile
+ */
+export function initMobilePanels() {
+    const leftPanel = document.querySelector('.left-panel');
+    const rightPanel = document.querySelector('.right-panel');
+    const overlay = document.getElementById('mobilePanelOverlay');
+    const leftToggle = document.getElementById('mobileLeftToggle');
+    const rightToggle = document.getElementById('mobileRightToggle');
+
+    if (!leftPanel || !rightPanel || !overlay || !leftToggle || !rightToggle) {
+        return;
+    }
+
+    /**
+     * Close all mobile panels
+     */
+    function closeAllPanels() {
+        leftPanel.classList.remove('mobile-visible');
+        rightPanel.classList.remove('mobile-visible');
+        overlay.classList.remove('visible');
+        leftToggle.classList.remove('active');
+        rightToggle.classList.remove('active');
+        mobileState.leftPanelOpen = false;
+        mobileState.rightPanelOpen = false;
+    }
+
+    /**
+     * Toggle left panel
+     */
+    function toggleLeftPanel() {
+        const willOpen = !mobileState.leftPanelOpen;
+
+        // Close right panel if open
+        if (mobileState.rightPanelOpen) {
+            rightPanel.classList.remove('mobile-visible');
+            rightToggle.classList.remove('active');
+            mobileState.rightPanelOpen = false;
+        }
+
+        leftPanel.classList.toggle('mobile-visible', willOpen);
+        leftToggle.classList.toggle('active', willOpen);
+        overlay.classList.toggle('visible', willOpen);
+        mobileState.leftPanelOpen = willOpen;
+    }
+
+    /**
+     * Toggle right panel
+     */
+    function toggleRightPanel() {
+        const willOpen = !mobileState.rightPanelOpen;
+
+        // Close left panel if open
+        if (mobileState.leftPanelOpen) {
+            leftPanel.classList.remove('mobile-visible');
+            leftToggle.classList.remove('active');
+            mobileState.leftPanelOpen = false;
+        }
+
+        rightPanel.classList.toggle('mobile-visible', willOpen);
+        rightToggle.classList.toggle('active', willOpen);
+        overlay.classList.toggle('visible', willOpen);
+        mobileState.rightPanelOpen = willOpen;
+    }
+
+    // Event listeners
+    leftToggle.addEventListener('click', toggleLeftPanel);
+    rightToggle.addEventListener('click', toggleRightPanel);
+    overlay.addEventListener('click', closeAllPanels);
+
+    // Close panels on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && (mobileState.leftPanelOpen || mobileState.rightPanelOpen)) {
+            closeAllPanels();
+        }
+    });
+
+    // Handle swipe gestures for closing panels
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    leftPanel.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    leftPanel.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = Math.abs(touchEndY - touchStartY);
+
+        // Swipe left to close (more horizontal than vertical, > 50px)
+        if (deltaX < -50 && deltaY < 50 && mobileState.leftPanelOpen) {
+            closeAllPanels();
+        }
+    }, { passive: true });
+
+    rightPanel.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    rightPanel.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = Math.abs(touchEndY - touchStartY);
+
+        // Swipe right to close (more horizontal than vertical, > 50px)
+        if (deltaX > 50 && deltaY < 50 && mobileState.rightPanelOpen) {
+            closeAllPanels();
+        }
+    }, { passive: true });
+
+    return {
+        toggleLeft: toggleLeftPanel,
+        toggleRight: toggleRightPanel,
+        closeAll: closeAllPanels,
+        isLeftOpen: () => mobileState.leftPanelOpen,
+        isRightOpen: () => mobileState.rightPanelOpen
+    };
+}
+
+/**
+ * Check if currently in mobile view
+ * @returns {boolean} True if viewport width <= 768px
+ */
+export function isMobileView() {
+    return window.matchMedia('(max-width: 768px)').matches;
+}

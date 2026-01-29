@@ -18,7 +18,8 @@ import {
 import { setCameraFollow, updateCameraTarget } from './core/camera.js';
 import { initRenderer, render, clearGradientCache } from './ui/renderer.js';
 import { initUI, updateUI } from './ui/uiUpdater.js';
-import { initControls, updateAutoPilot } from './ui/controls.js';
+import { initControls, updateAutoPilot, initMobileControls } from './ui/controls.js';
+import { initMobilePanels } from './ui/ui-components.js';
 import { updateShipPhysics } from './core/shipPhysics.js';
 import { getCachedTrajectory, getTrajectoryHash, clearTrajectoryCache } from './lib/trajectory-predictor.js';
 import { detectIntersections } from './lib/intersectionDetector.js';
@@ -160,6 +161,10 @@ function init() {
 
     // Initialize controls
     initControls(navCanvas);
+
+    // Initialize mobile UI
+    initMobilePanels();
+    initMobileControls();
 
     // Initialize player ship orbital elements
     initializePlayerShip();

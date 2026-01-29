@@ -18,7 +18,7 @@ import {
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount } from '../data/ships.js';
 import { setDestinationName, updateSailDisplay } from './uiUpdater.js';
-import { initExpandablePanel, loadPanelState, initTabGroup } from './ui-components.js';
+import { initExpandablePanel, loadPanelState, initTabGroup, isMobileView } from './ui-components.js';
 
 // Drag state for camera panning
 const dragState = {
@@ -940,4 +940,162 @@ export function updateAutoPilot(deltaTime) {
 
     // Update status text
     updateAutoPilotStatusText();
+}
+
+// ============================================================================
+// Mobile Quick Actions
+// ============================================================================
+
+// Track current speed preset index for cycling
+let currentSpeedIndex = 1; // Start at 1x
+const SPEED_PRESETS = ['pause', '1x', '100x', '10000x', '100000x', '1000000x'];
+const SPEED_ICONS = ['⏸', '▶', '▶▶', '⏩', '⏩⏩', '🚀'];
+
+// Track current zoom index for cycling
+let currentZoomIndex = 1; // Start at inner
+const ZOOM_PRESETS = ['system', 'inner', 'local', 'tactical'];
+
+/**
+ * Initialize mobile quick action buttons
+ * These provide quick access to common controls on mobile devices
+ */
+export function initMobileControls() {
+    const zoomOutBtn = document.getElementById('mobileZoomOut');
+    const zoomInBtn = document.getElementById('mobileZoomIn');
+    const pauseBtn = document.getElementById('mobilePause');
+    const speedBtn = document.getElementById('mobileSpeed');
+    const autopilotBtn = document.getElementById('mobileAutopilot');
+
+    // Zoom out button
+    if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', () => {
+            currentZoomIndex = Math.max(0, currentZoomIndex - 1);
+            setZoom(ZOOM_PRESETS[currentZoomIndex]);
+            updateMobileZoomUI();
+        });
+    }
+
+    // Zoom in button
+    if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', () => {
+            currentZoomIndex = Math.min(ZOOM_PRESETS.length - 1, currentZoomIndex + 1);
+            setZoom(ZOOM_PRESETS[currentZoomIndex]);
+            updateMobileZoomUI();
+        });
+    }
+
+    // Pause button
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            const isPaused = currentSpeedIndex === 0;
+            if (isPaused) {
+                // Unpause - go to 1x
+                currentSpeedIndex = 1;
+            } else {
+                // Pause
+                currentSpeedIndex = 0;
+            }
+            setSpeed(SPEED_PRESETS[currentSpeedIndex]);
+            updateMobileSpeedUI();
+        });
+    }
+
+    // Speed cycle button
+    if (speedBtn) {
+        speedBtn.addEventListener('click', () => {
+            // Cycle through non-pause speeds (1-5)
+            if (currentSpeedIndex === 0) {
+                currentSpeedIndex = 1;
+            } else {
+                currentSpeedIndex = (currentSpeedIndex % (SPEED_PRESETS.length - 1)) + 1;
+            }
+            setSpeed(SPEED_PRESETS[currentSpeedIndex]);
+            updateMobileSpeedUI();
+        });
+    }
+
+    // Autopilot toggle button
+    if (autopilotBtn) {
+        autopilotBtn.addEventListener('click', () => {
+            const newState = !isAutoPilotEnabled();
+            setAutoPilotEnabled(newState);
+            updateAutoPilotUI(newState);
+            updateMobileAutopilotUI(newState);
+        });
+    }
+
+    // Initial UI state
+    updateMobileSpeedUI();
+    updateMobileAutopilotUI(isAutoPilotEnabled());
+}
+
+/**
+ * Update mobile zoom button states
+ */
+function updateMobileZoomUI() {
+    const zoomOutBtn = document.getElementById('mobileZoomOut');
+    const zoomInBtn = document.getElementById('mobileZoomIn');
+
+    // Update disabled states at boundaries
+    if (zoomOutBtn) {
+        zoomOutBtn.style.opacity = currentZoomIndex === 0 ? '0.5' : '1';
+    }
+    if (zoomInBtn) {
+        zoomInBtn.style.opacity = currentZoomIndex === ZOOM_PRESETS.length - 1 ? '0.5' : '1';
+    }
+
+    // Sync desktop zoom buttons
+    document.querySelectorAll('.zoom-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.zoom === ZOOM_PRESETS[currentZoomIndex]);
+    });
+}
+
+/**
+ * Update mobile speed button states
+ */
+function updateMobileSpeedUI() {
+    const pauseBtn = document.getElementById('mobilePause');
+    const speedBtn = document.getElementById('mobileSpeed');
+
+    const isPaused = currentSpeedIndex === 0;
+
+    if (pauseBtn) {
+        const icon = pauseBtn.querySelector('.icon');
+        if (icon) {
+            icon.textContent = isPaused ? '▶' : '⏸';
+        }
+        pauseBtn.classList.toggle('active', isPaused);
+    }
+
+    if (speedBtn) {
+        const icon = speedBtn.querySelector('.icon');
+        const label = speedBtn.querySelector('span:last-child');
+        if (icon && currentSpeedIndex > 0) {
+            icon.textContent = SPEED_ICONS[currentSpeedIndex];
+        }
+        if (label) {
+            label.textContent = SPEED_PRESETS[currentSpeedIndex].toUpperCase();
+        }
+    }
+
+    // Sync desktop speed buttons
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.speed === SPEED_PRESETS[currentSpeedIndex]);
+    });
+}
+
+/**
+ * Update mobile autopilot button state
+ * @param {boolean} enabled
+ */
+function updateMobileAutopilotUI(enabled) {
+    const autopilotBtn = document.getElementById('mobileAutopilot');
+
+    if (autopilotBtn) {
+        autopilotBtn.classList.toggle('active', enabled);
+        const icon = autopilotBtn.querySelector('.icon');
+        if (icon) {
+            icon.textContent = enabled ? '◉' : '◎';
+        }
+    }
 }
