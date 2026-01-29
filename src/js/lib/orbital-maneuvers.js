@@ -31,7 +31,6 @@ import {
     ACCEL_CONVERSION,
 } from '../config.js';
 
-console.log('[ORBITAL_MANEUVERS] Module loaded');
 
 // Re-export constants for backward compatibility
 export { SOLAR_PRESSURE_1AU, ACCEL_CONVERSION };
@@ -132,17 +131,8 @@ export function getSailThrustDirection(shipPosition, shipVelocity, yawAngle, pit
         console.warn('[THRUST_DIR] ⚠️ Angular momentum near zero! Using ecliptic fallback.');
     }
 
-    // Check for angular momentum flip (direction reversal)
-    if (lastHDir !== null) {
-        const dotProduct = lastHDir.x * Nx + lastHDir.y * Ny + lastHDir.z * Nz;
-        if (dotProduct < 0) {
-            console.error('[THRUST_DIR] 🚨 ANGULAR MOMENTUM FLIPPED! dot=' + dotProduct.toFixed(4));
-            console.error('[THRUST_DIR] Previous h_dir:', lastHDir);
-            console.error('[THRUST_DIR] Current h_dir:', { x: Nx, y: Ny, z: Nz });
-            console.error('[THRUST_DIR] Ship velocity:', shipVelocity);
-            console.error('[THRUST_DIR] Ship position:', shipPosition);
-        }
-    }
+    // Track angular momentum direction for debugging (flip detection removed -
+    // flips are expected during trajectory prediction as orbit changes)
     lastHDir = { x: Nx, y: Ny, z: Nz };
 
     // Transverse unit vector T = N × R (prograde direction in orbital plane)
