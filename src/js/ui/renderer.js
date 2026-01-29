@@ -12,10 +12,6 @@ import {
     getScale,
     getTime,
     getJulianDate,
-    getEphemerisJulianDate,
-    timeTravelState,
-    isPlanningMode,
-    getActiveJulianDate,
     getIntersectionCache,
     bodyFilters
 } from '../core/gameState.js';
@@ -797,10 +793,8 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
     // Steps scale with duration for consistent visual density
     const steps = Math.min(300, Math.max(100, Math.round(duration * 2.5)));
 
-    // Use active date for trajectory prediction
-    // - Planning mode: Predict from ephemeris date (synchronized planning view)
-    // - Live mode: Predict from simulation date (current ship position)
-    const startTime = getActiveJulianDate();
+    // Use current simulation date for trajectory prediction
+    const startTime = getJulianDate();
 
     const trajectory = predictTrajectory({
         orbitalElements: ship.orbitalElements,

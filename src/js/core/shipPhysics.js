@@ -13,7 +13,7 @@
 
 import { getPosition, getVelocity, MU_SUN, getPeriapsis } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
-import { getJulianDate, isPlanningMode, getActiveJulianDate } from './gameState.js';
+import { getJulianDate } from './gameState.js';
 import { celestialBodies, getBodyByName } from '../data/celestialBodies.js';
 import {
     checkSOIEntry,
@@ -244,10 +244,8 @@ export function updateShipPhysics(ship, deltaTime) {
         return;
     }
 
-    // Use ephemeris date in planning mode, simulation date in live mode
-    // This allows ship visualization to "slide" to planning date while
-    // simulation state remains frozen at the moment planning mode was entered
-    const julianDate = getActiveJulianDate();
+    // Use current simulation date
+    const julianDate = getJulianDate();
 
     // Initialize SOI state if needed
     if (!ship.soiState) {

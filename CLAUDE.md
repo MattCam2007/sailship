@@ -53,7 +53,7 @@ src/js/
 ├── main.js             # Entry point, game loop
 ├── core/               # Game logic
 │   ├── camera.js       # 3D projection, view state
-│   ├── gameState.js    # Time, zoom, display options, planning mode
+│   ├── gameState.js    # Time, zoom, display options
 │   ├── navigation.js   # Destination/distance tracking
 │   └── shipPhysics.js  # Per-frame physics updates
 ├── data/               # Game data (designed for external API integration)
@@ -181,82 +181,19 @@ while **Orbital Paths** shows the instantaneous Keplerian orbit (where ship woul
 - Stars use equatorial coordinates (RA/Dec) converted to ecliptic frame
 - IAU precession formula accounts for Earth's axial wobble (~50 arcsec/year)
 - Only visible hemisphere rendered (back-face culling for performance)
-- Stars update with time travel slider to show historical/future night sky
+- Stars update as simulation time advances to show precession over centuries
 
 **Usage**:
 1. Toggle "STAR MAP" in Display Options
 2. Stars appear as subtle colored points in background
-3. Enable time travel and adjust slider to see precession over centuries
-4. Brighter stars (Sirius, Vega, etc.) appear larger with subtle glow
+3. Brighter stars (Sirius, Vega, etc.) appear larger with subtle glow
 
 **Technical details**:
 - Data source: Yale Bright Star Catalog (BSC5), processed to 275KB JSON
 - Coordinate transform: Equatorial (RA/Dec J2000) → Ecliptic (XYZ)
 - Projection: Custom skybox projection (rotation only, no camera position offset)
 - Performance: ~5,000 stars rendered at 60 FPS with view frustum culling
-- Date range: Stars support 500-3500 AD (IAU 1976 precession), planets limited to 1900-2100 (astronomy-engine constraint)
-
-## Planning Mode (Launch Window Finder)
-
-Planning Mode is a navigation planning tool that freezes simulation time and synchronizes all visualizations (ship, planets, trajectory) to a single planning date. This enables launch window exploration without affecting live gameplay.
-
-### How It Works
-
-**When Planning Mode is enabled:**
-1. Simulation time freezes (timeScale = 0, physics paused)
-2. Time travel is automatically enabled
-3. Ship position is calculated at ephemeris date (from orbital elements)
-4. Planets positioned at ephemeris date
-5. Trajectory predicts from ephemeris date
-6. All visualizations synchronized to the same date
-
-**Use Case - Finding a Mars Transfer Window:**
-1. Enable Planning Mode (Time Travel section or press Ctrl+P)
-2. Adjust time travel slider to explore different launch dates
-3. Set destination to Mars
-4. Watch encounter markers update as you change launch date
-5. Look for "CLOSE" indicator on Mars ghost planet
-6. Fine-tune sail settings to optimize trajectory
-7. When satisfied, disable Planning Mode (Ctrl+P) to resume simulation
-
-### Planning Mode vs Time Travel
-
-| Feature | Time Travel Only | Planning Mode |
-|---------|------------------|---------------|
-| Simulation | Runs normally | Frozen (paused) |
-| Ship position | Current (simulation time) | Calculated at planning date |
-| Planet positions | Historical/future | Synchronized with ship |
-| Trajectory start | Current position | Planning date position |
-| Use case | Observe historical sky | Find launch windows |
-
-### Technical Details
-
-**Two Planning Types:**
-- **Type 1 (Phase 1 - Current)**: Ship stays at orbital position, time slides. Easier for finding routes, not perfectly realistic (launch date changes but ship "teleports" along orbit).
-- **Type 2 (Phase 2 - Future)**: Full scenario save/load system. Save ship state, date, and sail config as scenario. Load scenario to set up realistic mission planning.
-
-**Date Systems:**
-- **Simulation time** (`getJulianDate()`): Gameplay clock, advances with timeScale
-- **Ephemeris time** (`getEphemerisJulianDate()`): Planning/historical date, controlled by time travel slider
-- **Active time** (`getActiveJulianDate()`): Returns ephemeris in planning mode, simulation otherwise
-
-**Functions:**
-```javascript
-setPlanningMode(enabled)       // Enable/disable planning mode
-isPlanningMode()               // Check if planning mode active
-getActiveJulianDate()          // Get current date for calculations
-```
-
-**Files that use getActiveJulianDate():**
-- `shipPhysics.js` - Ship position calculation
-- `celestialBodies.js` - Planet positioning
-- `renderer.js` - Trajectory prediction
-- `main.js` - Intersection detection
-
-### Keyboard Shortcuts
-
-- `Ctrl+P` / `Cmd+P` - Toggle planning mode
-- (All existing time travel shortcuts work in planning mode)
+- Date range: Stars support 500-3500 AD (IAU 1976 precession)
 
 ## UI Components
 
@@ -286,7 +223,6 @@ The predicted trajectory duration can be adjusted from 30 days to 2 years (730 d
 
 ### Navigation
 - `A` - Toggle autopilot
-- `Ctrl+P` / `Cmd+P` - Toggle planning mode
 - `Ctrl+1` / `Cmd+1` - Switch to SAIL tab
 - `Ctrl+2` / `Cmd+2` - Switch to NAV tab
 - `Ctrl+3` / `Cmd+3` - Switch to AUTO tab
@@ -311,21 +247,6 @@ import('/js/lib/orbital.test.js').then(m => m.runAllTests())
 // Orbital maneuvers tests (thrust application)
 import('/js/lib/orbital-maneuvers.test.js').then(m => m.runAllTests())
 
-// Time travel feature tests
-import('/js/core/timeTravel.test.js').then(m => m.runAllTests())
-
-// Ephemeris tests (astronomy-engine wrapper)
-import('/js/lib/ephemeris.test.js').then(m => m.runAllTests())
-
 // Starfield tests (star catalog, precession, coordinate transforms)
 import('/js/lib/starfield.test.js').then(m => m.runAllTests())
-
-// Planning mode tests (state management)
-import('/js/core/gameState.planningMode.test.js').then(m => m.runAllTests())
-
-// Planning mode tests (ship physics)
-import('/js/core/shipPhysics.planningMode.test.js').then(m => m.runAllTests())
-
-// Planning mode tests (celestial bodies)
-import('/js/data/celestialBodies.planningMode.test.js').then(m => m.runAllTests())
 ```

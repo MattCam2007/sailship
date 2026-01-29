@@ -3,7 +3,7 @@
  */
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
-import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, timeTravelState, setTimeTravelEnabled, setReferenceDate, setTimeOffset, setTimeScale, TIME_SCALES, getEphemerisDate, setPlanningMode, isPlanningMode, getJulianDate, planningModeState, bodyFilters, saveBodyFilters, julianToDate } from '../core/gameState.js';
+import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters } from '../core/gameState.js';
 import { resizeCanvas } from './renderer.js';
 import {
     setDestination,
@@ -17,7 +17,7 @@ import {
 } from '../core/navigation.js';
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount } from '../data/ships.js';
-import { setDestinationName, updateSailDisplay, syncPlanningModeUI } from './uiUpdater.js';
+import { setDestinationName, updateSailDisplay } from './uiUpdater.js';
 import { initExpandablePanel, loadPanelState, initTabGroup } from './ui-components.js';
 
 // Drag state for camera panning
@@ -54,7 +54,6 @@ export function initControls(canvas) {
     initRightPanelTabs();
     initSailControls();
     initAutoPilotControls();
-    initTimeTravelControls();
     initKeyboardShortcuts();
     initMouseControls(canvas);
     populateObjectList();
@@ -444,17 +443,6 @@ function initKeyboardShortcuts() {
     const pitchSlider = document.getElementById('sailPitch');
 
     document.addEventListener('keydown', e => {
-        // Ctrl/Cmd+P: Toggle planning mode
-        if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
-            e.preventDefault();
-            const checkbox = document.getElementById('planningModeEnabled');
-            if (checkbox) {
-                checkbox.checked = !checkbox.checked;
-                checkbox.dispatchEvent(new Event('change'));
-            }
-            return;
-        }
-
         // Tab switching shortcuts: Ctrl+1/2/3 for SAIL/NAV/AUTO
         if ((e.ctrlKey || e.metaKey) && ['1', '2', '3'].includes(e.key)) {
             e.preventDefault(); // Prevent browser shortcuts
@@ -952,217 +940,4 @@ export function updateAutoPilot(deltaTime) {
 
     // Update status text
     updateAutoPilotStatusText();
-}
-
-// ============================================================================
-// Time Travel Controls
-// ============================================================================
-
-/**
- * Initialize time travel controls
- */
-function initTimeTravelControls() {
-    const enableCheckbox = document.getElementById('timeTravelEnabled');
-    const datePicker = document.getElementById('referenceDatePicker');
-    const scaleSelect = document.getElementById('timeScaleSelect');
-    const offsetSlider = document.getElementById('timeOffsetSlider');
-    const timeTravelControls = document.getElementById('timeTravelControls');
-
-    // Initialize expandable panel (collapsed by default to save space)
-    const savedState = loadPanelState('timeTravelControls');
-    const defaultExpanded = savedState !== undefined ? savedState : false;
-    initExpandablePanel('timeTravelControls', defaultExpanded);
-
-    // Resize canvas after panel expand/collapse animation completes
-    if (timeTravelControls) {
-        const panelContent = timeTravelControls.querySelector('.panel-content');
-
-        if (panelContent) {
-            panelContent.addEventListener('transitionend', (e) => {
-                // Trigger on max-height transition (main collapse/expand animation)
-                if (e.propertyName === 'max-height') {
-                    resizeCanvas();
-                }
-            });
-        }
-    }
-
-    // Set default date to today
-    const today = new Date();
-    datePicker.value = today.toISOString().split('T')[0];  // YYYY-MM-DD format
-    setReferenceDate(today);
-
-    // Enable/disable toggle
-    if (enableCheckbox) {
-        enableCheckbox.addEventListener('change', (e) => {
-            setTimeTravelEnabled(e.target.checked);
-
-            // Update UI styling
-            if (timeTravelControls) {
-                if (e.target.checked) {
-                    timeTravelControls.classList.remove('disabled');
-                } else {
-                    timeTravelControls.classList.add('disabled');
-                }
-            }
-
-            updateTimeTravelDisplay();
-        });
-    }
-
-    // Date picker
-    if (datePicker) {
-        datePicker.addEventListener('change', (e) => {
-            const selectedDate = new Date(e.target.value + 'T00:00:00Z');
-            setReferenceDate(selectedDate);
-            updateTimeTravelDisplay();
-        });
-    }
-
-    // Time scale selector
-    if (scaleSelect) {
-        scaleSelect.addEventListener('change', (e) => {
-            const scale = e.target.value;
-            setTimeScale(scale);
-            updateSliderLabels(scale);
-            updateTimeTravelDisplay();
-        });
-
-        // Initialize labels
-        updateSliderLabels(scaleSelect.value);
-    }
-
-    // Time offset slider (throttled for performance)
-    if (offsetSlider) {
-        let throttleTimeout = null;
-
-        offsetSlider.addEventListener('input', (e) => {
-            // Throttle to ~60fps (16.67ms)
-            if (throttleTimeout) return;
-
-            throttleTimeout = setTimeout(() => {
-                throttleTimeout = null;
-            }, 16);
-
-            const sliderPercent = parseFloat(e.target.value);
-            const scale = scaleSelect ? scaleSelect.value : 'month';
-            const scaleDays = TIME_SCALES[scale] || 30;
-            const offsetDays = (sliderPercent / 100) * scaleDays;
-
-            setTimeOffset(offsetDays);
-            updateTimeTravelDisplay();
-        });
-    }
-
-    // Planning mode toggle
-    const planningModeCheckbox = document.getElementById('planningModeEnabled');
-    if (planningModeCheckbox) {
-        planningModeCheckbox.addEventListener('change', (e) => {
-            const enabled = e.target.checked;
-
-            try {
-                setPlanningMode(enabled);
-                syncPlanningModeUI(); // Centralized UI sync
-
-                console.log(`[PLANNING] Planning mode ${enabled ? 'enabled' : 'disabled'}`);
-            } catch (error) {
-                console.error('[PLANNING] Failed to toggle planning mode:', error);
-                // Revert checkbox
-                e.target.checked = !enabled;
-                syncPlanningModeUI(); // Re-sync UI to actual state
-                alert(`Failed to enable planning mode: ${error.message}`);
-            }
-        });
-    }
-
-    // Initialize display
-    updateTimeTravelDisplay();
-    if (timeTravelControls) {
-        timeTravelControls.classList.add('disabled');
-    }
-}
-
-/**
- * Update slider labels based on selected time scale
- * @param {string} scale - Time scale ('hour', 'day', 'week', 'month', 'year', 'decade', 'century')
- */
-function updateSliderLabels(scale) {
-    const minLabel = document.getElementById('sliderLabelMin');
-    const maxLabel = document.getElementById('sliderLabelMax');
-
-    const labels = {
-        hour: { min: '-1h', max: '+1h' },
-        day: { min: '-1d', max: '+1d' },
-        week: { min: '-1w', max: '+1w' },
-        month: { min: '-1mo', max: '+1mo' },
-        year: { min: '-1yr', max: '+1yr' },
-        decade: { min: '-10yr', max: '+10yr' },
-        century: { min: '-100yr', max: '+100yr' }
-    };
-
-    const label = labels[scale] || labels.month;
-
-    if (minLabel) minLabel.textContent = label.min;
-    if (maxLabel) maxLabel.textContent = label.max;
-}
-
-/**
- * Update ephemeris date display
- * Called from UI update loop
- */
-export function updateTimeTravelDisplay() {
-    const ephemerisDateEl = document.getElementById('ephemerisDate');
-    const compactInfoEl = document.getElementById('ttCompactInfo');
-
-    if (!ephemerisDateEl) return;
-
-    if (timeTravelState.enabled) {
-        const date = getEphemerisDate();
-        const formatted = formatEphemerisDate(date);
-        const compactFormatted = formatCompactDate(date);
-
-        ephemerisDateEl.textContent = formatted;
-
-        if (compactInfoEl) {
-            compactInfoEl.textContent = compactFormatted;
-        }
-    } else {
-        ephemerisDateEl.textContent = 'DISABLED';
-
-        if (compactInfoEl) {
-            compactInfoEl.textContent = 'DISABLED';
-        }
-    }
-
-}
-
-/**
- * Format date for ephemeris display
- * @param {Date} date - JavaScript Date object
- * @returns {string} Formatted date string
- */
-function formatEphemerisDate(date) {
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
-}
-
-/**
- * Format date for compact display in collapsed header
- * @param {Date} date - JavaScript Date object
- * @returns {string} Compact formatted date string
- */
-function formatCompactDate(date) {
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-
-    return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
 }

@@ -9,11 +9,7 @@ import {
     advanceTime,
     timeScale,
     setFocusTarget,
-    julianDate,
-    getEphemerisJulianDate,
-    timeTravelState,
-    isPlanningMode,
-    getActiveJulianDate,
+    getJulianDate,
     getIntersectionCache,
     setIntersectionCache,
     isIntersectionCacheValid,
@@ -114,8 +110,7 @@ function updatePositions() {
                 const soiBody = player.soiState.isInSOI ? player.soiState.currentBody : null;
 
                 // Detect orbital crossings and get planet positions at crossing times
-                // Use active date for filtering (planning mode uses ephemeris, live uses simulation)
-                const currentTime = getActiveJulianDate();
+                const currentTime = getJulianDate();
 
                 const intersections = detectIntersections(
                     trajectory,
