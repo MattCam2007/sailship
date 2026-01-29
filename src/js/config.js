@@ -139,17 +139,18 @@ export const GRAVITATIONAL_PARAMS = {
 /**
  * Sphere of Influence radii in AU.
  *
- * GAMEPLAY VALUES - enlarged for easier capture.
- * Realistic values commented out for reference.
+ * REALISTIC VALUES based on Hill sphere approximation:
+ * r_SOI = a * (m_planet / m_sun)^0.4
  *
- * Realistic (Hill sphere): r_SOI = a * (m_planet / m_sun)^0.4
+ * These are the actual gravitational spheres of influence where
+ * a planet's gravity dominates over the Sun's.
  */
 export const SOI_RADII = {
-    MERCURY: 0.1,       // Realistic: 0.00112
-    VENUS: 0.1,         // Realistic: 0.00411
-    EARTH: 0.1,         // Realistic: 0.00620
-    MARS: 0.1,          // Realistic: 0.00386
-    JUPITER: 0.4,       // Realistic: 0.3219
+    MERCURY: 0.00112,   // ~167,000 km
+    VENUS: 0.00411,     // ~615,000 km
+    EARTH: 0.00620,     // ~928,000 km (about 2.4x Moon's distance)
+    MARS: 0.00386,      // ~577,000 km
+    JUPITER: 0.3219,    // ~48 million km
 };
 
 /**

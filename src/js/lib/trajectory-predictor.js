@@ -11,7 +11,7 @@
 
 import { getPosition, getVelocity } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
-import { SOI_RADII } from '../config.js';
+import { SOI_RADII, PHYSICS_CONFIG } from '../config.js';
 import { getBodyByName } from '../data/celestialBodies.js';
 
 // Configuration constants
@@ -22,6 +22,9 @@ const CACHE_TTL_MS = 500;  // Increased from 100ms to 500ms for better performan
 const MIN_THRUST_THRESHOLD = 1e-20;
 const MAX_HELIOCENTRIC_RADIUS = 10;  // Stop prediction at 10 AU (beyond Jupiter)
 const MIN_HELIOCENTRIC_RADIUS = 0.01;  // Stop prediction at 0.01 AU (sun collision, ~1.5M km)
+
+// Use the same threshold as shipPhysics for consistency
+const EXTREME_ECCENTRICITY_THRESHOLD = PHYSICS_CONFIG?.extremeEccentricityThreshold || 50;
 
 // Cache for trajectory prediction
 let trajectoryCache = {
@@ -34,7 +37,7 @@ let trajectoryCache = {
  * Generate a hash of inputs for cache invalidation.
  */
 function hashInputs(params) {
-    const { orbitalElements, sail, mass, startTime, duration, steps, soiState } = params;
+    const { orbitalElements, sail, mass, startTime, duration, steps, soiState, extremeFlybyState } = params;
     return JSON.stringify({
         a: orbitalElements.a,
         e: orbitalElements.e,
@@ -50,7 +53,10 @@ function hashInputs(params) {
         duration,
         steps,
         soiBody: soiState?.currentBody || 'SUN',
-        isInSOI: soiState?.isInSOI || false
+        isInSOI: soiState?.isInSOI || false,
+        // Include extremeFlybyState in hash for cache invalidation
+        hasExtremeFlyby: !!extremeFlybyState,
+        extremeFlybyTime: extremeFlybyState?.entryTime || 0
     });
 }
 
@@ -73,6 +79,7 @@ function hashInputs(params) {
  * @param {number} params.duration - Days to predict ahead (default 60)
  * @param {number} params.steps - Number of position samples (default 200)
  * @param {Object} params.soiState - SOI state {currentBody, isInSOI}
+ * @param {Object} params.extremeFlybyState - Optional extreme flyby state for linear interpolation
  * @returns {Array} Array of {x, y, z, time, truncated?} positions in AU
  */
 export function predictTrajectory(params) {
@@ -83,7 +90,8 @@ export function predictTrajectory(params) {
         startTime,
         duration = DEFAULT_DURATION_DAYS,
         steps = DEFAULT_STEPS,
-        soiState = null
+        soiState = null,
+        extremeFlybyState = null
     } = params;
 
     // Check cache
@@ -118,11 +126,34 @@ export function predictTrajectory(params) {
         ? (SOI_RADII[currentBody] || 0.1)
         : null;
 
+    // Detect extreme eccentricity - use linear interpolation like shipPhysics.js does
+    // This is critical for very fast flybys where orbital mechanics break down
+    const useLinearInterpolation = extremeFlybyState &&
+        simElements.e > EXTREME_ECCENTRICITY_THRESHOLD &&
+        isInSOI;
+
+    if (useLinearInterpolation) {
+        console.log(`[TRAJECTORY] Using linear interpolation for extreme flyby (e=${simElements.e.toFixed(1)})`);
+    }
+
     for (let i = 0; i < steps; i++) {
         const simTime = startTime + i * timeStep;
 
         // Get position from current orbital elements (planetocentric when in SOI)
-        const position = getPosition(simElements, simTime);
+        // For extreme eccentricity flybys, use linear interpolation instead of orbital mechanics
+        // This matches the behavior in shipPhysics.js for consistency
+        let position;
+        if (useLinearInterpolation) {
+            // Linear interpolation from entry state
+            const dt = simTime - extremeFlybyState.entryTime;
+            position = {
+                x: extremeFlybyState.entryPos.x + extremeFlybyState.entryVel.vx * dt,
+                y: extremeFlybyState.entryPos.y + extremeFlybyState.entryVel.vy * dt,
+                z: extremeFlybyState.entryPos.z + extremeFlybyState.entryVel.vz * dt
+            };
+        } else {
+            position = getPosition(simElements, simTime);
+        }
 
         // Validate position (guard against numerical issues)
         if (!isFinite(position.x) || !isFinite(position.y) || !isFinite(position.z)) {
@@ -198,7 +229,9 @@ export function predictTrajectory(params) {
         // Don't apply thrust if too close to sun - physics breaks down and corrupts orbital elements
         const tooCloseToSun = !isInSOI && distFromOrigin < MIN_HELIOCENTRIC_RADIUS * 2.0;
 
-        if (i < steps - 1 && effectiveThrust && !tooCloseToSun) {
+        // Skip thrust application for extreme flybys - the flyby is so fast that sail thrust
+        // has negligible effect, and orbital elements are not meaningful anyway
+        if (i < steps - 1 && effectiveThrust && !tooCloseToSun && !useLinearInterpolation) {
             const velocity = getVelocity(simElements, simTime);
 
             // Calculate thrust in heliocentric frame

@@ -818,7 +818,8 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
         startTime: startTime,
         duration: duration,
         steps: steps,
-        soiState: ship.soiState  // For SOI boundary detection
+        soiState: ship.soiState,  // For SOI boundary detection
+        extremeFlybyState: ship.extremeFlybyState  // For extreme eccentricity linear interpolation
     });
 
     if (!trajectory || trajectory.length < 2) {
