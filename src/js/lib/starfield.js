@@ -23,6 +23,7 @@ import { getJulianDate } from '../core/gameState.js';
 
 let stars = null;
 let starCatalogLoaded = false;
+let catalogLoadWarningShown = false;
 
 /**
  * Load star catalog asynchronously
@@ -34,23 +35,40 @@ export async function loadStarCatalog() {
         return stars;
     }
 
-    console.log('[STARFIELD] Loading star catalog from /data/stars/bsc5-processed.json');
-    try {
-        const response = await fetch('/data/stars/bsc5-processed.json');
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    console.log('[STARFIELD] Loading star catalog...');
+
+    // Retry logic for mobile networks with potential connectivity issues
+    const maxRetries = 3;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch('/data/stars/bsc5-processed.json');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            stars = await response.json();
+            starCatalogLoaded = true;
+            catalogLoadWarningShown = false; // Reset so we can show success
+            console.log(`[STARFIELD] Successfully loaded ${stars.length} stars`);
+            return stars;
+        } catch (error) {
+            lastError = error;
+            console.warn(`[STARFIELD] Load attempt ${attempt}/${maxRetries} failed:`, error.message);
+
+            if (attempt < maxRetries) {
+                // Exponential backoff: 1s, 2s, 4s
+                const delay = Math.pow(2, attempt - 1) * 1000;
+                console.log(`[STARFIELD] Retrying in ${delay/1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
         }
-        stars = await response.json();
-        starCatalogLoaded = true;
-        console.log(`[STARFIELD] Successfully loaded ${stars.length} stars`);
-        console.log('[STARFIELD] Sample star:', stars[0]);
-        return stars;
-    } catch (error) {
-        console.error('[STARFIELD] Failed to load star catalog:', error);
-        stars = [];
-        starCatalogLoaded = false;
-        return stars;
     }
+
+    console.error('[STARFIELD] Failed to load star catalog after', maxRetries, 'attempts:', lastError);
+    stars = [];
+    starCatalogLoaded = false;
+    return stars;
 }
 
 // ============================================================================
@@ -369,7 +387,11 @@ function getStarBrightness(mag) {
  */
 export function drawStarfield(ctx, centerX, centerY, scale) {
     if (!starCatalogLoaded || !stars || stars.length === 0) {
-        console.warn('[STARFIELD] Catalog not loaded:', { starCatalogLoaded, starCount: stars?.length });
+        // Only log once to avoid console spam on slow mobile connections
+        if (!catalogLoadWarningShown) {
+            console.log('[STARFIELD] Catalog loading... stars will appear when ready');
+            catalogLoadWarningShown = true;
+        }
         return;
     }
 
