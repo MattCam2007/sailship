@@ -66,6 +66,7 @@ export function initControls(canvas) {
     initKeyboardShortcuts();
     initMouseControls(canvas);
     initTouchControls(canvas);
+    initMobileSailWidget();
     populateObjectList();
 }
 
@@ -1255,4 +1256,124 @@ function updateMobileAutopilotUI(enabled) {
             icon.textContent = enabled ? '◉' : '◎';
         }
     }
+}
+
+// ============================================================================
+// Mobile Floating Sail Widget
+// ============================================================================
+
+/**
+ * Initialize the mobile floating sail widget
+ * Provides compact sail controls that float over the map on mobile devices
+ */
+export function initMobileSailWidget() {
+    const widget = document.getElementById('mobileSailWidget');
+    const toggle = document.getElementById('sailWidgetToggle');
+    const controls = document.getElementById('sailWidgetControls');
+
+    if (!widget || !toggle) return;
+
+    // Toggle widget expansion
+    toggle.addEventListener('click', () => {
+        widget.classList.toggle('expanded');
+    });
+
+    // Get mobile sliders
+    const mobileDeploySlider = document.getElementById('mobileSailDeployment');
+    const mobileYawSlider = document.getElementById('mobileSailYaw');
+    const mobilePitchSlider = document.getElementById('mobileSailPitch');
+    const mobileDeployValue = document.getElementById('mobileSailDeployValue');
+    const mobileYawValue = document.getElementById('mobileSailYawValue');
+    const mobilePitchValue = document.getElementById('mobileSailPitchValue');
+
+    // Get desktop sliders for syncing
+    const desktopDeploySlider = document.getElementById('sailDeployment');
+    const desktopAngleSlider = document.getElementById('sailAngle');
+    const desktopPitchSlider = document.getElementById('sailPitch');
+
+    // Initialize mobile sliders from current ship state
+    const player = getPlayerShip();
+    if (player && player.sail) {
+        if (mobileDeploySlider) {
+            mobileDeploySlider.value = player.sail.deploymentPercent;
+            if (mobileDeployValue) mobileDeployValue.textContent = Math.round(player.sail.deploymentPercent) + '%';
+        }
+        if (mobileYawSlider) {
+            const yawDeg = Math.round(player.sail.angle * 180 / Math.PI);
+            mobileYawSlider.value = yawDeg;
+            if (mobileYawValue) mobileYawValue.textContent = yawDeg + '°';
+        }
+        if (mobilePitchSlider) {
+            const pitchDeg = Math.round((player.sail.pitchAngle || 0) * 180 / Math.PI);
+            mobilePitchSlider.value = pitchDeg;
+            if (mobilePitchValue) mobilePitchValue.textContent = pitchDeg + '°';
+        }
+    }
+
+    // Deployment slider handler
+    if (mobileDeploySlider) {
+        mobileDeploySlider.addEventListener('input', () => {
+            const value = parseInt(mobileDeploySlider.value, 10);
+            const player = getPlayerShip();
+            if (player) {
+                setSailDeployment(player, value);
+            }
+            if (mobileDeployValue) {
+                mobileDeployValue.textContent = value + '%';
+            }
+            // Sync desktop slider
+            if (desktopDeploySlider) {
+                desktopDeploySlider.value = value;
+            }
+            updateSailDisplay();
+        });
+    }
+
+    // Yaw slider handler
+    if (mobileYawSlider) {
+        mobileYawSlider.addEventListener('input', () => {
+            const degrees = parseInt(mobileYawSlider.value, 10);
+            const radians = degrees * Math.PI / 180;
+            const player = getPlayerShip();
+            if (player) {
+                setSailAngle(player, radians);
+            }
+            if (mobileYawValue) {
+                mobileYawValue.textContent = degrees + '°';
+            }
+            // Sync desktop slider
+            if (desktopAngleSlider) {
+                desktopAngleSlider.value = degrees;
+            }
+            updateSailDisplay();
+        });
+    }
+
+    // Pitch slider handler
+    if (mobilePitchSlider) {
+        mobilePitchSlider.addEventListener('input', () => {
+            const degrees = parseInt(mobilePitchSlider.value, 10);
+            const radians = degrees * Math.PI / 180;
+            const player = getPlayerShip();
+            if (player) {
+                setSailPitch(player, radians);
+            }
+            if (mobilePitchValue) {
+                mobilePitchValue.textContent = degrees + '°';
+            }
+            // Sync desktop slider
+            if (desktopPitchSlider) {
+                desktopPitchSlider.value = degrees;
+            }
+            updateSailDisplay();
+        });
+    }
+
+    // Close widget when tapping outside (on mobile)
+    document.addEventListener('click', (e) => {
+        if (widget.classList.contains('expanded') &&
+            !widget.contains(e.target)) {
+            widget.classList.remove('expanded');
+        }
+    });
 }

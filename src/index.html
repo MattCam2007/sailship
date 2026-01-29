@@ -355,6 +355,38 @@
         </button>
     </div>
 
+    <!-- Mobile Floating Sail Widget -->
+    <div class="mobile-sail-widget" id="mobileSailWidget">
+        <button class="sail-widget-toggle" id="sailWidgetToggle" aria-label="Toggle sail controls">
+            <span class="toggle-icon">⛵</span>
+            <span class="toggle-label">SAIL</span>
+        </button>
+        <div class="sail-widget-controls" id="sailWidgetControls">
+            <div class="sail-widget-row">
+                <span class="sail-widget-label">DEP</span>
+                <input type="range" class="sail-widget-slider" id="mobileSailDeployment"
+                       min="0" max="100" value="100" aria-label="Sail deployment">
+                <span class="sail-widget-value" id="mobileSailDeployValue">100%</span>
+            </div>
+            <div class="sail-widget-row">
+                <span class="sail-widget-label">YAW</span>
+                <input type="range" class="sail-widget-slider" id="mobileSailYaw"
+                       min="-90" max="90" value="35" aria-label="Sail yaw angle">
+                <span class="sail-widget-value" id="mobileSailYawValue">35°</span>
+            </div>
+            <div class="sail-widget-row">
+                <span class="sail-widget-label">PIT</span>
+                <input type="range" class="sail-widget-slider" id="mobileSailPitch"
+                       min="-90" max="90" value="0" aria-label="Sail pitch angle">
+                <span class="sail-widget-value" id="mobileSailPitchValue">0°</span>
+            </div>
+            <div class="sail-widget-thrust">
+                <span class="thrust-label">THRUST</span>
+                <span class="thrust-value" id="mobileSailThrust">0.00 mm/s²</span>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="js/main.js"></script>
 </body>
 </html>

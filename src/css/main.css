@@ -2324,3 +2324,164 @@ body::after {
     }
 }
 
+/* ===========================================
+   Mobile Floating Sail Widget
+   =========================================== */
+
+.mobile-sail-widget {
+    display: none; /* Hidden on desktop */
+}
+
+@media screen and (max-width: 768px) {
+    .mobile-sail-widget {
+        display: block;
+        position: fixed;
+        bottom: 64px;
+        right: 8px;
+        z-index: 998;
+    }
+
+    .sail-widget-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 14px;
+        background: var(--bg-dark);
+        border: 1px solid var(--coral-primary);
+        color: var(--coral-primary);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .sail-widget-toggle:active {
+        background: var(--coral-primary);
+        color: var(--bg-dark);
+    }
+
+    .sail-widget-toggle .toggle-icon {
+        font-size: 16px;
+    }
+
+    .mobile-sail-widget.expanded .sail-widget-toggle {
+        background: var(--coral-primary);
+        color: var(--bg-dark);
+    }
+
+    .sail-widget-controls {
+        display: none;
+        background: rgba(10, 10, 15, 0.95);
+        border: 1px solid var(--coral-primary);
+        border-top: none;
+        padding: 12px;
+        min-width: 200px;
+    }
+
+    .mobile-sail-widget.expanded .sail-widget-controls {
+        display: block;
+    }
+
+    .sail-widget-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .sail-widget-row:last-of-type {
+        margin-bottom: 8px;
+    }
+
+    .sail-widget-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-secondary);
+        width: 28px;
+        flex-shrink: 0;
+    }
+
+    .sail-widget-slider {
+        flex: 1;
+        height: 24px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: rgba(232, 93, 76, 0.1);
+        border: 1px solid var(--coral-dim);
+        cursor: pointer;
+    }
+
+    .sail-widget-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 24px;
+        background: var(--coral-primary);
+        border: none;
+        cursor: pointer;
+    }
+
+    .sail-widget-slider::-moz-range-thumb {
+        width: 20px;
+        height: 24px;
+        background: var(--coral-primary);
+        border: none;
+        cursor: pointer;
+    }
+
+    .sail-widget-value {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--coral-primary);
+        width: 38px;
+        text-align: right;
+        flex-shrink: 0;
+    }
+
+    .sail-widget-thrust {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 8px;
+        border-top: 1px solid var(--coral-dim);
+    }
+
+    .sail-widget-thrust .thrust-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text-secondary);
+    }
+
+    .sail-widget-thrust .thrust-value {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-bright);
+    }
+}
+
+/* Small mobile adjustments */
+@media screen and (max-width: 480px) {
+    .mobile-sail-widget {
+        right: 4px;
+        bottom: 68px;
+    }
+
+    .sail-widget-toggle {
+        padding: 8px 10px;
+        font-size: 11px;
+    }
+
+    .sail-widget-controls {
+        min-width: 180px;
+        padding: 10px;
+    }
+}
+
+/* Landscape mobile */
+@media screen and (max-width: 768px) and (orientation: landscape) {
+    .mobile-sail-widget {
+        bottom: 56px;
+    }
+}
+

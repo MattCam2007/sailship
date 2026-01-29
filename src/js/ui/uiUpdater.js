@@ -152,16 +152,19 @@ function updateDestinationDisplay() {
 export function updateSailDisplay() {
     const player = getPlayerShip();
     if (!player) return;
-    
+
     const thrustInfo = getThrustInfo(player);
-    
+
+    // Calculate thrust value for display
+    const thrustMMS2 = thrustInfo ? thrustInfo.accelerationMS2 * 1000 : 0; // m/s² to mm/s²
+    const thrustText = thrustMMS2.toFixed(3) + ' mm/s²';
+
     if (thrustInfo) {
         // Update thrust display (convert to mm/s² for readability)
         if (elements.sailThrust) {
-            const thrustMMS2 = thrustInfo.accelerationMS2 * 1000; // m/s² to mm/s²
-            elements.sailThrust.textContent = thrustMMS2.toFixed(3) + ' mm/s²';
+            elements.sailThrust.textContent = thrustText;
         }
-        
+
         // Update g-force display
         if (elements.sailAccelG) {
             elements.sailAccelG.textContent = thrustInfo.accelerationG.toFixed(6) + ' g';
@@ -175,7 +178,7 @@ export function updateSailDisplay() {
             elements.sailAccelG.textContent = '0.000000 g';
         }
     }
-    
+
     // Update slider value displays if sail exists
     if (player.sail) {
         if (elements.sailDeployValue) {
@@ -184,6 +187,42 @@ export function updateSailDisplay() {
         if (elements.sailAngleValue) {
             const degrees = Math.round(player.sail.angle * 180 / Math.PI);
             elements.sailAngleValue.textContent = degrees + '°';
+        }
+
+        // Update mobile sail widget values
+        const mobileDeployValue = document.getElementById('mobileSailDeployValue');
+        const mobileYawValue = document.getElementById('mobileSailYawValue');
+        const mobilePitchValue = document.getElementById('mobileSailPitchValue');
+        const mobileThrustValue = document.getElementById('mobileSailThrust');
+        const mobileDeploySlider = document.getElementById('mobileSailDeployment');
+        const mobileYawSlider = document.getElementById('mobileSailYaw');
+        const mobilePitchSlider = document.getElementById('mobileSailPitch');
+
+        if (mobileDeployValue) {
+            mobileDeployValue.textContent = Math.round(player.sail.deploymentPercent) + '%';
+        }
+        if (mobileDeploySlider) {
+            mobileDeploySlider.value = player.sail.deploymentPercent;
+        }
+
+        const yawDeg = Math.round(player.sail.angle * 180 / Math.PI);
+        if (mobileYawValue) {
+            mobileYawValue.textContent = yawDeg + '°';
+        }
+        if (mobileYawSlider) {
+            mobileYawSlider.value = yawDeg;
+        }
+
+        const pitchDeg = Math.round((player.sail.pitchAngle || 0) * 180 / Math.PI);
+        if (mobilePitchValue) {
+            mobilePitchValue.textContent = pitchDeg + '°';
+        }
+        if (mobilePitchSlider) {
+            mobilePitchSlider.value = pitchDeg;
+        }
+
+        if (mobileThrustValue) {
+            mobileThrustValue.textContent = thrustText;
         }
     }
 }
