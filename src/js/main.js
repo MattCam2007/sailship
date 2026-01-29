@@ -23,6 +23,7 @@ import { updateShipPhysics } from './core/shipPhysics.js';
 import { getCachedTrajectory, getTrajectoryHash, clearTrajectoryCache } from './lib/trajectory-predictor.js';
 import { detectIntersections } from './lib/intersectionDetector.js';
 import { clearIntersectionCache } from './core/gameState.js';
+import { isActive, updatePlanningFrame } from './core/planningMode.js';
 
 // Get canvas element
 const navCanvas = document.getElementById('navCanvas');
@@ -138,7 +139,14 @@ function gameLoop() {
         performMemoryCleanup();
     }
 
-    updatePositions();
+    if (isActive()) {
+        // Planning mode: use sandbox time, skip live updates
+        updatePlanningFrame();
+    } else {
+        // Flight mode: normal updates
+        updatePositions();
+    }
+
     updateCameraTarget(celestialBodies, ships);
     render();
     updateUI();

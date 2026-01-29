@@ -19,6 +19,7 @@ import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount } from '../data/ships.js';
 import { setDestinationName, updateSailDisplay } from './uiUpdater.js';
 import { initExpandablePanel, loadPanelState, initTabGroup } from './ui-components.js';
+import { isActive, enterPlanningMode, exitPlanningMode, setSandboxTimeOffset, updateTimeDisplay, getSandboxTimeOffset, setMode } from '../core/planningMode.js';
 
 // Drag state for camera panning
 const dragState = {
@@ -41,6 +42,10 @@ const rotateState = {
     lastY: 0
 };
 
+// Debounce state for time slider
+let sliderDebounceTimer = null;
+const SLIDER_DEBOUNCE_MS = 333;  // ≤3 calculations per second
+
 /**
  * Initialize all control event listeners
  * @param {HTMLCanvasElement} canvas
@@ -54,6 +59,7 @@ export function initControls(canvas) {
     initRightPanelTabs();
     initSailControls();
     initAutoPilotControls();
+    initPlanningModeControls();
     initKeyboardShortcuts();
     initMouseControls(canvas);
     populateObjectList();
@@ -456,6 +462,22 @@ function initKeyboardShortcuts() {
             return;
         }
 
+        // Planning Mode toggle with P key
+        if (e.key === 'p' || e.key === 'P') {
+            if (isActive()) {
+                exitPlanningMode();
+            } else {
+                enterPlanningMode();
+            }
+            return;
+        }
+
+        // Escape to exit planning mode
+        if (e.key === 'Escape' && isActive()) {
+            exitPlanningMode();
+            return;
+        }
+
         // Camera rotation shortcuts (always active, even during autopilot)
         const rotationStep = 0.05;  // ~3 degrees per press
         const tiltStep = 0.05;
@@ -717,6 +739,73 @@ function initAutoPilotControls() {
             const newState = !isAutoPilotEnabled();
             setAutoPilotEnabled(newState);
             updateAutoPilotUI(newState);
+        });
+    }
+}
+
+/**
+ * Set up Planning Mode controls (close button, time slider, mode buttons)
+ */
+function initPlanningModeControls() {
+    // Close button
+    const closeBtn = document.getElementById('closePlanningMode');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            if (isActive()) {
+                exitPlanningMode();
+            }
+        });
+    }
+
+    // Time slider with debounced calculations
+    const timeSlider = document.getElementById('timeSlider');
+    if (timeSlider) {
+        timeSlider.addEventListener('input', (e) => {
+            const days = parseInt(e.target.value, 10);
+
+            // Update display immediately for responsiveness
+            updateTimeDisplay(days);
+
+            // Debounce the expensive calculations
+            if (sliderDebounceTimer) {
+                clearTimeout(sliderDebounceTimer);
+            }
+            sliderDebounceTimer = setTimeout(() => {
+                setSandboxTimeOffset(days);
+            }, SLIDER_DEBOUNCE_MS);
+        });
+    }
+
+    // Time adjustment buttons
+    document.querySelectorAll('.time-btn[data-adjust]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const adjust = parseInt(btn.dataset.adjust, 10);
+            const current = getSandboxTimeOffset();
+            const newValue = Math.max(0, Math.min(730, current + adjust));
+
+            const slider = document.getElementById('timeSlider');
+            if (slider) {
+                slider.value = newValue;
+                slider.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+
+    // Mode toggle buttons
+    const fixedBtn = document.getElementById('fixedModeBtn');
+    const driftBtn = document.getElementById('driftModeBtn');
+
+    if (fixedBtn && driftBtn) {
+        fixedBtn.addEventListener('click', () => {
+            setMode('FIXED');
+            fixedBtn.classList.add('active');
+            driftBtn.classList.remove('active');
+        });
+
+        driftBtn.addEventListener('click', () => {
+            setMode('DRIFT');
+            driftBtn.classList.add('active');
+            fixedBtn.classList.remove('active');
         });
     }
 }
