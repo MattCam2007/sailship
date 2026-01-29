@@ -3,10 +3,9 @@
  */
 
 import { destination, getDestinationInfo, predictClosestApproach, computeNavigationPlan, computeApproachPlan, computeCapturePlan, computeEscapePlan } from '../core/navigation.js';
-import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPILOT_PHASES, isPlanningMode, planningModeState, getEphemerisDate, julianToDate } from '../core/gameState.js';
+import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPILOT_PHASES } from '../core/gameState.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
-import { updateTimeTravelDisplay } from './controls.js';
 
 // Cache DOM elements
 let elements = {};
@@ -52,79 +51,6 @@ export function initUI() {
 }
 
 /**
- * Synchronize all UI elements with planning mode state
- * Call this whenever planning mode is toggled programmatically or via UI
- */
-export function syncPlanningModeUI() {
-    const enabled = isPlanningMode();
-
-    // 1. Update body class for CSS styling
-    document.body.classList.toggle('planning-mode', enabled);
-
-    // 2. Sync checkbox state
-    const checkbox = document.getElementById('planningModeEnabled');
-    if (checkbox && checkbox.checked !== enabled) {
-        checkbox.checked = enabled;
-    }
-
-    // 3. Disable/enable speed controls
-    const speedButtons = document.querySelectorAll('.speed-button');
-    speedButtons.forEach(btn => {
-        btn.disabled = enabled;
-        btn.style.opacity = enabled ? '0.3' : '';
-        btn.style.cursor = enabled ? 'not-allowed' : '';
-    });
-
-    // 4. Update dual date display
-    const contextDiv = document.getElementById('planningContext');
-    if (contextDiv) {
-        if (enabled) {
-            contextDiv.style.display = 'block';
-
-            // Update planning date
-            const ephemerisDate = getEphemerisDate();
-            const planningDisplay = document.getElementById('planningDateDisplay');
-            if (planningDisplay) {
-                const formatted = formatPlanningDate(ephemerisDate);
-                planningDisplay.textContent = formatted;
-            }
-
-            // Update frozen date
-            const frozenJD = planningModeState.frozenJulianDate;
-            const frozenDisplay = document.getElementById('frozenDateDisplay');
-            if (frozenDisplay && frozenJD) {
-                const frozenDate = julianToDate(frozenJD);
-                if (frozenDate) {
-                    const formatted = formatPlanningDate(frozenDate);
-                    frozenDisplay.textContent = formatted;
-                }
-            }
-        } else {
-            contextDiv.style.display = 'none';
-        }
-    }
-
-    // 5. Update time travel display
-    updateTimeTravelDisplay();
-}
-
-/**
- * Format date for planning mode display
- * @param {Date} date - JavaScript Date object
- * @returns {string} Formatted date string
- */
-function formatPlanningDate(date) {
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
-}
-
-/**
  * Update all UI elements
  */
 export function updateUI() {
@@ -134,10 +60,6 @@ export function updateUI() {
     updateSailDisplay();
     updateNavigationComputer();
     updateSOIStatus();
-    updateTimeTravelDisplay();
-
-    // Sync planning mode UI (speed buttons, indicators, etc.)
-    syncPlanningModeUI();
 }
 
 /**

@@ -7,9 +7,8 @@
  */
 
 import { getPosition, MU_SUN, J2000 } from '../lib/orbital.js';
-import { getJulianDate, timeTravelState, getEphemerisDate, isPlanningMode, bodyFilters } from '../core/gameState.js';
+import { getJulianDate, bodyFilters } from '../core/gameState.js';
 import { GRAVITATIONAL_PARAMS, BODY_DISPLAY } from '../config.js';
-import { getHeliocentricPosition } from '../lib/ephemeris.js';
 
 // ============================================================================
 // Orbital Elements Data
@@ -896,38 +895,15 @@ export const celestialBodies = [
  * Update positions of all celestial bodies based on current Julian date.
  * Uses Keplerian orbital mechanics via the orbital library.
  *
- * TIME TRAVEL MODE:
- * When timeTravelState.enabled = true, uses astronomy-engine ephemeris data
- * instead of Keplerian propagation for accurate historical/future positions.
- *
  * Note: Julian date is managed by gameState.js and accessed via getJulianDate().
  */
 export function updateCelestialPositions() {
-    // Choose date source based on time travel or planning mode
-    // - Planning mode: Always ephemeris (synchronized with ship)
-    // - Time travel enabled: Ephemeris for historical/future accuracy
-    // - Live mode: Keplerian (fast, deterministic)
-    const useEphemeris = timeTravelState.enabled || isPlanningMode();
-    const jd = useEphemeris ? null : getJulianDate();
-    const ephemerisDate = useEphemeris ? getEphemerisDate() : null;
+    const jd = getJulianDate();
 
-    // First pass: update all non-moon bodies
+    // First pass: update all non-moon bodies using Keplerian propagation
     celestialBodies.forEach(body => {
         if (body.elements && !body.parent) {
-            let pos;
-
-            if (useEphemeris) {
-                // Use astronomy-engine ephemeris (time travel or planning mode)
-                pos = getHeliocentricPosition(body.name, ephemerisDate);
-                if (!pos) {
-                    // Fallback to Keplerian if ephemeris fails
-                    pos = getPosition(body.elements, jd || getJulianDate());
-                }
-            } else {
-                // Use Keplerian propagation (live mode)
-                pos = getPosition(body.elements, jd);
-            }
-
+            const pos = getPosition(body.elements, jd);
             body.x = pos.x;
             body.y = pos.y;
             body.z = pos.z;
@@ -939,9 +915,8 @@ export function updateCelestialPositions() {
         if (body.elements && body.parent) {
             const parent = celestialBodies.find(b => b.name === body.parent);
             if (parent) {
-                // Moons always use Keplerian propagation relative to parent
-                // (astronomy-engine doesn't provide moon ephemeris in HelioState)
-                const relPos = getPosition(body.elements, jd || getJulianDate());
+                // Keplerian propagation relative to parent
+                const relPos = getPosition(body.elements, jd);
 
                 // Add parent's position for absolute coordinates
                 body.x = parent.x + relPos.x;

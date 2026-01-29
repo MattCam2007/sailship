@@ -15,7 +15,7 @@
  */
 
 import { camera } from '../core/camera.js';
-import { getEphemerisDate, timeTravelState } from '../core/gameState.js';
+import { getJulianDate } from '../core/gameState.js';
 
 // ============================================================================
 // Star Catalog Data
@@ -148,18 +148,14 @@ function applyPrecession(ra, dec, targetYear) {
 
 /**
  * Get current year for precession calculation
- * Uses time travel date if enabled, otherwise uses game simulation time
+ * Uses game simulation time (Julian date)
  * @returns {number} Year as decimal (e.g., 2024.5)
  */
 function getCurrentYear() {
-    if (timeTravelState.enabled) {
-        const date = getEphemerisDate();
-        return date.getFullYear() + date.getMonth() / 12 + date.getDate() / 365;
-    } else {
-        // Use J2000 (year 2000) as default if time travel disabled
-        // In future, could use game simulation time if desired
-        return 2000.0;
-    }
+    // Convert Julian date to year
+    // J2000 epoch (JD 2451545.0) = year 2000.0
+    const jd = getJulianDate();
+    return 2000.0 + (jd - 2451545.0) / 365.25;
 }
 
 // ============================================================================

@@ -318,83 +318,9 @@
     
     <div class="bottom-bar">
         <div>SYSTEM: SOL // BODIES: 12 // CONTACTS: 3</div>
-        <span id="planningModeStatus">🔍 PLANNING MODE - SIMULATION FROZEN</span>
-
-        <div class="time-travel-controls" id="timeTravelControls">
-            <div class="panel-header time-travel-panel-header">
-                <span class="tt-status-indicator" id="ttStatusIndicator">●</span>
-                <span class="tt-label">TIME TRAVEL</span>
-                <span class="tt-compact-info" id="ttCompactInfo">DISABLED</span>
-            </div>
-            <div class="panel-content">
-                <!-- Planning mode toggle -->
-                <div class="control-group" style="margin-bottom: 15px; padding: 10px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px;">
-                    <input type="checkbox" id="planningModeEnabled">
-                    <label for="planningModeEnabled"
-                           style="color: #00bfff; font-weight: bold;"
-                           title="Freeze simulation and explore launch windows by adjusting the time slider. Use Ctrl+P to toggle.">
-                        🔍 PLANNING MODE
-                    </label>
-                    <div style="font-size: 0.85em; color: #888; margin-top: 5px; margin-left: 22px;">
-                        Freezes simulation, syncs everything to launch date
-                    </div>
-                </div>
-
-                <!-- Dual date display (visible when planning mode active) -->
-                <div class="planning-context" id="planningContext" style="display: none; margin-bottom: 15px; padding: 8px; background: rgba(0, 100, 200, 0.15); border-left: 3px solid #00bfff;">
-                    <div style="color: #00bfff; font-size: 0.9em; margin-bottom: 4px;">
-                        🔍 Planning Date: <span id="planningDateDisplay" style="font-weight: bold;">-</span>
-                    </div>
-                    <div style="color: #888; font-size: 0.85em;">
-                        Simulation Frozen At: <span id="frozenDateDisplay">-</span>
-                    </div>
-                </div>
-
-                <div class="time-travel-row">
-                    <label class="time-travel-toggle">
-                        <input type="checkbox" id="timeTravelEnabled">
-                        <span class="toggle-label">ENABLED</span>
-                    </label>
-                    <div class="time-travel-inputs">
-                        <input type="date" id="referenceDatePicker"
-                               min="1900-01-01" max="2100-12-31"
-                               title="Set reference date"
-                               aria-label="Reference date picker">
-                        <select id="timeScaleSelect" title="Time scale for slider" aria-label="Time scale">
-                            <option value="hour">±1h</option>
-                            <option value="day">±1d</option>
-                            <option value="week">±1w</option>
-                            <option value="month" selected>±1mo</option>
-                            <option value="year">±1yr</option>
-                            <option value="decade">±10yr</option>
-                            <option value="century">±100yr</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="time-travel-slider-row">
-                    <div class="time-travel-slider-container">
-                        <input type="range" id="timeOffsetSlider"
-                               min="-100" max="100" value="0" step="0.1"
-                               title="Time offset from reference date"
-                               aria-label="Time offset slider">
-                        <div class="slider-track-labels">
-                            <span id="sliderLabelMin">-1mo</span>
-                            <span class="slider-center-mark">NOW</span>
-                            <span id="sliderLabelMax">+1mo</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="ephemeris-readout">
-                    <span class="readout-label">EPHEMERIS:</span>
-                    <span class="readout-value" id="ephemerisDate">2026-01-21 00:00:00 UTC</span>
-                </div>
-            </div>
-        </div>
-
         <div class="time-display" id="timeDisplay">2351.127 // 14:23:07 UTC</div>
     </div>
 
-    <script src="js/vendor/astronomy.browser.js"></script>
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
