@@ -118,7 +118,7 @@ export function predictTrajectory(params) {
     for (let i = 0; i < steps; i++) {
         const simTime = startTime + i * timeStep;
 
-        // Get position from current orbital elements
+        // Get position from current orbital elements (planetocentric when in SOI)
         const position = getPosition(simElements, simTime);
 
         // Validate position (guard against numerical issues)
@@ -168,11 +168,26 @@ export function predictTrajectory(params) {
             }
         }
 
-        // Position passed all checks - safe to add to trajectory
+        // Convert position to heliocentric for rendering
+        // When in SOI, position is planetocentric - need to add planet position
+        let renderPosition = position;
+        if (isInSOI && currentBody !== 'SUN') {
+            const parent = getBodyByName(currentBody);
+            if (parent && parent.elements) {
+                const planetPos = getPosition(parent.elements, simTime);
+                renderPosition = {
+                    x: position.x + planetPos.x,
+                    y: position.y + planetPos.y,
+                    z: position.z + planetPos.z
+                };
+            }
+        }
+
+        // Position passed all checks - safe to add to trajectory (in heliocentric coords)
         trajectory.push({
-            x: position.x,
-            y: position.y,
-            z: position.z,
+            x: renderPosition.x,
+            y: renderPosition.y,
+            z: renderPosition.z,
             time: simTime
         });
 
