@@ -12,6 +12,7 @@
 import { getPosition, getVelocity } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
 import { SOI_RADII } from '../config.js';
+import { getBodyByName } from '../data/celestialBodies.js';
 
 // Configuration constants
 const DEFAULT_DURATION_DAYS = 60;
@@ -182,16 +183,45 @@ export function predictTrajectory(params) {
         if (i < steps - 1 && effectiveThrust && !tooCloseToSun) {
             const velocity = getVelocity(simElements, simTime);
 
-            // Calculate distance from sun for solar pressure
-            // For SOI, we need heliocentric distance - approximate with origin distance
-            // (This is a simplification; full accuracy would need planet positions)
-            const distFromSun = isInSOI ? 1.0 : distFromOrigin;  // Assume ~1 AU when in SOI
+            // Calculate thrust in heliocentric frame
+            // When in SOI, convert planetocentric position/velocity to heliocentric
+            let thrustPosition = position;
+            let thrustVelocity = velocity;
+            let distFromSun = distFromOrigin;
 
-            // Calculate thrust vector
+            if (isInSOI && currentBody !== 'SUN') {
+                const parent = getBodyByName(currentBody);
+                if (parent && parent.elements) {
+                    // Get planet's position and velocity at this simulation time
+                    const planetPos = getPosition(parent.elements, simTime);
+                    const planetVel = getVelocity(parent.elements, simTime);
+
+                    // Convert to heliocentric frame
+                    thrustPosition = {
+                        x: position.x + planetPos.x,
+                        y: position.y + planetPos.y,
+                        z: position.z + planetPos.z
+                    };
+                    thrustVelocity = {
+                        vx: velocity.vx + planetVel.vx,
+                        vy: velocity.vy + planetVel.vy,
+                        vz: velocity.vz + planetVel.vz
+                    };
+
+                    // Calculate actual distance from sun
+                    distFromSun = Math.sqrt(
+                        thrustPosition.x ** 2 +
+                        thrustPosition.y ** 2 +
+                        thrustPosition.z ** 2
+                    );
+                }
+            }
+
+            // Calculate thrust vector in heliocentric frame
             const thrust = calculateSailThrust(
                 sail,
-                position,
-                velocity,
+                thrustPosition,
+                thrustVelocity,
                 distFromSun,
                 mass
             );

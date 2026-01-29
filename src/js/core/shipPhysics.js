@@ -295,7 +295,7 @@ export function updateShipPhysics(ship, deltaTime) {
             if (entered) {
                 const newPos = getPosition(ship.orbitalElements, julianDate);
                 const newVel = getVelocity(ship.orbitalElements, julianDate);
-                updateCachedStateInSOI(ship, newPos, newVel);
+                updateCachedStateInSOI(ship, newPos, newVel, julianDate);
                 // Snap visual elements to new orbit on SOI transition
                 initVisualOrbitalElements(ship);
                 return;
@@ -315,21 +315,35 @@ export function updateShipPhysics(ship, deltaTime) {
             // Orbit was modified, update position/velocity
             const newPos = getPosition(ship.orbitalElements, julianDate);
             const newVel = getVelocity(ship.orbitalElements, julianDate);
-            updateCachedStateInSOI(ship, newPos, newVel);
+            updateCachedStateInSOI(ship, newPos, newVel, julianDate);
             initVisualOrbitalElements(ship);
             return;
         }
     }
 
-    // Calculate absolute position (relative to Sun) for sail thrust
+    // Calculate absolute position and velocity (relative to Sun) for sail thrust
+    // When in SOI, position and velocity from orbital elements are planetocentric,
+    // but sail thrust must be calculated in heliocentric frame (relative to Sun).
     let absolutePosition = position;
+    let absoluteVelocity = velocity;
     if (ship.soiState.isInSOI) {
         const parent = getBodyByName(ship.soiState.currentBody);
-        if (parent) {
+        if (parent && parent.elements) {
+            // Get planet's heliocentric velocity
+            const planetVel = getVelocity(parent.elements, julianDate);
+
+            // Convert position: helio = planetocentric + planet_position
             absolutePosition = {
                 x: position.x + parent.x,
                 y: position.y + parent.y,
                 z: position.z + parent.z
+            };
+
+            // Convert velocity: helio = planetocentric + planet_velocity
+            absoluteVelocity = {
+                vx: velocity.vx + planetVel.vx,
+                vy: velocity.vy + planetVel.vy,
+                vz: velocity.vz + planetVel.vz
             };
         }
     }
@@ -341,13 +355,14 @@ export function updateShipPhysics(ship, deltaTime) {
     );
 
     // Calculate sail thrust (if sail exists and is deployed)
+    // Thrust is calculated in heliocentric frame using absolutePosition and absoluteVelocity
     let thrust = { x: 0, y: 0, z: 0 };
 
     if (ship.sail && ship.sail.deploymentPercent > 0) {
         thrust = calculateSailThrust(
             ship.sail,
             absolutePosition,
-            velocity,
+            absoluteVelocity,
             distanceFromSun,
             ship.mass || 10000
         );
@@ -388,7 +403,7 @@ export function updateShipPhysics(ship, deltaTime) {
     }
 
     if (ship.soiState.isInSOI) {
-        updateCachedStateInSOI(ship, newPosition, newVelocity);
+        updateCachedStateInSOI(ship, newPosition, newVelocity, julianDate);
     } else {
         updateCachedState(ship, newPosition, newVelocity);
     }
@@ -789,26 +804,47 @@ function updateCachedState(ship, position, velocity) {
 
 /**
  * Update cached position/velocity when in SOI.
- * Converts planetocentric position to heliocentric for rendering.
+ * Converts planetocentric position and velocity to heliocentric for rendering and consistency.
+ *
+ * @param {Object} ship - Ship object
+ * @param {Object} positionRelative - Planetocentric position {x, y, z}
+ * @param {Object} velocityRelative - Planetocentric velocity {vx, vy, vz}
+ * @param {number} julianDate - Current Julian date (needed to get planet velocity)
  */
-function updateCachedStateInSOI(ship, positionRelative, velocityRelative) {
+function updateCachedStateInSOI(ship, positionRelative, velocityRelative, julianDate) {
     const parent = getBodyByName(ship.soiState.currentBody);
     if (parent) {
         // Store absolute (heliocentric) position for rendering
         ship.x = positionRelative.x + parent.x;
         ship.y = positionRelative.y + parent.y;
         ship.z = positionRelative.z + parent.z;
+
+        // Convert velocity to heliocentric for consistency
+        if (parent.elements) {
+            const planetVel = getVelocity(parent.elements, julianDate);
+            ship.velocity = {
+                x: velocityRelative.vx + planetVel.vx,
+                y: velocityRelative.vy + planetVel.vy,
+                z: velocityRelative.vz + planetVel.vz
+            };
+        } else {
+            ship.velocity = {
+                x: velocityRelative.vx,
+                y: velocityRelative.vy,
+                z: velocityRelative.vz
+            };
+        }
     } else {
         ship.x = positionRelative.x;
         ship.y = positionRelative.y;
         ship.z = positionRelative.z;
-    }
 
-    ship.velocity = {
-        x: velocityRelative.vx,
-        y: velocityRelative.vy,
-        z: velocityRelative.vz
-    };
+        ship.velocity = {
+            x: velocityRelative.vx,
+            y: velocityRelative.vy,
+            z: velocityRelative.vz
+        };
+    }
 }
 
 /**
