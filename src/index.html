@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAV DISPLAY // FLIGHT PANEL</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div class="header-bar">
+        <div class="system-title">FLIGHT PANEL // NAV DISPLAY</div>
+        <div class="system-status">
+            <div class="status-item">
+                <div class="status-indicator"></div>
+                <span>NAV LOCK</span>
+            </div>
+            <div class="status-item">
+                <div class="status-indicator"></div>
+                <span>TRAJECTORY</span>
+            </div>
+            <div class="status-item">
+                <div class="status-indicator warning"></div>
+                <span>FUEL</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="main-container">
+        <div class="left-panel">
+            <div class="panel-section" id="zoomPanel">
+                <div class="panel-header">ZOOM LEVEL</div>
+                <div class="panel-content">
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" data-zoom="system" title="View entire solar system" aria-label="System zoom level">SYSTEM</button>
+                        <button class="zoom-btn active" data-zoom="inner" title="View inner planets" aria-label="Inner planets zoom level">INNER PLANETS</button>
+                        <button class="zoom-btn" data-zoom="local" title="Local area view" aria-label="Local zoom level">LOCAL</button>
+                        <button class="zoom-btn" data-zoom="tactical" title="Close-up tactical view" aria-label="Tactical zoom level">TACTICAL</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel-section" id="speedPanel">
+                <div class="panel-header">SPEED</div>
+                <div class="panel-content">
+                    <div class="speed-controls">
+                        <button class="speed-btn" data-speed="pause">PAUSE</button>
+                        <button class="speed-btn active" data-speed="1x">1x</button>
+                        <button class="speed-btn" data-speed="100x">100x</button>
+                        <button class="speed-btn" data-speed="10000x">10Kx</button>
+                        <button class="speed-btn" data-speed="100000x">100Kx</button>
+                        <button class="speed-btn" data-speed="1000000x">1Mx</button>
+                    </div>
+                    <div class="custom-speed">
+                        <label for="customSpeed">CUSTOM</label>
+                        <input type="number" id="customSpeed" min="0" max="10000000" step="1000" placeholder="100000">
+                        <span class="speed-unit">x</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel-section" id="orbitPanel">
+                <div class="panel-header">ORBIT CONTROL</div>
+                <div class="panel-content">
+                    <div class="object-list" id="objectList">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-section" id="displayPanel">
+                <div class="panel-header">DISPLAY OPTIONS</div>
+                <div class="panel-content">
+                    <div class="display-options">
+                        <label>
+                            <input type="checkbox" id="showStarfield" checked> STAR MAP
+                        </label>
+                        <label>
+                            <input type="checkbox" id="showOrbits" checked> ORBITAL PATHS
+                        </label>
+                        <label>
+                            <input type="checkbox" id="showLabels" checked> LABELS
+                        </label>
+                        <label>
+                            <input type="checkbox" id="showTrajectory" checked> FLIGHT PATH
+                        </label>
+                        <label>
+                            <input type="checkbox" id="showPredictedTrajectory" checked> PREDICTED PATH
+                        </label>
+                        <label>
+                            <input type="checkbox" id="showIntersectionMarkers" checked> ENCOUNTER MARKERS
+                        </label>
+                        <label>
+                            <input type="checkbox" id="showGrid" checked> GRID
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-section" id="bodyFiltersSection">
+                <div class="panel-header">BODIES</div>
+                <div class="panel-content">
+                    <div class="display-options">
+                        <label>
+                            <input type="checkbox" id="filterPlanet" checked> Planets
+                        </label>
+                        <label>
+                            <input type="checkbox" id="filterDwarfPlanet" checked> Dwarf Planets
+                        </label>
+                        <label>
+                            <input type="checkbox" id="filterMajorMoon" checked> Major Moons
+                        </label>
+                        <label>
+                            <input type="checkbox" id="filterMinorMoon"> Minor Moons
+                        </label>
+                        <label>
+                            <input type="checkbox" id="filterAsteroid"> Asteroids
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="navCanvas"></canvas>
+            <div class="canvas-overlay">
+                <div class="corner-label top-left">
+                    SCALE: <span id="scaleDisplay">1 AU = 200px</span>
+                </div>
+                <div class="corner-label top-right">
+                    VIEW: ECLIPTIC +15°
+                </div>
+                <div class="corner-label bottom-left">
+                    ORIGIN: SOL
+                </div>
+                <div class="corner-label bottom-right">
+                    <span id="coordDisplay">X: 0.00 Y: 0.00 Z: 0.00</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="right-panel" id="rightPanelTabs">
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="sail" title="Sail controls (Ctrl+1)" aria-label="Sail control tab">SAIL</button>
+                <button class="tab-btn" data-tab="nav" title="Navigation data (Ctrl+2)" aria-label="Navigation tab">NAV</button>
+                <button class="tab-btn" data-tab="auto" title="Autopilot controls (Ctrl+3)" aria-label="Autopilot tab">AUTO</button>
+            </div>
+
+            <div class="tab-content">
+                <!-- SAIL tab -->
+                <div class="tab-panel active" id="sailPanel">
+                    <div class="panel-section">
+                        <div class="panel-header">SAIL CONTROL</div>
+                        <div class="sail-controls">
+                            <div class="sail-control-row">
+                                <span class="data-label">SAIL COUNT</span>
+                                <span class="data-value" id="sailCountValue">1</span>
+                            </div>
+                            <input type="range" class="sail-slider" id="sailCount" min="1" max="20" value="1"
+                                   title="Adjust number of sails (1-20)" aria-label="Number of sails">
+                            <div class="sail-control-row">
+                                <span class="data-label">DEPLOYMENT</span>
+                                <span class="data-value" id="sailDeployValue">100%</span>
+                            </div>
+                            <input type="range" class="sail-slider" id="sailDeployment" min="0" max="100" value="100"
+                                   title="Adjust sail deployment (0-100%)" aria-label="Sail deployment percentage">
+                            <div class="sail-control-row">
+                                <span class="data-label">YAW</span>
+                                <span class="data-value" id="sailAngleValue">35°</span>
+                            </div>
+                            <input type="range" class="sail-slider" id="sailAngle" min="-90" max="90" value="35"
+                                   title="Adjust sail yaw angle (-90° to +90°)" aria-label="Sail yaw angle in degrees">
+                            <div class="sail-control-row">
+                                <span class="data-label">PITCH</span>
+                                <span class="data-value" id="sailPitchValue">0°</span>
+                            </div>
+                            <input type="range" class="sail-slider" id="sailPitch" min="-90" max="90" value="0"
+                                   title="Adjust sail pitch angle (-90° to +90°)" aria-label="Sail pitch angle in degrees">
+                        </div>
+                        <div class="sail-thrust-display">
+                            <div class="data-row">
+                                <span class="data-label">THRUST</span>
+                                <span class="data-value highlight" id="sailThrust">0.00 mm/s²</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">ACCEL</span>
+                                <span class="data-value" id="sailAccelG">0.0000 g</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-section">
+                        <div class="panel-header">TRAJECTORY CONFIG</div>
+                        <div class="panel-content">
+                            <div class="trajectory-config">
+                                <div class="config-row">
+                                    <span class="data-label">PREDICTION</span>
+                                    <span class="data-value" id="trajectoryDurationValue">60 days</span>
+                                </div>
+                                <input type="range" class="config-slider" id="trajectoryDuration"
+                                       min="30" max="730" value="60" step="10"
+                                       title="Adjust prediction duration (30-730 days)"
+                                       aria-label="Trajectory prediction duration in days">
+                                <div class="config-presets">
+                                    <button class="preset-btn" data-days="30" title="Predict 30 days ahead" aria-label="30 day prediction">30d</button>
+                                    <button class="preset-btn active" data-days="60" title="Predict 60 days ahead" aria-label="60 day prediction">60d</button>
+                                    <button class="preset-btn" data-days="180" title="Predict 6 months ahead" aria-label="6 month prediction">6mo</button>
+                                    <button class="preset-btn" data-days="365" title="Predict 1 year ahead" aria-label="1 year prediction">1yr</button>
+                                    <button class="preset-btn" data-days="730" title="Predict 2 years ahead" aria-label="2 year prediction">2yr</button>
+                                </div>
+                                <button class="config-reset-btn" id="trajectoryConfigReset" title="Reset to default (60 days)" aria-label="Reset trajectory configuration to default">RESET</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NAV tab -->
+                <div class="tab-panel" id="navPanel">
+                    <div class="panel-section">
+                        <div class="panel-header">NAVIGATION DATA</div>
+                        <div class="data-row">
+                            <span class="data-label">REF FRAME</span>
+                            <span class="data-value" id="soiStatus">HELIOCENTRIC</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">PARENT BODY</span>
+                            <span class="data-value" id="soiBody">SUN</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">DESTINATION</span>
+                            <span class="data-value highlight" id="destName">MARS</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">DISTANCE</span>
+                            <span class="data-value" id="destDist">0.524 AU</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">REL VELOCITY</span>
+                            <span class="data-value" id="relVelocity">--- km/s</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">CLOSEST APPROACH</span>
+                            <span class="data-value" id="closestDist">---</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">TIME TO CLOSEST</span>
+                            <span class="data-value" id="timeToClosest">---</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">STATUS</span>
+                            <span class="data-value highlight" id="interceptStatus">CALCULATING</span>
+                        </div>
+                    </div>
+
+                    <div class="panel-section nav-computer">
+                        <div class="panel-header">NAVIGATION COMPUTER</div>
+                        <div class="nav-computer-strategy">
+                            <span class="strategy-label">STRATEGY</span>
+                            <span class="strategy-name" id="navStrategy">CALCULATING</span>
+                        </div>
+                        <div class="nav-computer-recommendation">
+                            <div class="recommend-row">
+                                <span class="data-label">SAIL ANGLE</span>
+                                <span class="data-value recommend-value" id="navRecAngle">---</span>
+                            </div>
+                            <div class="recommend-row">
+                                <span class="data-label">DEPLOYMENT</span>
+                                <span class="data-value recommend-value" id="navRecDeploy">---</span>
+                            </div>
+                        </div>
+                        <div class="nav-computer-status">
+                            <div class="data-row">
+                                <span class="data-label">YOUR SETTINGS</span>
+                                <span class="data-value" id="navCurrentSettings">---</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">DEVIATION</span>
+                                <span class="data-value" id="navDeviation">---</span>
+                            </div>
+                        </div>
+                        <div class="nav-computer-prediction">
+                            <div class="data-row">
+                                <span class="data-label">ARRIVAL</span>
+                                <span class="data-value highlight" id="navArrival">---</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">APPROACH</span>
+                                <span class="data-value" id="navApproach">---</span>
+                            </div>
+                        </div>
+                        <div class="nav-progress-container">
+                            <div class="nav-progress-label">
+                                <span>TRANSFER PROGRESS</span>
+                                <span id="navProgressPct">0%</span>
+                            </div>
+                            <div class="nav-progress-bar">
+                                <div class="nav-progress-fill" id="navProgressFill"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AUTO tab -->
+                <div class="tab-panel" id="autoPanel">
+                    <div class="panel-section autopilot-section">
+                        <div class="panel-header">AUTOPILOT</div>
+                        <button class="autopilot-btn" id="autoPilotToggle">
+                            <span class="autopilot-indicator"></span>
+                            <span class="autopilot-label">ENGAGE</span>
+                        </button>
+                        <div class="autopilot-status" id="autoPilotStatusDisplay">
+                            <span class="status-text">MANUAL CONTROL</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="bottom-bar">
+        <div>SYSTEM: SOL // BODIES: 12 // CONTACTS: 3</div>
+        <span id="planningModeStatus">🔍 PLANNING MODE - SIMULATION FROZEN</span>
+
+        <div class="time-travel-controls" id="timeTravelControls">
+            <div class="panel-header time-travel-panel-header">
+                <span class="tt-status-indicator" id="ttStatusIndicator">●</span>
+                <span class="tt-label">TIME TRAVEL</span>
+                <span class="tt-compact-info" id="ttCompactInfo">DISABLED</span>
+            </div>
+            <div class="panel-content">
+                <!-- Planning mode toggle -->
+                <div class="control-group" style="margin-bottom: 15px; padding: 10px; background: rgba(0, 150, 255, 0.1); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px;">
+                    <input type="checkbox" id="planningModeEnabled">
+                    <label for="planningModeEnabled"
+                           style="color: #00bfff; font-weight: bold;"
+                           title="Freeze simulation and explore launch windows by adjusting the time slider. Use Ctrl+P to toggle.">
+                        🔍 PLANNING MODE
+                    </label>
+                    <div style="font-size: 0.85em; color: #888; margin-top: 5px; margin-left: 22px;">
+                        Freezes simulation, syncs everything to launch date
+                    </div>
+                </div>
+
+                <!-- Dual date display (visible when planning mode active) -->
+                <div class="planning-context" id="planningContext" style="display: none; margin-bottom: 15px; padding: 8px; background: rgba(0, 100, 200, 0.15); border-left: 3px solid #00bfff;">
+                    <div style="color: #00bfff; font-size: 0.9em; margin-bottom: 4px;">
+                        🔍 Planning Date: <span id="planningDateDisplay" style="font-weight: bold;">-</span>
+                    </div>
+                    <div style="color: #888; font-size: 0.85em;">
+                        Simulation Frozen At: <span id="frozenDateDisplay">-</span>
+                    </div>
+                </div>
+
+                <div class="time-travel-row">
+                    <label class="time-travel-toggle">
+                        <input type="checkbox" id="timeTravelEnabled">
+                        <span class="toggle-label">ENABLED</span>
+                    </label>
+                    <div class="time-travel-inputs">
+                        <input type="date" id="referenceDatePicker"
+                               min="1900-01-01" max="2100-12-31"
+                               title="Set reference date"
+                               aria-label="Reference date picker">
+                        <select id="timeScaleSelect" title="Time scale for slider" aria-label="Time scale">
+                            <option value="hour">±1h</option>
+                            <option value="day">±1d</option>
+                            <option value="week">±1w</option>
+                            <option value="month" selected>±1mo</option>
+                            <option value="year">±1yr</option>
+                            <option value="decade">±10yr</option>
+                            <option value="century">±100yr</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="time-travel-slider-row">
+                    <div class="time-travel-slider-container">
+                        <input type="range" id="timeOffsetSlider"
+                               min="-100" max="100" value="0" step="0.1"
+                               title="Time offset from reference date"
+                               aria-label="Time offset slider">
+                        <div class="slider-track-labels">
+                            <span id="sliderLabelMin">-1mo</span>
+                            <span class="slider-center-mark">NOW</span>
+                            <span id="sliderLabelMax">+1mo</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="ephemeris-readout">
+                    <span class="readout-label">EPHEMERIS:</span>
+                    <span class="readout-value" id="ephemerisDate">2026-01-21 00:00:00 UTC</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="time-display" id="timeDisplay">2351.127 // 14:23:07 UTC</div>
+    </div>
+
+    <script src="js/vendor/astronomy.browser.js"></script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>

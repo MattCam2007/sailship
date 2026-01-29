@@ -1,0 +1,9 @@
+{
+  "name": "sailship",
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/js/**/*.test.js",
+    "test:lib": "node --test src/js/lib/*.test.js",
+    "test:core": "node --test src/js/core/*.test.js"
+  }
+}
