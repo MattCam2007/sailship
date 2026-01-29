@@ -410,6 +410,19 @@ export function applyThrust(elements, thrust, deltaTime, julianDate) {
     const position = getPosition(elements, julianDate);
     const velocity = getVelocity(elements, julianDate);
 
+    // Validate position and velocity - if orbital elements are already corrupt,
+    // getPosition/getVelocity return fallback values (0,0,0) which would create
+    // more corrupt elements when passed to stateToElements. Return original
+    // elements unchanged to prevent error propagation.
+    const posValid = isFinite(position.x) && isFinite(position.y) && isFinite(position.z) &&
+                     (position.x !== 0 || position.y !== 0 || position.z !== 0);
+    const velValid = isFinite(velocity.vx) && isFinite(velocity.vy) && isFinite(velocity.vz);
+
+    if (!posValid || !velValid) {
+        // Elements are corrupt - can't apply thrust meaningfully
+        return { ...elements };
+    }
+
     // Apply thrust as delta-v: v_new = v + a * dt
     const newVelocity = {
         vx: velocity.vx + thrust.x * deltaTime,

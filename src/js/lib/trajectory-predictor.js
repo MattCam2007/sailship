@@ -111,6 +111,16 @@ export function predictTrajectory(params) {
     // Clone orbital elements for simulation (don't modify original)
     let simElements = { ...orbitalElements };
 
+    // Early validation: bail out if starting elements are already corrupt
+    // This prevents cascading errors and console spam
+    // Note: a can be negative for hyperbolic orbits (e >= 1), so we check |a| > 0
+    if (!isFinite(simElements.a) || !isFinite(simElements.e) ||
+        !isFinite(simElements.i) || !isFinite(simElements.Ω) ||
+        !isFinite(simElements.ω) || !isFinite(simElements.M0) ||
+        Math.abs(simElements.a) < 1e-10 || simElements.e < 0) {
+        // Return empty trajectory - elements are invalid
+        return [];
+    }
 
     // Check if thrust is effectively zero
     const effectiveThrust = sail.deploymentPercent > 0 &&
