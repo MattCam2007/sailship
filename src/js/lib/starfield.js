@@ -34,9 +34,9 @@ export async function loadStarCatalog() {
         return stars;
     }
 
-    console.log('[STARFIELD] Loading star catalog from /data/stars/bsc5-processed.json');
+    console.log('[STARFIELD] Loading star catalog from data/stars/bsc5-processed.json');
     try {
-        const response = await fetch('/data/stars/bsc5-processed.json');
+        const response = await fetch('data/stars/bsc5-processed.json');
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
