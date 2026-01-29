@@ -103,6 +103,9 @@ export function predictTrajectory(params) {
     // Clone orbital elements for simulation (don't modify original)
     let simElements = { ...orbitalElements };
 
+    // Diagnostic logging (once per cache miss)
+    console.log(`[TRAJECTORY] Computing: a=${orbitalElements.a.toFixed(4)} AU, e=${orbitalElements.e.toFixed(4)}, isInSOI=${soiState?.isInSOI || false}, body=${soiState?.currentBody || 'SUN'}`);
+
     // Check if thrust is effectively zero
     const effectiveThrust = sail.deploymentPercent > 0 &&
                             sail.area > 0 &&
@@ -260,9 +263,12 @@ export function predictTrajectory(params) {
                     break;
                 }
 
-                // Check for extreme eccentricity that indicates instability
-                if (newElements.e > 0.99 || newElements.e < 0) {
-                    // Eccentricity becoming hyperbolic or negative - stop
+                // Check for extreme eccentricity that indicates numerical instability
+                // Allow hyperbolic orbits (e >= 1) from gravity assists, but reject:
+                // - Negative eccentricity (physically impossible)
+                // - Extremely high eccentricity (e > 50) which suggests numerical breakdown
+                if (newElements.e < 0 || newElements.e > 50) {
+                    // Eccentricity is invalid or numerically unstable
                     if (trajectory.length > 0) {
                         trajectory[trajectory.length - 1].truncated = 'ECCENTRIC_INSTABILITY';
                     }
