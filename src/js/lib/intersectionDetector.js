@@ -13,7 +13,9 @@
  * For each celestial body:
  *   1. Use semi-major axis (a) as orbital radius
  *   2. Check each trajectory segment for crossing: (r1 < a && r2 > a) || (r1 > a && r2 < a)
- *   3. Linear interpolation to find exact crossing time/position
+ *   3. Solve quadratic equation for exact crossing time/position (NOT linear interpolation!)
+ *      - When P(t) = P1 + t*(P2-P1), the radius r(t) = ||P(t)|| is NOT linear
+ *      - Must solve ||P(t)||² = R² which gives a*t² + b*t + c = 0
  *   4. Get planet's actual position at that crossing time
  *   5. Render as semi-transparent "ghost" with time offset label
  *
@@ -158,6 +160,88 @@ export function calculateClosestApproach(
 // INTERSECTION DETECTION
 // ============================================================================
 
+// Eccentricity threshold for checking perihelion/aphelion
+// Planets with e > this will be checked at both extremes
+const ECCENTRICITY_THRESHOLD = 0.05;
+
+/**
+ * Find the exact crossing point(s) where a trajectory segment crosses a target radius.
+ * Uses quadratic equation to solve ||P(t)||² = R² where P(t) = P1 + t*(P2-P1).
+ *
+ * @param {Object} p1 - Start point {x, y, z, time}
+ * @param {Object} p2 - End point {x, y, z, time}
+ * @param {number} r1 - Heliocentric radius at p1
+ * @param {number} r2 - Heliocentric radius at p2
+ * @param {number} targetRadius - Orbital radius to detect crossing
+ * @returns {Object|null} Crossing info {t, time, position} or null if no crossing
+ */
+function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
+    // Check if this segment crosses the target radius
+    const crossesRadius = (r1 < targetRadius && r2 > targetRadius) ||
+                          (r1 > targetRadius && r2 < targetRadius);
+
+    if (!crossesRadius) {
+        return null;
+    }
+
+    // Solve quadratic equation for exact crossing point
+    // When position is linearly interpolated: P(t) = P1 + t*(P2-P1)
+    // The radius is: r(t) = ||P(t)|| = sqrt((x1+t*dx)² + (y1+t*dy)² + (z1+t*dz)²)
+    // This is NOT linear! To find when r(t) = R, solve ||P(t)||² = R²
+    //
+    // Expanding: (P1 + t*D)·(P1 + t*D) = R²
+    // Where D = P2 - P1 (the delta vector)
+    // This gives: (D·D)*t² + 2*(P1·D)*t + (P1·P1 - R²) = 0
+
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dz = p2.z - p1.z;
+
+    // Quadratic coefficients
+    const a = dx * dx + dy * dy + dz * dz;  // D·D
+    const b = 2 * (p1.x * dx + p1.y * dy + p1.z * dz);  // 2*(P1·D)
+    const c = r1 * r1 - targetRadius * targetRadius;  // P1·P1 - R²
+
+    // Discriminant
+    const discriminant = b * b - 4 * a * c;
+
+    if (discriminant < 0 || a < 1e-20) {
+        // No real solution or degenerate case (no movement)
+        return null;
+    }
+
+    const sqrtDisc = Math.sqrt(discriminant);
+    const t1 = (-b - sqrtDisc) / (2 * a);
+    const t2 = (-b + sqrtDisc) / (2 * a);
+
+    // Find the solution in [0, 1] that corresponds to this crossing
+    // Since we already verified r1 and r2 straddle targetRadius, exactly one should be valid
+    let t;
+    if (t1 >= 0 && t1 <= 1) {
+        t = t1;
+    } else if (t2 >= 0 && t2 <= 1) {
+        t = t2;
+    } else {
+        // Numerical edge case - fallback to linear approximation
+        t = (targetRadius - r1) / (r2 - r1);
+    }
+
+    const crossingTime = p1.time + t * (p2.time - p1.time);
+
+    // Interpolate crossing position
+    const crossingPos = {
+        x: p1.x + t * dx,
+        y: p1.y + t * dy,
+        z: p1.z + t * dz
+    };
+
+    return {
+        t,
+        time: crossingTime,
+        position: crossingPos
+    };
+}
+
 /**
  * Detect when trajectory crosses orbital paths and show planet positions at those times
  *
@@ -165,19 +249,20 @@ export function calculateClosestApproach(
  * A "crossing" occurs when trajectory segment crosses the planet's orbital radius.
  * For segment (p1, p2) with heliocentric radii (r1, r2):
  *   - Crossing if: (r1 < orbitalRadius && r2 > orbitalRadius) OR vice versa
- *   - Interpolate exact crossing: t = (orbitalRadius - r1) / (r2 - r1)
+ *   - Solve quadratic: ||P(t)||² = R² (NOT linear interpolation)
  *   - Get planet position at crossing time: getPosition(elements, crossingTime)
+ *
+ * ECCENTRICITY HANDLING:
+ * For planets with e > 0.05, we check at both perihelion and aphelion radii:
+ *   - Mercury (e=0.206): perihelion=0.307, aphelion=0.467 AU
+ *   - Mars (e=0.093): perihelion=1.38, aphelion=1.67 AU
+ * This helps catch intercepts when planet is at orbital extremes.
  *
  * EXAMPLE:
  * Ship trajectory crosses Earth orbit (1.0 AU) twice:
  *   1st crossing at t=2458900 → Earth is at (0.5, 0.866, 0) → show ghost there
  *   2nd crossing at t=2459050 → Earth is at (-0.7, 0.7, 0) → show ghost there
  * As you adjust sails, crossing times shift, ghost positions update in real-time.
- *
- * LIMITATIONS:
- * - Uses semi-major axis (circular approximation), ignores eccentricity
- * - May miss highly elliptical orbits where trajectory passes between perihelion/aphelion
- * - Acceptable for inner planets (e < 0.1) and visual planning
  *
  * @param {Array} trajectory - Array of {x, y, z, time} points (ship path from trajectory predictor)
  * @param {Array} celestialBodies - Array of body objects with {name, elements, parent}
@@ -195,6 +280,14 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
     const startTime = performance.now();
     const intersections = [];
 
+    // DEBUG: Log what we're checking
+    console.log('[INTERSECTION] Starting detection:', {
+        trajectoryPoints: trajectory.length,
+        bodies: celestialBodies.map(b => b.name).join(', '),
+        currentTime,
+        soiBody
+    });
+
     // Process each celestial body
     for (const body of celestialBodies) {
         // Skip bodies without orbital elements (Sun)
@@ -203,10 +296,27 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
         // Skip other bodies when in SOI mode
         if (soiBody && body.name !== soiBody) continue;
 
-        // Use semi-major axis as the orbital radius to detect crossings
-        const orbitalRadius = body.elements.a;
+        const { a, e } = body.elements;
 
-        // Check each trajectory segment for crossings
+        // Determine which orbital radii to check
+        // For high-eccentricity orbits, check perihelion and aphelion too
+        const radiiToCheck = [a];  // Always check semi-major axis
+
+        if (e > ECCENTRICITY_THRESHOLD) {
+            const perihelion = a * (1 - e);
+            const aphelion = a * (1 + e);
+            // Only add if they differ significantly from semi-major axis
+            if (Math.abs(perihelion - a) > 0.01) radiiToCheck.push(perihelion);
+            if (Math.abs(aphelion - a) > 0.01) radiiToCheck.push(aphelion);
+        }
+
+        // Track crossing times to avoid duplicates when checking multiple radii
+        const crossingTimes = new Set();
+
+        // DEBUG: Log body being checked
+        let crossingsForBody = 0;
+
+        // Check each trajectory segment for crossings at each radius
         for (let i = 0; i < trajectorySnapshot.length - 1; i++) {
             const p1 = trajectorySnapshot[i];
             const p2 = trajectorySnapshot[i + 1];
@@ -220,41 +330,48 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
             const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
             const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
 
-            // Check if this segment crosses the orbital radius
-            const crossesOrbit = (r1 < orbitalRadius && r2 > orbitalRadius) ||
-                                 (r1 > orbitalRadius && r2 < orbitalRadius);
+            // Check for crossings at each orbital radius
+            for (const orbitalRadius of radiiToCheck) {
+                const crossing = findRadiusCrossing(p1, p2, r1, r2, orbitalRadius);
 
-            if (crossesOrbit) {
-                // Linear interpolation to find crossing time
-                // At crossing: r = orbitalRadius
-                // r = r1 + t * (r2 - r1), solve for t where r = orbitalRadius
-                const t = (orbitalRadius - r1) / (r2 - r1);
-                const crossingTime = p1.time + t * (p2.time - p1.time);
+                if (crossing) {
+                    // Round time to avoid floating-point duplicates from nearby radii
+                    const timeKey = Math.round(crossing.time * 1000);
+                    if (crossingTimes.has(timeKey)) {
+                        continue;  // Skip duplicate crossing
+                    }
+                    crossingTimes.add(timeKey);
 
-                // Interpolate crossing position
-                const crossingPos = {
-                    x: p1.x + t * (p2.x - p1.x),
-                    y: p1.y + t * (p2.y - p1.y),
-                    z: p1.z + t * (p2.z - p1.z)
-                };
+                    // Get planet's actual position at crossing time
+                    const planetPos = getPosition(body.elements, crossing.time);
 
-                // Get planet's actual position at crossing time
-                const planetPos = getPosition(body.elements, crossingTime);
+                    // Validate position
+                    if (!isFinite(planetPos.x) || !isFinite(planetPos.y) || !isFinite(planetPos.z)) {
+                        continue;
+                    }
 
-                // Validate position
-                if (!isFinite(planetPos.x) || !isFinite(planetPos.y) || !isFinite(planetPos.z)) {
-                    continue;
+                    crossingsForBody++;
+
+                    // Add intersection
+                    intersections.push({
+                        bodyName: body.name,
+                        time: crossing.time,
+                        bodyPosition: planetPos,
+                        trajectoryPosition: crossing.position,
+                        distance: 0  // Exact crossing of orbital radius
+                    });
                 }
-
-                // Add intersection
-                intersections.push({
-                    bodyName: body.name,
-                    time: crossingTime,
-                    bodyPosition: planetPos,
-                    trajectoryPosition: crossingPos,
-                    distance: 0  // Exact crossing of orbital radius
-                });
             }
+        }
+
+        // DEBUG: Log results for this body
+        if (body.name === 'VENUS' || body.name === 'MARS' || body.name === 'EARTH') {
+            const trajStart = trajectorySnapshot[0];
+            const trajEnd = trajectorySnapshot[trajectorySnapshot.length - 1];
+            const startR = Math.sqrt(trajStart.x ** 2 + trajStart.y ** 2 + trajStart.z ** 2);
+            const endR = Math.sqrt(trajEnd.x ** 2 + trajEnd.y ** 2 + trajEnd.z ** 2);
+            console.log(`[INTERSECTION] ${body.name}: a=${a.toFixed(3)}, radii=[${radiiToCheck.map(r => r.toFixed(3)).join(', ')}], ` +
+                        `trajectory r: ${startR.toFixed(3)} → ${endR.toFixed(3)}, crossings: ${crossingsForBody}`);
         }
 
         // Performance timeout
