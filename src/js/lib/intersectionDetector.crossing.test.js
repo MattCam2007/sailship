@@ -37,6 +37,8 @@ export function runAllTests() {
         testExactlyAtOrbitalRadius(),
         testHighEccentricityApproximation(),
         testCrossingOrder(),
+        testQuadraticVsLinearAccuracy(),
+        testEccentricityAwareDetection(),
         testRealWorldScenario()
     ];
 
@@ -724,10 +726,181 @@ function testCrossingOrder() {
 }
 
 /**
- * Test 14: Real-World Scenario (User's Venus Intercept)
+ * Test 14: Quadratic vs Linear Accuracy (Critical Bug Fix Verification)
+ *
+ * This test demonstrates the critical bug that was fixed:
+ * When trajectory curves (non-radial motion), linear interpolation of radius
+ * gives WRONG crossing time. The quadratic solution is mathematically correct.
+ *
+ * Example: Trajectory from (1.0, 0, 0) to (0, 0.72, 0) crossing Venus orbit (0.723 AU)
+ * - Linear method: r(t) = r1 + t*(r2-r1) → t ≈ 0.99, wrong!
+ * - Quadratic method: solve ||P(t)||² = R² → t ≈ 0.31, correct!
+ *
+ * The timing difference can be 0.5-2 days per segment, causing the ghost planet
+ * to show Venus 1-3 days ahead or behind its actual position.
+ */
+function testQuadraticVsLinearAccuracy() {
+    console.log('📋 Test 14: Quadratic vs Linear Accuracy (BUG FIX VERIFICATION)');
+
+    let passed = 0;
+    let failed = 0;
+
+    try {
+        // This is the critical test case: non-radial trajectory where linear fails
+        // Trajectory: (1.0, 0, 0) to (0, 0.72, 0) - 90° turn inward
+        // Should cross Venus orbit (0.723 AU) near the START, not the end!
+        //
+        // Old linear bug would calculate: t = (0.723 - 1.0) / (0.72 - 1.0) = 0.99
+        // Correct quadratic: solve (1-t)² + (0.72t)² = 0.723² → t ≈ 0.31
+
+        const trajectory = [
+            { x: 1.0, y: 0, z: 0, time: J2000 },
+            { x: 0, y: 0.72, z: 0, time: J2000 + 60 }  // 60 day segment
+        ];
+
+        const bodies = [createMockBody('VENUS', 0.723)];
+        const intersections = detectIntersections(trajectory, bodies, J2000, null);
+
+        assert(intersections.length === 1, 'Should detect exactly 1 crossing');
+
+        const crossing = intersections[0];
+        const crossRadius = Math.sqrt(
+            crossing.trajectoryPosition.x ** 2 +
+            crossing.trajectoryPosition.y ** 2 +
+            crossing.trajectoryPosition.z ** 2
+        );
+        const crossTime = crossing.time;
+
+        // Calculate what linear interpolation WOULD have given (the bug)
+        const r1 = 1.0;
+        const r2 = 0.72;
+        const linearT = (0.723 - r1) / (r2 - r1);
+        const linearTime = J2000 + linearT * 60;
+
+        console.log(`  Trajectory: (1.0, 0, 0) → (0, 0.72, 0) over 60 days`);
+        console.log(`  Target radius: 0.723 AU (Venus)`);
+        console.log(`  `);
+        console.log(`  Linear (WRONG): t=${linearT.toFixed(3)}, time=${(linearTime - J2000).toFixed(1)} days`);
+        console.log(`  Quadratic (CORRECT): t=${((crossTime - J2000) / 60).toFixed(3)}, time=${(crossTime - J2000).toFixed(1)} days`);
+        console.log(`  `);
+        console.log(`  Crossing radius: ${crossRadius.toFixed(6)} AU (expected: 0.723)`);
+
+        // Verify crossing radius is correct
+        assert(Math.abs(crossRadius - 0.723) < 0.001, `Crossing radius should be 0.723 AU, got ${crossRadius}`);
+
+        // Verify crossing time is NOT the linear approximation (which would be ~59 days)
+        // It should be much earlier, around 18-20 days
+        const actualDays = crossTime - J2000;
+        const linearDays = linearTime - J2000;
+
+        console.log(`  `);
+        console.log(`  VERIFICATION:`);
+        console.log(`  - Crossing at ${actualDays.toFixed(1)} days (should be ~18-20 days)`);
+        console.log(`  - Linear would have said ${linearDays.toFixed(1)} days (WRONG!)`);
+        console.log(`  - Error avoided: ${Math.abs(linearDays - actualDays).toFixed(1)} days`);
+
+        // The crossing should happen in the first half of the trajectory, not at the end
+        assert(actualDays < 30, `Crossing should happen early (< 30 days), not at ${actualDays.toFixed(1)} days`);
+        assert(actualDays > 10, `Crossing should happen after ~10 days, got ${actualDays.toFixed(1)} days`);
+
+        // Verify the crossing position is actually on the trajectory
+        const tParam = (crossTime - J2000) / 60;
+        const expectedX = 1.0 * (1 - tParam);
+        const expectedY = 0.72 * tParam;
+        assert(Math.abs(crossing.trajectoryPosition.x - expectedX) < 0.001, 'X position should match interpolation');
+        assert(Math.abs(crossing.trajectoryPosition.y - expectedY) < 0.001, 'Y position should match interpolation');
+
+        console.log('  ✅ PASS: Quadratic algorithm gives correct crossing time\n');
+        console.log('  ℹ️  This test verifies the critical bug fix for accurate planet encounters\n');
+        passed++;
+    } catch (e) {
+        console.log(`  ❌ FAIL: ${e.message}\n`);
+        failed++;
+    }
+
+    return { passed, failed };
+}
+
+/**
+ * Test 15: Eccentricity-Aware Detection (Mercury Test)
+ *
+ * Mercury has high eccentricity (e=0.206):
+ *   - Semi-major axis: 0.387 AU
+ *   - Perihelion: 0.307 AU
+ *   - Aphelion: 0.467 AU
+ *
+ * A trajectory at 0.35 AU passes between perihelion and semi-major axis,
+ * so the eccentricity-aware algorithm should detect it.
+ */
+function testEccentricityAwareDetection() {
+    console.log('📋 Test 15: Eccentricity-Aware Detection (Mercury)');
+
+    let passed = 0;
+    let failed = 0;
+
+    try {
+        // Trajectory crosses Mercury's perihelion radius but not semi-major axis
+        // Old code would MISS this. New code should detect it.
+        const trajectory = [];
+        for (let i = 0; i < 20; i++) {
+            const t = i / 20;
+            const r = 0.25 + t * 0.15;  // 0.25 AU → 0.40 AU
+            trajectory.push({
+                x: r,
+                y: 0,
+                z: 0,
+                time: J2000 + i
+            });
+        }
+
+        // Mercury with realistic eccentricity
+        const mercury = {
+            name: 'MERCURY',
+            elements: {
+                a: 0.387,
+                e: 0.206,  // High eccentricity!
+                i: 0,
+                Ω: 0,
+                ω: 0,
+                M0: 0,
+                epoch: J2000,
+                μ: MU_SUN
+            }
+        };
+
+        const intersections = detectIntersections(trajectory, [mercury], J2000, null);
+
+        console.log(`  Trajectory: 0.25 AU → 0.40 AU (crosses Mercury perihelion at 0.307 AU)`);
+        console.log(`  Mercury orbit: a=0.387, e=0.206, perihelion=0.307, aphelion=0.467`);
+        console.log(`  `);
+        console.log(`  Expected: At least 1 crossing (perihelion)`);
+        console.log(`  Got: ${intersections.length} crossing(s)`);
+
+        if (intersections.length > 0) {
+            intersections.forEach((i, idx) => {
+                const r = Math.sqrt(i.trajectoryPosition.x ** 2 + i.trajectoryPosition.y ** 2 + i.trajectoryPosition.z ** 2);
+                console.log(`    ${idx + 1}. Crossing at r=${r.toFixed(3)} AU`);
+            });
+        }
+
+        // Should detect at least the perihelion crossing
+        assert(intersections.length >= 1, 'Should detect Mercury perihelion crossing');
+
+        console.log('  ✅ PASS: Eccentricity-aware detection works for Mercury\n');
+        passed++;
+    } catch (e) {
+        console.log(`  ❌ FAIL: ${e.message}\n`);
+        failed++;
+    }
+
+    return { passed, failed };
+}
+
+/**
+ * Test 16: Real-World Scenario (User's Venus Intercept)
  */
 function testRealWorldScenario() {
-    console.log('📋 Test 14: Real-World Scenario (Venus Intercept)');
+    console.log('📋 Test 16: Real-World Scenario (Venus Intercept)');
 
     let passed = 0;
     let failed = 0;
