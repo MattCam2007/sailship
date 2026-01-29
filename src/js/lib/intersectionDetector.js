@@ -160,10 +160,6 @@ export function calculateClosestApproach(
 // INTERSECTION DETECTION
 // ============================================================================
 
-// Eccentricity threshold for checking perihelion/aphelion
-// Planets with e > this will be checked at both extremes
-const ECCENTRICITY_THRESHOLD = 0.05;
-
 /**
  * Find the exact crossing point(s) where a trajectory segment crosses a target radius.
  * Uses quadratic equation to solve ||P(t)||² = R² where P(t) = P1 + t*(P2-P1).
@@ -246,17 +242,16 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
  * Detect when trajectory crosses orbital paths and show planet positions at those times
  *
  * CROSSING DETECTION ALGORITHM:
- * A "crossing" occurs when trajectory segment crosses the planet's orbital radius.
+ * A "crossing" occurs when trajectory segment crosses the planet's semi-major axis radius.
  * For segment (p1, p2) with heliocentric radii (r1, r2):
  *   - Crossing if: (r1 < orbitalRadius && r2 > orbitalRadius) OR vice versa
  *   - Solve quadratic: ||P(t)||² = R² (NOT linear interpolation)
  *   - Get planet position at crossing time: getPosition(elements, crossingTime)
  *
- * ECCENTRICITY HANDLING:
- * For planets with e > 0.05, we check at both perihelion and aphelion radii:
- *   - Mercury (e=0.206): perihelion=0.307, aphelion=0.467 AU
- *   - Mars (e=0.093): perihelion=1.38, aphelion=1.67 AU
- * This helps catch intercepts when planet is at orbital extremes.
+ * NOTE: We only check the semi-major axis radius, not perihelion/aphelion. This avoids
+ * showing multiple ghost planets when crossing through an eccentric orbit's full range.
+ * The ghost shows where the planet will actually BE at crossing time, which is what
+ * matters for trajectory planning.
  *
  * EXAMPLE:
  * Ship trajectory crosses Earth orbit (1.0 AU) twice:
@@ -289,22 +284,15 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
         // Skip other bodies when in SOI mode
         if (soiBody && body.name !== soiBody) continue;
 
-        const { a, e } = body.elements;
+        const { a } = body.elements;
 
-        // Determine which orbital radii to check
-        // For high-eccentricity orbits, check perihelion and aphelion too
-        const radiiToCheck = [a];  // Always check semi-major axis
-
-        if (e > ECCENTRICITY_THRESHOLD) {
-            const perihelion = a * (1 - e);
-            const aphelion = a * (1 + e);
-            // Only add if they differ significantly from semi-major axis
-            if (Math.abs(perihelion - a) > 0.01) radiiToCheck.push(perihelion);
-            if (Math.abs(aphelion - a) > 0.01) radiiToCheck.push(aphelion);
-        }
-
-        // Track crossing times to avoid duplicates when checking multiple radii
-        const crossingTimes = new Set();
+        // Use semi-major axis as the orbital radius to check
+        // NOTE: Previously we also checked perihelion/aphelion for eccentric orbits,
+        // but this caused duplicate ghost planets (e.g., 2 Mars ghosts for 1 crossing).
+        // The semi-major axis represents the "average" orbital radius and is sufficient
+        // for trajectory planning - the ghost planet shows where the planet will actually
+        // BE at the crossing time, regardless of which part of its orbit it's in.
+        const radiiToCheck = [a];
 
         // Check each trajectory segment for crossings at each radius
         for (let i = 0; i < trajectorySnapshot.length - 1; i++) {
@@ -325,13 +313,6 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 const crossing = findRadiusCrossing(p1, p2, r1, r2, orbitalRadius);
 
                 if (crossing) {
-                    // Round time to avoid floating-point duplicates from nearby radii
-                    const timeKey = Math.round(crossing.time * 1000);
-                    if (crossingTimes.has(timeKey)) {
-                        continue;  // Skip duplicate crossing
-                    }
-                    crossingTimes.add(timeKey);
-
                     // Get planet's actual position at crossing time
                     const planetPos = getPosition(body.elements, crossing.time);
 

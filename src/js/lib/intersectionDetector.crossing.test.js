@@ -822,25 +822,26 @@ function testQuadraticVsLinearAccuracy() {
 }
 
 /**
- * Test 15: Eccentricity-Aware Detection (Mercury Test)
+ * Test 15: Semi-Major Axis Detection (Mercury Test)
  *
- * Mercury has high eccentricity (e=0.206):
+ * Tests that crossing detection works correctly for Mercury.
+ * We only check the semi-major axis (0.387 AU), not perihelion/aphelion.
+ * This avoids duplicate ghost planets when crossing eccentric orbits.
+ *
+ * Mercury orbital parameters:
  *   - Semi-major axis: 0.387 AU
  *   - Perihelion: 0.307 AU
  *   - Aphelion: 0.467 AU
- *
- * A trajectory at 0.35 AU passes between perihelion and semi-major axis,
- * so the eccentricity-aware algorithm should detect it.
  */
 function testEccentricityAwareDetection() {
-    console.log('📋 Test 15: Eccentricity-Aware Detection (Mercury)');
+    console.log('📋 Test 15: Semi-Major Axis Detection (Mercury)');
 
     let passed = 0;
     let failed = 0;
 
     try {
-        // Trajectory crosses Mercury's perihelion radius but not semi-major axis
-        // Old code would MISS this. New code should detect it.
+        // Trajectory crosses Mercury's semi-major axis (0.387 AU)
+        // Range: 0.25 AU → 0.40 AU includes 0.387 AU
         const trajectory = [];
         for (let i = 0; i < 20; i++) {
             const t = i / 20;
@@ -858,7 +859,7 @@ function testEccentricityAwareDetection() {
             name: 'MERCURY',
             elements: {
                 a: 0.387,
-                e: 0.206,  // High eccentricity!
+                e: 0.206,  // High eccentricity
                 i: 0,
                 Ω: 0,
                 ω: 0,
@@ -870,10 +871,10 @@ function testEccentricityAwareDetection() {
 
         const intersections = detectIntersections(trajectory, [mercury], J2000, null);
 
-        console.log(`  Trajectory: 0.25 AU → 0.40 AU (crosses Mercury perihelion at 0.307 AU)`);
-        console.log(`  Mercury orbit: a=0.387, e=0.206, perihelion=0.307, aphelion=0.467`);
+        console.log(`  Trajectory: 0.25 AU → 0.40 AU`);
+        console.log(`  Mercury semi-major axis: 0.387 AU (this is what we detect)`);
         console.log(`  `);
-        console.log(`  Expected: At least 1 crossing (perihelion)`);
+        console.log(`  Expected: 1 crossing (at semi-major axis 0.387 AU)`);
         console.log(`  Got: ${intersections.length} crossing(s)`);
 
         if (intersections.length > 0) {
@@ -883,10 +884,18 @@ function testEccentricityAwareDetection() {
             });
         }
 
-        // Should detect at least the perihelion crossing
-        assert(intersections.length >= 1, 'Should detect Mercury perihelion crossing');
+        // Should detect exactly 1 crossing at semi-major axis
+        assert(intersections.length === 1, 'Should detect exactly 1 Mercury crossing');
 
-        console.log('  ✅ PASS: Eccentricity-aware detection works for Mercury\n');
+        // Verify crossing is at semi-major axis, not perihelion
+        const crossingR = Math.sqrt(
+            intersections[0].trajectoryPosition.x ** 2 +
+            intersections[0].trajectoryPosition.y ** 2 +
+            intersections[0].trajectoryPosition.z ** 2
+        );
+        assert(Math.abs(crossingR - 0.387) < 0.01, 'Crossing should be at semi-major axis (0.387 AU)');
+
+        console.log('  ✅ PASS: Semi-major axis detection works for Mercury\n');
         passed++;
     } catch (e) {
         console.log(`  ❌ FAIL: ${e.message}\n`);
