@@ -280,13 +280,6 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
     const startTime = performance.now();
     const intersections = [];
 
-    // DEBUG: Log what we're checking
-    console.log('[INTERSECTION] Starting detection:', {
-        trajectoryPoints: trajectory.length,
-        bodies: celestialBodies.map(b => b.name).join(', '),
-        currentTime,
-        soiBody
-    });
 
     // Process each celestial body
     for (const body of celestialBodies) {
@@ -312,9 +305,6 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
 
         // Track crossing times to avoid duplicates when checking multiple radii
         const crossingTimes = new Set();
-
-        // DEBUG: Log body being checked
-        let crossingsForBody = 0;
 
         // Check each trajectory segment for crossings at each radius
         for (let i = 0; i < trajectorySnapshot.length - 1; i++) {
@@ -350,8 +340,6 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                         continue;
                     }
 
-                    crossingsForBody++;
-
                     // Add intersection
                     intersections.push({
                         bodyName: body.name,
@@ -364,15 +352,6 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
             }
         }
 
-        // DEBUG: Log results for this body
-        if (body.name === 'VENUS' || body.name === 'MARS' || body.name === 'EARTH') {
-            const trajStart = trajectorySnapshot[0];
-            const trajEnd = trajectorySnapshot[trajectorySnapshot.length - 1];
-            const startR = Math.sqrt(trajStart.x ** 2 + trajStart.y ** 2 + trajStart.z ** 2);
-            const endR = Math.sqrt(trajEnd.x ** 2 + trajEnd.y ** 2 + trajEnd.z ** 2);
-            console.log(`[INTERSECTION] ${body.name}: a=${a.toFixed(3)}, radii=[${radiiToCheck.map(r => r.toFixed(3)).join(', ')}], ` +
-                        `trajectory r: ${startR.toFixed(3)} → ${endR.toFixed(3)}, crossings: ${crossingsForBody}`);
-        }
 
         // Performance timeout
         const elapsed = performance.now() - startTime;

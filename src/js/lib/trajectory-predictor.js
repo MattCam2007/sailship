@@ -111,8 +111,6 @@ export function predictTrajectory(params) {
     // Clone orbital elements for simulation (don't modify original)
     let simElements = { ...orbitalElements };
 
-    // Diagnostic logging (once per cache miss)
-    console.log(`[TRAJECTORY] Computing: a=${orbitalElements.a.toFixed(4)} AU, e=${orbitalElements.e.toFixed(4)}, isInSOI=${soiState?.isInSOI || false}, body=${soiState?.currentBody || 'SUN'}`);
 
     // Check if thrust is effectively zero
     const effectiveThrust = sail.deploymentPercent > 0 &&
@@ -132,9 +130,6 @@ export function predictTrajectory(params) {
         simElements.e > EXTREME_ECCENTRICITY_THRESHOLD &&
         isInSOI;
 
-    if (useLinearInterpolation) {
-        console.log(`[TRAJECTORY] Using linear interpolation for extreme flyby (e=${simElements.e.toFixed(1)})`);
-    }
 
     for (let i = 0; i < steps; i++) {
         const simTime = startTime + i * timeStep;
