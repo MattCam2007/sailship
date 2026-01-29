@@ -144,6 +144,28 @@ export function getAutoPilotPhase() {
 }
 
 /**
+ * Get current autopilot state (returns a copy to avoid reference sharing)
+ * @returns {Object} Copy of autopilot state
+ */
+export function getAutoPilotState() {
+    return { ...autoPilotState };
+}
+
+/**
+ * Restore autopilot state from a saved state
+ * Uses property-by-property assignment to avoid reference sharing
+ * @param {Object} state - Saved autopilot state
+ */
+export function restoreAutoPilotState(state) {
+    if (!state) return;
+    for (const key of Object.keys(autoPilotState)) {
+        if (key in state) {
+            autoPilotState[key] = state[key];
+        }
+    }
+}
+
+/**
  * Advance game time and Julian date
  */
 export function advanceTime() {
@@ -165,6 +187,22 @@ export function getTime() {
  */
 export function getJulianDate() {
     return julianDate;
+}
+
+/**
+ * Set game time in days
+ * @param {number} t - Time in days
+ */
+export function setTime(t) {
+    time = t;
+}
+
+/**
+ * Set Julian date for orbital calculations
+ * @param {number} jd - Julian date
+ */
+export function setJulianDate(jd) {
+    julianDate = jd;
 }
 
 // ============================================================================
@@ -213,6 +251,28 @@ export function setDisplayOption(option, value) {
     }
 }
 
+/**
+ * Get current display options (returns a copy to avoid reference sharing)
+ * @returns {Object} Copy of display options
+ */
+export function getDisplayOptions() {
+    return { ...displayOptions };
+}
+
+/**
+ * Restore display options from a saved state
+ * Uses property-by-property assignment to avoid reference sharing
+ * @param {Object} options - Saved display options
+ */
+export function restoreDisplayOptions(options) {
+    if (!options) return;
+    for (const key of Object.keys(displayOptions)) {
+        if (key in options) {
+            displayOptions[key] = options[key];
+        }
+    }
+}
+
 // ============================================================================
 // Body Filter Functions
 // ============================================================================
@@ -256,6 +316,28 @@ export function setTrajectoryDuration(days) {
  */
 export function getTrajectoryDuration() {
     return trajectoryConfig.durationDays;
+}
+
+/**
+ * Get current trajectory configuration (returns a copy to avoid reference sharing)
+ * @returns {Object} Copy of trajectory config
+ */
+export function getTrajectoryConfig() {
+    return { ...trajectoryConfig };
+}
+
+/**
+ * Restore trajectory configuration from a saved state
+ * Uses property-by-property assignment to avoid reference sharing
+ * @param {Object} config - Saved trajectory config
+ */
+export function restoreTrajectoryConfig(config) {
+    if (!config) return;
+    for (const key of Object.keys(trajectoryConfig)) {
+        if (key in config) {
+            trajectoryConfig[key] = config[key];
+        }
+    }
 }
 
 // ============================================================================

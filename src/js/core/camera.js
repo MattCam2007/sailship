@@ -46,6 +46,26 @@ export function resetCamera() {
 }
 
 /**
+ * Get the camera state object
+ * @returns {Object} Camera state with angleX, angleZ, zoom, target, followTarget
+ */
+export function getCamera() {
+    return camera;
+}
+
+/**
+ * Restore camera state from a snapshot
+ * @param {Object} state - Camera state to restore
+ */
+export function restoreCamera(state) {
+    camera.angleX = state.angleX;
+    camera.angleZ = state.angleZ;
+    camera.zoom = state.zoom;
+    camera.target = state.target;
+    camera.followTarget = state.followTarget;
+}
+
+/**
  * Update camera target position based on followed object
  * @param {Array} celestialBodies - Array of celestial bodies
  * @param {Array} ships - Array of ships
