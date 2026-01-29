@@ -125,10 +125,10 @@ export function getSailThrustDirection(shipPosition, shipVelocity, yawAngle, pit
         Nz = hz / hMag;
     } else {
         // Fallback to ecliptic normal for degenerate orbits
+        // This is expected during trajectory prediction when orbit changes significantly
         Nx = 0;
         Ny = 0;
         Nz = 1;
-        console.warn('[THRUST_DIR] ⚠️ Angular momentum near zero! Using ecliptic fallback.');
     }
 
     // Track angular momentum direction for debugging (flip detection removed -

@@ -369,7 +369,7 @@ function getStarBrightness(mag) {
  */
 export function drawStarfield(ctx, centerX, centerY, scale) {
     if (!starCatalogLoaded || !stars || stars.length === 0) {
-        console.warn('[STARFIELD] Catalog not loaded:', { starCatalogLoaded, starCount: stars?.length });
+        // Silently return during async load - catalog will be available shortly
         return;
     }
 
@@ -377,10 +377,6 @@ export function drawStarfield(ctx, centerX, centerY, scale) {
     const canvasWidth = ctx.canvas.width;
     const canvasHeight = ctx.canvas.height;
 
-    // Debug: log first render
-    if (Math.random() < 0.01) {  // 1% sampling to avoid spam
-        console.log('[STARFIELD] Rendering:', { stars: stars.length, currentYear, canvasWidth, canvasHeight, scale });
-    }
 
     let renderedCount = 0;
     let culledCount = 0;
@@ -442,10 +438,6 @@ export function drawStarfield(ctx, centerX, centerY, scale) {
         renderedCount++;
     }
 
-    // Debug log
-    if (Math.random() < 0.01) {
-        console.log('[STARFIELD] Rendered:', renderedCount, 'Culled:', culledCount);
-    }
 }
 
 // ============================================================================
