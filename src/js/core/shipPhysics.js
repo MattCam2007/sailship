@@ -775,6 +775,15 @@ function handleSOIExit(ship, shipPosPlanet, shipVelPlanet, julianDate) {
     // Convert heliocentric state to orbital elements around Sun
     ship.orbitalElements = stateToElements(pos, vel, MU_SUN, julianDate);
 
+    // Validate orbital elements - critical check for rendering
+    const elements = ship.orbitalElements;
+    if (!isFinite(elements.a) || !isFinite(elements.e) || !isFinite(elements.i) ||
+        !isFinite(elements.Ω) || !isFinite(elements.ω) || !isFinite(elements.M0)) {
+        console.error('[SOI EXIT] CRITICAL: Orbital elements contain NaN!', elements);
+        console.error('[SOI EXIT] Input pos:', pos, 'vel:', vel);
+        // Don't return false - let it proceed but alert to the issue
+    }
+
     // Update SOI state
     ship.soiState = {
         currentBody: 'SUN',
