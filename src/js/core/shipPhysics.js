@@ -1059,45 +1059,9 @@ function logHyperbolicDebug(ship, position, velocity, thrust, julianDate) {
 function checkForAnomalies(ship, position, velocity, thrust, julianDate) {
     frameCount++;
 
-    // Log frame rate and orbital elements every 5 real seconds
+    // Reset frame counter every 5 real seconds (for FPS tracking if needed)
     const now = Date.now();
     if (now - lastFrameLogTime > 5000) {
-        const fps = frameCount / ((now - lastFrameLogTime) / 1000);
-        const { a, e, i } = ship.orbitalElements;
-        const vMag = Math.sqrt(velocity.vx**2 + velocity.vy**2 + velocity.vz**2);
-        const vKmS = vMag * 1731.46;
-
-        // Compute h_z to check orbit direction
-        const hz = position.x * velocity.vy - position.y * velocity.vx;
-        const orbitDir = hz > 0 ? 'PRO' : 'RETRO';
-
-        console.log(`[STATUS] ${fps.toFixed(1)} fps | JD=${julianDate.toFixed(2)} | SOI=${ship.soiState?.isInSOI ? ship.soiState.currentBody : 'SUN'}`);
-        console.log(`[STATUS] Orbit: a=${a.toFixed(6)} AU, e=${e.toFixed(4)}, i=${(i*180/Math.PI).toFixed(2)}° | v=${vKmS.toFixed(1)} km/s | ${orbitDir}`);
-
-        // Extra logging when in SOI
-        if (ship.soiState?.isInSOI) {
-            const r = Math.sqrt(position.x**2 + position.y**2 + position.z**2);
-            const rKm = r * 149597870.7;
-            const periapsisAU = a * (1 - e);
-            const apoapsisAU = e < 1 ? a * (1 + e) : Infinity;
-            const periapsisKm = periapsisAU * 149597870.7;
-            const apoapsisKm = apoapsisAU * 149597870.7;
-            // Orbital period in hours (for planetocentric orbits)
-            const mu = ship.orbitalElements.μ;
-            const periodDays = e < 1 ? 2 * Math.PI * Math.sqrt(a * a * a / mu) : Infinity;
-            const periodHours = periodDays * 24;
-            console.log(`[STATUS] SOI: r=${rKm.toFixed(0)} km, periapsis=${periapsisKm.toFixed(0)} km, apoapsis=${e < 1 ? apoapsisKm.toFixed(0) + ' km' : '∞'}`);
-            console.log(`[STATUS] SOI: period=${periodHours < 1000 ? periodHours.toFixed(2) + ' hrs' : (periodHours/24).toFixed(2) + ' days'}, μ=${mu.toExponential(3)}`);
-        }
-
-        // Warn if orbit is escaping or retrograde
-        if (e >= 0.95) {
-            console.warn(`[STATUS] ⚠️ HIGH ECCENTRICITY: e=${e.toFixed(4)} - orbit may become hyperbolic!`);
-        }
-        if (hz < 0) {
-            console.warn(`[STATUS] ⚠️ RETROGRADE ORBIT (h_z=${hz.toFixed(6)})`);
-        }
-
         frameCount = 0;
         lastFrameLogTime = now;
     }

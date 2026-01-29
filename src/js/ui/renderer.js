@@ -626,15 +626,6 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
     // Use different color when in planetary SOI
     const isInSOI = ship.soiState?.isInSOI;
 
-    // Periodic diagnostic logging for orbit rendering (every ~5 seconds)
-    if (ship.isPlayer && rendererFrameCount % 300 === 0) {
-        console.log(`[RENDER] Ship orbit: e=${e.toFixed(4)} a=${a.toFixed(4)} AU, isHyperbolic=${isHyperbolic}, isInSOI=${isInSOI}, body=${ship.soiState?.currentBody || 'SUN'}`);
-        if (isHyperbolic) {
-            const nuMax = Math.acos(-1 / e);
-            const p = Math.abs(a) * (e * e - 1);
-            console.log(`[RENDER]   HYPERBOLIC: nuMax=${(nuMax*180/Math.PI).toFixed(2)}° p=${p.toFixed(6)} AU`);
-        }
-    }
 
     // Set visual style based on orbit type
     if (isHyperbolic) {
@@ -835,18 +826,6 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
         return;
     }
 
-    // Diagnostic logging for trajectory rendering
-    if (ship.isPlayer && rendererFrameCount % 300 === 0) {
-        const first = trajectory[0];
-        const last = trajectory[trajectory.length - 1];
-        console.log('[RENDER] Predicted trajectory:', {
-            points: trajectory.length,
-            firstPos: { x: first.x.toFixed(4), y: first.y.toFixed(4), z: first.z.toFixed(4) },
-            lastPos: { x: last.x.toFixed(4), y: last.y.toFixed(4), z: last.z.toFixed(4) },
-            truncated: last.truncated || 'none',
-            soiState: ship.soiState
-        });
-    }
 
     // NOTE: trajectory-predictor.js now outputs heliocentric coordinates always.
     // When in SOI, it internally converts planetocentric → heliocentric.

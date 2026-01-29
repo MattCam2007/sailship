@@ -406,13 +406,28 @@ export function rotateToEcliptic(position, i, Ω, ω) {
  * @returns {{vx: number, vy: number}} Velocity in orbital plane (AU/day)
  */
 export function velocityInOrbitalPlane(a, e, μ, trueAnomaly) {
-    const p = a * (1 - e * e);  // Semi-latus rectum
-    const h = Math.sqrt(μ * p); // Specific angular momentum
+    // Semi-latus rectum: p = a(1-e²) for elliptic, p = |a|(e²-1) for hyperbolic
+    // For near-parabolic orbits (e ≈ 1), p approaches zero which causes NaN
+    let p;
+    if (e >= 1) {
+        // Hyperbolic orbit: use |a|(e²-1)
+        p = Math.abs(a) * (e * e - 1);
+    } else {
+        // Elliptic orbit: use a(1-e²)
+        p = a * (1 - e * e);
+    }
+
+    // Clamp semi-latus rectum to avoid division by zero for near-parabolic orbits
+    const minP = 1e-12;
+    if (p < minP) {
+        p = minP;
+    }
+
     const sqrtMuOverP = Math.sqrt(μ / p);
-    
+
     const sinν = Math.sin(trueAnomaly);
     const cosν = Math.cos(trueAnomaly);
-    
+
     return {
         vx: -sqrtMuOverP * sinν,
         vy: sqrtMuOverP * (e + cosν)
