@@ -15,6 +15,7 @@ import {
     getIntersectionCache,
     bodyFilters
 } from '../core/gameState.js';
+import { isActive as isPlanningActive, getPlanningTrajectory, getPlanningIntersectionCache } from '../core/planningMode.js';
 import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG } from '../config.js';
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
@@ -788,23 +789,30 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
     if (!displayOptions.showPredictedTrajectory) return;
     if (!ship.orbitalElements || !ship.sail) return;
 
-    // Get predicted trajectory with configurable duration
-    const duration = trajectoryConfig.durationDays;
-    // Steps scale with duration for consistent visual density
-    const steps = Math.min(300, Math.max(100, Math.round(duration * 2.5)));
+    // In planning mode, use pre-computed planning trajectory
+    // In flight mode, compute trajectory fresh
+    let trajectory;
+    if (isPlanningActive()) {
+        trajectory = getPlanningTrajectory();
+    } else {
+        // Get predicted trajectory with configurable duration
+        const duration = trajectoryConfig.durationDays;
+        // Steps scale with duration for consistent visual density
+        const steps = Math.min(300, Math.max(100, Math.round(duration * 2.5)));
 
-    // Use current simulation date for trajectory prediction
-    const startTime = getJulianDate();
+        // Use current simulation date for trajectory prediction
+        const startTime = getJulianDate();
 
-    const trajectory = predictTrajectory({
-        orbitalElements: ship.orbitalElements,
-        sail: ship.sail,
-        mass: ship.mass || 10000,
-        startTime: startTime,
-        duration: duration,
-        steps: steps,
-        soiState: ship.soiState  // For SOI boundary detection
-    });
+        trajectory = predictTrajectory({
+            orbitalElements: ship.orbitalElements,
+            sail: ship.sail,
+            mass: ship.mass || 10000,
+            startTime: startTime,
+            duration: duration,
+            steps: steps,
+            soiState: ship.soiState  // For SOI boundary detection
+        });
+    }
 
     if (!trajectory || trajectory.length < 2) return;
 
@@ -973,15 +981,23 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
     if (!displayOptions.showIntersectionMarkers) return;
     if (!displayOptions.showOrbits) return;
 
-    const cache = getIntersectionCache();
-    if (!cache.results || cache.results.length === 0) return;
+    // In planning mode, use planning intersection cache
+    // In flight mode, use standard game state cache
+    let intersectionResults;
+    if (isPlanningActive()) {
+        intersectionResults = getPlanningIntersectionCache();
+    } else {
+        const cache = getIntersectionCache();
+        intersectionResults = cache.results || [];
+    }
+    if (!intersectionResults || intersectionResults.length === 0) return;
 
     const player = getPlayerShip();
     if (!player) return;
 
     // Filter to only show ghost planets for the currently targeted destination
     // and respect body filters
-    const targetedIntersections = cache.results.filter(intersection => {
+    const targetedIntersections = intersectionResults.filter(intersection => {
         if (intersection.bodyName !== destination) return false;
 
         // Check if body is visible based on category filter

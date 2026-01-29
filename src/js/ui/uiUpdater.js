@@ -6,6 +6,7 @@ import { destination, getDestinationInfo, predictClosestApproach, computeNavigat
 import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPILOT_PHASES } from '../core/gameState.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
+import { isActive, getEffectiveTime, getShipPosition, getTrajectoryValidationStatus } from '../core/planningMode.js';
 
 // Cache DOM elements
 let elements = {};
@@ -60,21 +61,89 @@ export function updateUI() {
     updateSailDisplay();
     updateNavigationComputer();
     updateSOIStatus();
+    updatePlanningModeDisplay();
+}
+
+/**
+ * Update planning mode coordinate and trajectory displays
+ */
+function updatePlanningModeDisplay() {
+    if (!isActive()) return;
+
+    // Update planning mode coordinates
+    const pos = getShipPosition();
+    const coordsEl = document.getElementById('sandboxCoords');
+    if (coordsEl && pos) {
+        coordsEl.textContent = `X: ${pos.x.toFixed(3)} Y: ${pos.y.toFixed(3)} Z: ${pos.z.toFixed(3)} AU`;
+    }
+
+    // Update trajectory warning
+    const warningEl = document.getElementById('trajectoryWarning');
+    const status = getTrajectoryValidationStatus();
+    if (warningEl) {
+        if (status?.reason) {
+            warningEl.textContent = `Warning: ${status.reason}`;
+            warningEl.style.display = 'block';
+        } else {
+            warningEl.style.display = 'none';
+        }
+    }
 }
 
 /**
  * Update time display
  */
 function updateTimeDisplay() {
-    const time = getTime();
-    const days = Math.floor(time);
-    const hours = Math.floor((time % 1) * 24);
-    const mins = Math.floor(((time % 1) * 24 % 1) * 60);
-    
     if (elements.timeDisplay) {
-        elements.timeDisplay.textContent = 
-            `2351.${String(127 + days).padStart(3, '0')} // ${String(14 + hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:07 UTC`;
+        if (isActive()) {
+            // Planning mode: show sandbox time with PLANNING prefix
+            const sandboxTime = getEffectiveTime();
+            elements.timeDisplay.textContent = `PLANNING: ${formatJulianDate(sandboxTime)}`;
+        } else {
+            // Normal flight mode time display
+            const time = getTime();
+            const days = Math.floor(time);
+            const hours = Math.floor((time % 1) * 24);
+            const mins = Math.floor(((time % 1) * 24 % 1) * 60);
+            elements.timeDisplay.textContent =
+                `2351.${String(127 + days).padStart(3, '0')} // ${String(14 + hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:07 UTC`;
+        }
     }
+}
+
+/**
+ * Convert Julian date to human-readable string
+ * @param {number} jd - Julian date
+ * @returns {string} Format: "YYYY Mon DD HH:MM UTC"
+ */
+function formatJulianDate(jd) {
+    if (!jd) return '---';
+
+    // Julian date to calendar date conversion
+    const z = Math.floor(jd + 0.5);
+    const f = (jd + 0.5) - z;
+    let a = z;
+    if (z >= 2299161) {
+        const alpha = Math.floor((z - 1867216.25) / 36524.25);
+        a = z + 1 + alpha - Math.floor(alpha / 4);
+    }
+    const b = a + 1524;
+    const c = Math.floor((b - 122.1) / 365.25);
+    const d = Math.floor(365.25 * c);
+    const e = Math.floor((b - d) / 30.6001);
+
+    const day = b - d - Math.floor(30.6001 * e);
+    const month = e < 14 ? e - 1 : e - 13;
+    const year = month > 2 ? c - 4716 : c - 4715;
+
+    // Extract hours and minutes from fractional day
+    const hours = Math.floor(f * 24);
+    const mins = Math.floor((f * 24 % 1) * 60);
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    return `${year} ${months[month - 1]} ${day} ${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')} UTC`;
 }
 
 /**
