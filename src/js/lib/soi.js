@@ -282,6 +282,13 @@ export function stateToElements(pos, vel, mu, epoch) {
     // Only clamp to minimum for numerical stability with circular orbits
     e = Math.max(0, e);
 
+    // FM7 FIX: Parabolic orbits (e = 1 exactly) cause division by zero in Kepler solvers.
+    // Nudge exactly-parabolic orbits slightly hyperbolic to avoid singularity.
+    // This is physically reasonable: true parabolic orbits are infinitely rare.
+    if (e >= 0.9999 && e <= 1.0001) {
+        e = e < 1 ? 0.9999 : 1.0001;
+    }
+
     // Determine if orbit is hyperbolic
     const isHyperbolic = e >= 1;
 

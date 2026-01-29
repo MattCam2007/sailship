@@ -171,14 +171,17 @@ export function eccentricToTrueAnomaly(E, e) {
  * @returns {number} Hyperbolic anomaly H
  */
 export function solveKeplerHyperbolic(M, e, tolerance = 1e-12) {
+    // FM7 FIX: Guard against parabolic (e = 1) which causes division by zero
+    const safeE = e <= 1 ? 1.0001 : e;
+
     // Initial guess: use asinh for better convergence
     // For small M: H ≈ M / (e - 1)
     // For large M: H ≈ sign(M) * ln(2|M|/e)
     let H;
     if (Math.abs(M) < 1) {
-        H = M / (e - 1);  // Series approximation for small M
+        H = M / (safeE - 1);  // Series approximation for small M
     } else {
-        H = Math.sign(M) * Math.log(2 * Math.abs(M) / e);
+        H = Math.sign(M) * Math.log(2 * Math.abs(M) / safeE);
     }
 
     const maxIterations = 50;
@@ -187,8 +190,8 @@ export function solveKeplerHyperbolic(M, e, tolerance = 1e-12) {
     for (let i = 0; i < maxIterations; i++) {
         const sinhH = Math.sinh(H);
         const coshH = Math.cosh(H);
-        const f = e * sinhH - H - M;
-        const fPrime = e * coshH - 1;
+        const f = safeE * sinhH - H - M;
+        const fPrime = safeE * coshH - 1;
 
         // Guard against division by near-zero
         if (Math.abs(fPrime) < 1e-15) {
@@ -224,8 +227,12 @@ export function solveKeplerHyperbolic(M, e, tolerance = 1e-12) {
  * @returns {number} True anomaly ν (radians), in range (-ν_max, +ν_max)
  */
 export function hyperbolicToTrueAnomaly(H, e) {
+    // FM7 FIX: Guard against parabolic (e = 1) which causes division by zero
+    // Parabolic should not reach here, but if it does, treat as barely hyperbolic
+    const safeE = e <= 1 ? 1.0001 : e;
+
     const tanhHalf = Math.tanh(H / 2);
-    const factor = Math.sqrt((e + 1) / (e - 1));
+    const factor = Math.sqrt((safeE + 1) / (safeE - 1));
     const tanNuHalf = factor * tanhHalf;
     return 2 * Math.atan(tanNuHalf);
 }

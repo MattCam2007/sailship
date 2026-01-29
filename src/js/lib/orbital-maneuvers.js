@@ -436,6 +436,21 @@ export function applyThrust(elements, thrust, deltaTime, julianDate) {
     // M0 must correspond to the time when position/velocity were computed.
     const newElements = stateToElements(position, newVelocity, μ, julianDate);
 
+    // FM7 FIX: Validate new elements to prevent degenerate orbits from propagating.
+    // If conversion produced invalid elements, return original elements unchanged.
+    const elementsValid =
+        isFinite(newElements.a) && newElements.a !== 0 &&
+        isFinite(newElements.e) && newElements.e >= 0 &&
+        isFinite(newElements.i) &&
+        isFinite(newElements.Ω) &&
+        isFinite(newElements.ω) &&
+        isFinite(newElements.M0);
+
+    if (!elementsValid) {
+        // Elements are degenerate - return original to prevent error propagation
+        return { ...elements };
+    }
+
     // Debug logging for thrust application
     if (thrustDebugEnabled) {
         const dvMag = thrustMag * deltaTime;
