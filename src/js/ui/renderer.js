@@ -228,7 +228,11 @@ function calculateBlendFactor(screenSize) {
 
 /**
  * Calculate final screen radius for a celestial body.
- * Blends between fixed pixel size (when small) and physically-scaled size (when large).
+ * Uses zoom-based scaling to make planets grow as you zoom in.
+ *
+ * At low zoom (system view), planets appear as small fixed-size dots.
+ * As you zoom in, planets grow proportionally, eventually becoming
+ * large enough to show their relative physical size.
  *
  * @param {Object} body - Celestial body object
  * @param {number} scale - Current scale (pixels per AU)
@@ -236,23 +240,34 @@ function calculateBlendFactor(screenSize) {
  */
 function calculateScreenRadius(body, scale) {
     const display = getBodyDisplay(body);
+    const effectiveZoom = scale * camera.zoom;
 
-    // Sun always uses scaled rendering
+    // Sun always uses physical scaling (it's large enough to be visible)
     if (body.name === 'SOL') {
         return calculateScaledRadius(display.physicalRadiusKm, scale);
     }
 
-    // Calculate scaled radius
-    const scaledRadius = calculateScaledRadius(display.physicalRadiusKm, scale);
+    // Base fixed radius for distant views
+    const fixedRadius = display.radius;
 
-    // Determine current screen size (larger of fixed or scaled)
-    const currentSize = Math.max(display.radius, scaledRadius);
+    // Zoom threshold where planets start growing (around "local" zoom level)
+    const growthThreshold = 500;
 
-    // Get blend factor based on screen size
-    const blendFactor = calculateBlendFactor(currentSize);
+    // At low zoom, use fixed size
+    if (effectiveZoom <= growthThreshold) {
+        return fixedRadius;
+    }
 
-    // Interpolate between fixed and scaled
-    return lerp(display.radius, scaledRadius, blendFactor);
+    // Above threshold, scale planets based on zoom level
+    // Use sqrt for gentler growth that doesn't explode at high zoom
+    const zoomRatio = effectiveZoom / growthThreshold;
+    const scaledRadius = fixedRadius * Math.sqrt(zoomRatio);
+
+    // Cap based on physical size - bigger planets can grow bigger
+    // Jupiter (69911 km) gets max ~350, Earth (6371 km) gets max ~32
+    const maxRadius = Math.max(fixedRadius * 2, display.physicalRadiusKm / 200);
+
+    return Math.min(scaledRadius, maxRadius);
 }
 
 /**
