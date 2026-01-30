@@ -345,12 +345,20 @@ function drawOrbit(body, centerX, centerY, scale) {
     // when zoomed close to a planet (planet appears centered but orbit doesn't)
     if (camera.zoom > 50) return;
 
-    const segments = 64;
+    const { a, e, i, Ω, ω } = body.elements;
+
+    // ZOOM-ADAPTIVE SEGMENTS: At high zoom, increase segment count for smooth curves
+    // This prevents ghost planets from appearing off the orbital path at tactical zoom
+    const effectiveZoom = scale * camera.zoom;
+    const orbitRadiusPixels = a * effectiveZoom;
+    const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
+
+    // Target ~20 pixels per segment for smooth appearance, min 64, max 512
+    const segments = Math.max(64, Math.min(512, Math.ceil(orbitCircumPixels / 20)));
+
     ctx.strokeStyle = body.type === 'moon' ? 'rgba(232, 93, 76, 0.15)' : 'rgba(232, 93, 76, 0.3)';
     ctx.lineWidth = body.type === 'moon' ? 0.5 : 1;
     ctx.setLineDash([]);
-    
-    const { a, e, i, Ω, ω } = body.elements;
     
     // Get parent position for moons
     let parentX = 0, parentY = 0, parentZ = 0;
@@ -616,9 +624,16 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
         return;
     }
 
-    const segments = 64;
-
     const { a, e, i, Ω, ω } = elements;
+
+    // ZOOM-ADAPTIVE SEGMENTS: At high zoom, increase segment count for smooth curves
+    // This ensures orbital paths align precisely with ghost planet positions at tactical zoom
+    const effectiveZoom = scale * camera.zoom;
+    const orbitRadiusPixels = a * effectiveZoom;
+    const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
+
+    // Target ~20 pixels per segment for smooth appearance, min 64, max 512
+    const segments = Math.max(64, Math.min(512, Math.ceil(orbitCircumPixels / 20)));
 
     // Detect hyperbolic orbit
     const isHyperbolic = e >= 1;
