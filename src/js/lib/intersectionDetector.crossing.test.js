@@ -10,7 +10,7 @@
  */
 
 import { detectIntersections } from './intersectionDetector.js';
-import { J2000, MU_SUN } from '../config.js';
+import { J2000, MU_SUN } from './orbital.js';
 
 /**
  * Run all crossing detection tests
