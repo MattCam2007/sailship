@@ -3,7 +3,7 @@
  */
 
 import { destination, getDestinationInfo, predictClosestApproach, computeNavigationPlan, computeApproachPlan, computeCapturePlan, computeEscapePlan } from '../core/navigation.js';
-import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPILOT_PHASES } from '../core/gameState.js';
+import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPILOT_PHASES, getClosestApproachForBody } from '../core/gameState.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
 
@@ -118,26 +118,55 @@ function updateDestinationDisplay() {
     }
 
     // Update intercept prediction
-    const intercept = predictClosestApproach();
+    // Try to use our new accurate closest approach cache first (Solution #5)
+    // Falls back to the old simulation method if cache is empty
+    const cachedApproach = getClosestApproachForBody(destination);
 
-    if (intercept) {
+    let closestDistance, timeToClosest, status;
+
+    if (cachedApproach) {
+        // Use the accurate data from trajectory predictor
+        closestDistance = cachedApproach.minDistance;
+        timeToClosest = cachedApproach.daysFromNow;
+
+        // Determine status based on distance
+        if (closestDistance < 0.01) {
+            status = 'INTERCEPT';
+        } else if (closestDistance < 0.05) {
+            status = 'NEAR MISS';
+        } else if (closestDistance < 0.2) {
+            status = 'WIDE MISS';
+        } else {
+            status = 'NO INTERCEPT';
+        }
+    } else {
+        // Fall back to old prediction method
+        const intercept = predictClosestApproach();
+        if (intercept) {
+            closestDistance = intercept.closestDistance;
+            timeToClosest = intercept.timeToClosest;
+            status = intercept.status;
+        }
+    }
+
+    if (closestDistance !== undefined) {
         if (elements.closestDist) {
-            elements.closestDist.textContent = intercept.closestDistance.toFixed(3) + ' AU';
+            elements.closestDist.textContent = closestDistance.toFixed(3) + ' AU';
         }
         if (elements.timeToClosest) {
-            const days = Math.floor(intercept.timeToClosest);
-            const hours = Math.floor((intercept.timeToClosest % 1) * 24);
+            const days = Math.floor(timeToClosest);
+            const hours = Math.floor((timeToClosest % 1) * 24);
             elements.timeToClosest.textContent = `${days}d ${hours}h`;
         }
         if (elements.interceptStatus) {
-            elements.interceptStatus.textContent = intercept.status;
+            elements.interceptStatus.textContent = status;
             // Add color coding based on status
             elements.interceptStatus.classList.remove('status-intercept', 'status-near', 'status-wide', 'status-miss');
-            if (intercept.status === 'INTERCEPT') {
+            if (status === 'INTERCEPT') {
                 elements.interceptStatus.classList.add('status-intercept');
-            } else if (intercept.status === 'NEAR MISS') {
+            } else if (status === 'NEAR MISS') {
                 elements.interceptStatus.classList.add('status-near');
-            } else if (intercept.status === 'WIDE MISS') {
+            } else if (status === 'WIDE MISS') {
                 elements.interceptStatus.classList.add('status-wide');
             } else {
                 elements.interceptStatus.classList.add('status-miss');

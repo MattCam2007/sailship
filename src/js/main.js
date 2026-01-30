@@ -22,8 +22,14 @@ import { initControls, updateAutoPilot, initMobileControls } from './ui/controls
 import { initMobilePanels } from './ui/ui-components.js';
 import { updateShipPhysics } from './core/shipPhysics.js';
 import { getCachedTrajectory, getTrajectoryHash, clearTrajectoryCache, predictTrajectory } from './lib/trajectory-predictor.js';
-import { detectIntersections } from './lib/intersectionDetector.js';
-import { clearIntersectionCache, trajectoryConfig } from './core/gameState.js';
+import { detectIntersections, detectClosestApproaches } from './lib/intersectionDetector.js';
+import {
+    clearIntersectionCache,
+    trajectoryConfig,
+    setClosestApproachCache,
+    isClosestApproachCacheValid,
+    clearClosestApproachCache
+} from './core/gameState.js';
 import { INTERSECTION_CONFIG } from './config.js';
 
 // Get canvas element
@@ -47,6 +53,7 @@ function performMemoryCleanup() {
     // Clear all caches
     clearTrajectoryCache();
     clearIntersectionCache();
+    clearClosestApproachCache();
     clearGradientCache();
 
     // Get canvas context for state reset
@@ -150,6 +157,17 @@ function updatePositions() {
 
                 // Store with trajectory hash for synchronization
                 setIntersectionCache(trajectoryHash, intersections);
+
+                // Detect closest approaches to all bodies (Solution #5)
+                // This answers "what's my minimum distance to each planet?"
+                if (!isClosestApproachCacheValid(trajectoryHash)) {
+                    const closestApproaches = detectClosestApproaches(
+                        highResTrajectory,
+                        celestialBodies,
+                        currentTime
+                    );
+                    setClosestApproachCache(trajectoryHash, closestApproaches);
+                }
             }
         }
     }

@@ -385,22 +385,24 @@ function getOrbitalPlaneNormal(i, Ω) {
 }
 
 /**
- * Find where a trajectory segment crosses a body's orbital plane.
- * This is more accurate than spherical radius crossing for inclined orbits.
+ * Find where a trajectory segment crosses a body's orbital radius.
  *
- * Uses a HYBRID approach:
- * - For inclined orbits (i > ~0.5°): Use orbital plane crossing detection
- * - For nearly coplanar orbits: Fall back to radius crossing
+ * DESIGN DECISION (2026-01-30):
+ * Always use RADIUS CROSSING for detection, regardless of orbital inclination.
  *
- * This hybrid approach ensures:
- * - Accurate visual alignment for inclined orbits (Venus, Mercury) at tactical zoom
- * - Correct detection for coplanar orbits (Earth, Mars) where trajectory is in the orbital plane
+ * The previous "orbital plane crossing" algorithm required the trajectory to
+ * pierce the body's tilted orbital plane AT the correct radial distance.
+ * This failed for most trajectories because:
+ * - Plane crossing and radius crossing happen at different points in space
+ * - A trajectory might cross Venus's plane at r=0.9 AU but cross r=0.72 AU
+ *   while NOT piercing the plane - these are independent conditions
  *
- * Algorithm:
- * 1. Calculate orbital plane normal from body's inclination and longitude of ascending node
- * 2. Check if trajectory segment meaningfully crosses this plane
- * 3. If segment is nearly coplanar, fall back to radius crossing
- * 4. Otherwise, find plane crossing and verify radial distance is in range
+ * Radius crossing reliably detects when you cross a planet's orbital distance.
+ * The ghost planet is then placed at the planet's ACTUAL position at that time,
+ * which correctly shows where the planet will be when you reach that radius.
+ *
+ * For navigation, this is what matters: "When I reach Venus's orbital radius,
+ * where will Venus actually be?" - not "Did I pierce Venus's tilted plane?"
  *
  * @param {Object} p1 - Start point {x, y, z, time}
  * @param {Object} p2 - End point {x, y, z, time}
@@ -408,95 +410,15 @@ function getOrbitalPlaneNormal(i, Ω) {
  * @returns {Object|null} Crossing info {t, time, position} or null if no crossing
  */
 function findOrbitalPlaneCrossing(p1, p2, elements) {
-    const { a, e, i, Ω } = elements;
+    const { a } = elements;
 
-    // Threshold for "significant" inclination (in radians)
-    // ~0.5° = 0.0087 radians - below this, use radius crossing for better accuracy
-    const INCLINATION_THRESHOLD = 0.0087;
+    // Calculate heliocentric radii
+    const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
+    const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
 
-    // For low-inclination orbits, use radius crossing method
-    // This handles Earth, Mars, and other nearly-ecliptic bodies correctly
-    if (Math.abs(i) < INCLINATION_THRESHOLD) {
-        // Calculate heliocentric radii
-        const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
-        const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
-
-        // Use semi-major axis as target radius
-        return findRadiusCrossing(p1, p2, r1, r2, a);
-    }
-
-    // Get the orbital plane normal for inclined orbits
-    const normal = getOrbitalPlaneNormal(i, Ω);
-
-    // Calculate signed distance from orbital plane for both points
-    // d = n · P (plane passes through origin/Sun)
-    const d1 = normal.x * p1.x + normal.y * p1.y + normal.z * p1.z;
-    const d2 = normal.x * p2.x + normal.y * p2.y + normal.z * p2.z;
-
-    // Check if segment crosses the plane (signs differ)
-    // Include case where one point is exactly on plane (d=0)
-    if (d1 * d2 > 0) {
-        return null; // Both on same side, no crossing
-    }
-
-    // Calculate segment length for coplanarity check
-    const segmentLength = Math.sqrt(
-        (p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2 + (p2.z - p1.z) ** 2
-    );
-
-    // If both points are very close to the plane relative to segment length,
-    // the trajectory is nearly coplanar - fall back to radius crossing
-    const planeDistanceThreshold = 0.001 * segmentLength; // 0.1% of segment length
-    if (Math.abs(d1) < planeDistanceThreshold && Math.abs(d2) < planeDistanceThreshold) {
-        // Nearly coplanar - use radius crossing
-        const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
-        const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
-        return findRadiusCrossing(p1, p2, r1, r2, a);
-    }
-
-    // Find crossing parameter t where d(t) = 0
-    // d(t) = d1 + t * (d2 - d1) = 0
-    // t = -d1 / (d2 - d1)
-    const dDiff = d2 - d1;
-    if (Math.abs(dDiff) < 1e-15) {
-        return null; // Parallel to plane
-    }
-
-    const t = -d1 / dDiff;
-
-    // Clamp t to [0, 1] for safety (should already be there due to sign check)
-    const tClamped = Math.max(0, Math.min(1, t));
-
-    // Calculate crossing position
-    const crossingPos = {
-        x: p1.x + tClamped * (p2.x - p1.x),
-        y: p1.y + tClamped * (p2.y - p1.y),
-        z: p1.z + tClamped * (p2.z - p1.z)
-    };
-
-    // Calculate radial distance at crossing point
-    const rCrossing = Math.sqrt(
-        crossingPos.x ** 2 + crossingPos.y ** 2 + crossingPos.z ** 2
-    );
-
-    // Check if crossing is within the orbital radius range
-    const perihelion = a * (1 - e);
-    const aphelion = a * (1 + e);
-
-    // Add small tolerance for numerical precision
-    const tolerance = 0.005; // 0.005 AU tolerance
-    if (rCrossing < perihelion - tolerance || rCrossing > aphelion + tolerance) {
-        return null; // Crossing is outside the orbital radius range
-    }
-
-    // Calculate crossing time
-    const crossingTime = p1.time + tClamped * (p2.time - p1.time);
-
-    return {
-        t: tClamped,
-        time: crossingTime,
-        position: crossingPos
-    };
+    // Use semi-major axis as target radius for all planets
+    // This reliably detects orbital radius crossings regardless of inclination
+    return findRadiusCrossing(p1, p2, r1, r2, a);
 }
 
 /**
@@ -595,21 +517,25 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
 /**
  * Detect when trajectory crosses orbital paths and show planet positions at those times
  *
- * CROSSING DETECTION ALGORITHM (ORBITAL PLANE METHOD):
- * A "crossing" occurs when trajectory segment crosses the planet's ORBITAL PLANE
- * (not just a spherical radius). This ensures visual alignment at high zoom.
+ * CROSSING DETECTION ALGORITHM (RADIUS METHOD):
+ * A "crossing" occurs when trajectory segment crosses the planet's orbital RADIUS
+ * (the semi-major axis distance from the Sun). This is a spherical shell check.
  *
- * For segment (p1, p2):
- *   1. Calculate orbital plane normal from body's inclination (i) and ascending node (Ω)
- *   2. Find where segment pierces this plane (signed distance changes sign)
- *   3. Check if crossing point's radial distance is within [perihelion, aphelion]
- *   4. Get planet position at crossing time: getPosition(elements, crossingTime)
+ * For segment (p1, p2) with heliocentric radii (r1, r2):
+ *   1. Check if segment crosses target radius: (r1 < a && r2 > a) || (r1 > a && r2 < a)
+ *   2. Solve quadratic equation for exact crossing point (not linear interpolation)
+ *   3. Get planet position at crossing time: getPosition(elements, crossingTime)
+ *   4. Display ghost at planet's actual position with time offset label
  *
- * WHY ORBITAL PLANE (not spherical radius):
- * At tactical zoom, planets with non-zero inclination (Venus 3.4°, Mercury 7°)
- * have visibly tilted orbital paths. A trajectory crossing r=0.723 AU might be
- * in the ecliptic plane while Venus's orbit is 3.4° above/below. The orbital
- * plane method ensures the crossing point is actually on the drawn orbital path.
+ * WHY RADIUS CROSSING (not orbital plane):
+ * The previous orbital plane method required trajectory to pierce the planet's
+ * tilted plane AT the correct radius - two independent conditions that rarely
+ * coincide. Radius crossing reliably detects when you reach a planet's orbital
+ * distance. The ghost shows where the planet ACTUALLY IS at that time.
+ *
+ * For navigation: "When I reach Venus's orbital radius, where will Venus be?"
+ * If the ghost is near your crossing point → good intercept opportunity.
+ * If the ghost is far away → Venus will be elsewhere when you arrive.
  *
  * ZOOM-ADAPTIVE OPTIMIZATION:
  * - At low zoom: Skip segments (check every Nth), fewer bisection iterations
@@ -617,9 +543,9 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
  * - Pre-filters bodies by radial range to skip impossible crossings
  *
  * EXAMPLE:
- * Ship trajectory crosses Venus's orbital plane at two points:
- *   1st crossing: trajectory pierces plane, r=0.72 AU → show ghost at Venus's position
- *   2nd crossing: trajectory pierces plane again, r=0.71 AU → show second ghost
+ * Ship trajectory crosses Venus's orbital radius (0.72 AU) twice:
+ *   1st crossing at day 45 → Venus is at (0.5, 0.5, 0.02) → show ghost there
+ *   2nd crossing at day 120 → Venus is at (-0.3, 0.65, -0.01) → show ghost there
  * As you adjust sails, crossing times shift, ghost positions update in real-time.
  *
  * @param {Array} trajectory - Array of {x, y, z, time} points (ship path from trajectory predictor)
@@ -705,7 +631,7 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
         const crossingTimes = new Set();
 
         // ====================================================================
-        // SCAN TRAJECTORY FOR ORBITAL PLANE CROSSINGS
+        // SCAN TRAJECTORY FOR ORBITAL RADIUS CROSSINGS
         // ====================================================================
         // Use segment skip for performance at low zoom
         for (let idx = 0; idx < trajectorySnapshot.length - 1; idx += segmentSkip) {
@@ -719,9 +645,8 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 continue;
             }
 
-            // Use orbital plane crossing detection for accurate alignment
-            // This ensures the ghost planet appears where trajectory visually
-            // crosses the drawn orbital path, accounting for orbital inclination
+            // Use radius crossing detection - reliably finds when trajectory
+            // crosses the planet's orbital distance from the Sun
             const crossing = findOrbitalPlaneCrossing(p1, p2, body.elements);
 
             if (crossing) {
@@ -758,6 +683,99 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
     const results = intersections
         .sort((a, b) => a.time - b.time)
         .slice(0, 20);
+
+    return results;
+}
+
+// ============================================================================
+// CLOSEST APPROACH DETECTION
+// ============================================================================
+
+/**
+ * Detect the closest approach between trajectory and each celestial body.
+ *
+ * Unlike orbital crossing detection (which shows where you cross orbital radii),
+ * this function answers the direct navigation question:
+ * "What's my minimum distance to each planet, and when does it occur?"
+ *
+ * This is more useful for actual intercepts because:
+ * - You might cross a planet's orbital radius while the planet is elsewhere
+ * - What matters is: will you actually get CLOSE to the planet?
+ *
+ * ALGORITHM:
+ * For each body, scan trajectory segments and track the minimum distance
+ * between the ship position and the planet's position (at each moment in time).
+ * Uses the calculateClosestApproach() function for accurate segment analysis.
+ *
+ * PERFORMANCE:
+ * O(segments × bodies) - typically ~720 × 8 = 5,760 calculations
+ * Each calculation is O(1), total time <5ms for typical trajectories.
+ *
+ * @param {Array} trajectory - Array of {x, y, z, time} points
+ * @param {Array} celestialBodies - Array of body objects with {name, elements}
+ * @param {number} currentTime - Current game Julian date
+ * @returns {Array} Closest approaches: [{bodyName, minDistance, time, shipPos, bodyPos}, ...]
+ */
+export function detectClosestApproaches(trajectory, celestialBodies, currentTime) {
+    // Guard: Empty or invalid trajectory
+    if (!trajectory || trajectory.length < 2) {
+        return [];
+    }
+
+    const results = [];
+
+    // Process each celestial body
+    for (const body of celestialBodies) {
+        // Skip bodies without orbital elements (Sun, etc.)
+        if (!body.elements) continue;
+
+        // Skip moons for now (would need coordinate transform)
+        if (body.parent && body.parent !== 'SUN') continue;
+
+        let minDistance = Infinity;
+        let closestApproach = null;
+
+        // Scan all trajectory segments
+        for (let i = 0; i < trajectory.length - 1; i++) {
+            const p1 = trajectory[i];
+            const p2 = trajectory[i + 1];
+
+            // Skip past segments
+            if (p2.time < currentTime) continue;
+
+            // Get body positions at segment endpoints
+            const bodyPos1 = getPosition(body.elements, p1.time);
+            const bodyPos2 = getPosition(body.elements, p2.time);
+
+            // Validate positions
+            if (!isFinite(bodyPos1.x) || !isFinite(bodyPos2.x)) continue;
+
+            // Calculate closest approach for this segment
+            const approach = calculateClosestApproach(p1, p2, bodyPos1, bodyPos2);
+
+            // Track the minimum
+            if (approach.distance < minDistance) {
+                minDistance = approach.distance;
+                closestApproach = {
+                    bodyName: body.name,
+                    minDistance: approach.distance,
+                    time: approach.time,
+                    shipPos: approach.trajectoryPos,
+                    bodyPos: approach.bodyPos,
+                    // Calculate time offset from now
+                    daysFromNow: approach.time - currentTime
+                };
+            }
+        }
+
+        // Only include if we found a valid approach
+        if (closestApproach && isFinite(closestApproach.minDistance)) {
+            results.push(closestApproach);
+        }
+    }
+
+    // Sort by minimum distance (closest first)
+    results.sort((a, b) => a.minDistance - b.minDistance);
 
     return results;
 }
