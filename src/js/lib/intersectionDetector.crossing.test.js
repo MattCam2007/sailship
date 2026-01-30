@@ -39,7 +39,8 @@ export function runAllTests() {
         testCrossingOrder(),
         testQuadraticVsLinearAccuracy(),
         testEccentricityAwareDetection(),
-        testRealWorldScenario()
+        testRealWorldScenario(),
+        testBisectionRefinementStability()
     ];
 
     results.forEach(r => {
@@ -940,6 +941,114 @@ function testRealWorldScenario() {
         assert(bodyNames.includes('VENUS'), 'Should detect Venus crossing');
 
         console.log('  ✅ PASS: Real-world scenario works correctly\n');
+        passed++;
+    } catch (e) {
+        console.log(`  ❌ FAIL: ${e.message}\n`);
+        failed++;
+    }
+
+    return { passed, failed };
+}
+
+/**
+ * Test 17: Bisection Refinement Stability
+ *
+ * This test verifies that the bisection refinement algorithm produces
+ * stable, consistent crossing times. The key issue this addresses is
+ * "ghost planet jumping" - when small trajectory changes cause the
+ * crossing time to jump discontinuously.
+ *
+ * The test creates multiple similar trajectories with small perturbations
+ * and verifies the crossing times don't jump by more than the perturbation
+ * would suggest.
+ */
+function testBisectionRefinementStability() {
+    console.log('📋 Test 17: Bisection Refinement Stability (Anti-Jumping)');
+
+    let passed = 0;
+    let failed = 0;
+
+    try {
+        // Create base trajectory: 0.9 AU → 1.1 AU over 60 days
+        // This crosses Earth orbit (1.0 AU) at approximately day 30
+        function createTrajectory(startRadius, endRadius, days, offsetAngle = 0) {
+            const trajectory = [];
+            const steps = 50;
+            for (let i = 0; i < steps; i++) {
+                const t = i / (steps - 1);
+                const r = startRadius + t * (endRadius - startRadius);
+                const angle = offsetAngle + t * 0.1;  // Slight curve
+                trajectory.push({
+                    x: r * Math.cos(angle),
+                    y: r * Math.sin(angle),
+                    z: 0,
+                    time: J2000 + t * days
+                });
+            }
+            return trajectory;
+        }
+
+        const bodies = [createMockBody('EARTH', 1.0)];
+
+        // Test: Small perturbations should produce proportionally small time changes
+        const baseTrajectory = createTrajectory(0.9, 1.1, 60, 0);
+        const baseIntersections = detectIntersections(baseTrajectory, bodies, J2000, null);
+
+        assert(baseIntersections.length === 1, 'Base trajectory should have 1 crossing');
+
+        const baseCrossingTime = baseIntersections[0].time;
+        console.log(`  Base crossing time: ${(baseCrossingTime - J2000).toFixed(4)} days`);
+
+        // Create perturbed trajectories (small changes in start/end radius)
+        const perturbations = [
+            { startR: 0.901, endR: 1.1, name: '+0.001 AU start' },
+            { startR: 0.899, endR: 1.1, name: '-0.001 AU start' },
+            { startR: 0.9, endR: 1.101, name: '+0.001 AU end' },
+            { startR: 0.9, endR: 1.099, name: '-0.001 AU end' },
+        ];
+
+        let maxTimeDelta = 0;
+        const results = [];
+
+        for (const perturb of perturbations) {
+            const trajPerturbed = createTrajectory(perturb.startR, perturb.endR, 60, 0);
+            const intersections = detectIntersections(trajPerturbed, bodies, J2000, null);
+
+            if (intersections.length === 1) {
+                const crossingTime = intersections[0].time;
+                const timeDelta = Math.abs(crossingTime - baseCrossingTime);
+                maxTimeDelta = Math.max(maxTimeDelta, timeDelta);
+                results.push({
+                    name: perturb.name,
+                    time: crossingTime - J2000,
+                    delta: timeDelta
+                });
+            }
+        }
+
+        console.log(`  Perturbation test results:`);
+        results.forEach(r => {
+            console.log(`    ${r.name}: ${r.time.toFixed(4)} days (Δ = ${(r.delta * 24 * 60).toFixed(2)} min)`);
+        });
+
+        // The maximum time delta should be reasonable (< 1 hour for 0.001 AU perturbation)
+        // This is approximately what we'd expect for a trajectory covering 0.2 AU over 60 days
+        // Velocity ≈ 0.2 AU / 60 days = 0.0033 AU/day
+        // Time for 0.001 AU ≈ 0.001 / 0.0033 ≈ 0.3 days ≈ 7 hours
+        // With refinement, we should get much better than this
+
+        console.log(`  Maximum time variation: ${(maxTimeDelta * 24 * 60).toFixed(2)} minutes`);
+        console.log(`  Expected: < 30 minutes for 0.001 AU perturbations`);
+
+        // With 10 iterations of bisection refinement (2^10 = 1024 subdivision),
+        // we expect time precision to be much better than segment size
+        assert(
+            maxTimeDelta < 0.02,  // < 0.02 days = ~29 minutes
+            `Time variation too large: ${(maxTimeDelta * 24 * 60).toFixed(2)} minutes`
+        );
+
+        console.log('  ✅ PASS: Bisection refinement produces stable crossing times\n');
+        console.log('  ℹ️  This stability prevents ghost planets from "jumping"\n');
         passed++;
     } catch (e) {
         console.log(`  ❌ FAIL: ${e.message}\n`);
