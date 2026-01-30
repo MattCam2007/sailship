@@ -276,24 +276,32 @@ The predicted trajectory duration can be adjusted from 30 days to 2 years (730 d
 
 ## Console Tests
 
-Run test suites in browser console:
+Run test suites in browser console. The path depends on your environment:
+- **localhost:8080** (via `cd src && python3 -m http.server 8080`): Use `/js/lib/...`
+- **GitHub Pages** (mattcam2007.github.io): Use `/src/js/lib/...`
 
 ```javascript
+// First, determine the correct base path for your environment
+const BASE = window.location.hostname.includes('github.io') ? '/src' : '';
+
 // Trajectory predictor tests
-import('/js/lib/trajectory-predictor.test.js').then(m => m.runAllTests())
+import(`${BASE}/js/lib/trajectory-predictor.test.js`).then(m => m.runAllTests())
+
+// Intersection detector tests - CROSSING DETECTION (primary algorithm)
+import(`${BASE}/js/lib/intersectionDetector.crossing.test.js`).then(m => m.runAllTests())
+
+// Intersection detector edge cases (flickering bug tests)
+import(`${BASE}/js/lib/intersectionDetector.edge-cases.test.js`).then(m => m.runAllTests())
 
 // Intersection detector tests - LEGACY (old closest approach algorithm)
-import('/js/lib/intersectionDetector.test.js').then(m => m.runAllTests())
-
-// Intersection detector tests - CROSSING DETECTION (new algorithm, use this one)
-import('/js/lib/intersectionDetector.crossing.test.js').then(m => m.runAllTests())
+import(`${BASE}/js/lib/intersectionDetector.test.js`).then(m => m.runAllTests())
 
 // Orbital mechanics tests
-import('/js/lib/orbital.test.js').then(m => m.runAllTests())
+import(`${BASE}/js/lib/orbital.test.js`).then(m => m.runAllTests())
 
 // Orbital maneuvers tests (thrust application)
-import('/js/lib/orbital-maneuvers.test.js').then(m => m.runAllTests())
+import(`${BASE}/js/lib/orbital-maneuvers.test.js`).then(m => m.runAllTests())
 
 // Starfield tests (star catalog, precession, coordinate transforms)
-import('/js/lib/starfield.test.js').then(m => m.runAllTests())
+import(`${BASE}/js/lib/starfield.test.js`).then(m => m.runAllTests())
 ```
