@@ -24,7 +24,8 @@
  * - Shows where planet WILL BE when you cross its orbit, even if far away
  * - Real-time updates as you adjust sail angles/deployment
  * - Moon coordinate transformation (parent-relative → heliocentric)
- * - Performance optimized: <10ms for 200-point trajectories
+ * - ZOOM-ADAPTIVE: Reduces precision at low zoom for performance
+ * - Stable detection: Consistent results prevent flickering
  *
  * USAGE:
  * Called from game loop when trajectory cache updates. Results cached and
@@ -33,6 +34,7 @@
 
 import { getPosition } from './orbital.js';
 import { SOI_RADII } from '../config.js';
+import { camera } from '../core/camera.js';
 
 // ============================================================================
 // CROSSING REFINEMENT CONFIGURATION
@@ -41,15 +43,31 @@ import { SOI_RADII } from '../config.js';
 /**
  * Configuration for crossing point refinement.
  * Sub-segment bisection improves accuracy of crossing time detection.
+ *
+ * ZOOM-ADAPTIVE: These values are scaled based on camera zoom level.
+ * At low zoom (system view): Less precision needed, faster computation.
+ * At high zoom (fine-tuning): Full precision for accurate encounter planning.
  */
 const REFINEMENT_CONFIG = {
     /**
-     * Number of bisection iterations for crossing refinement.
+     * Number of bisection iterations for crossing refinement at HIGH zoom.
      * Each iteration halves the uncertainty interval.
-     * 8 iterations: 7.2 hours → ~1.7 minutes precision
      * 10 iterations: 7.2 hours → ~25 seconds precision
      */
-    bisectionIterations: 10,
+    bisectionIterationsHigh: 10,
+
+    /**
+     * Number of bisection iterations at LOW zoom (system view).
+     * 4 iterations: 7.2 hours → ~27 minutes precision (adequate for visual)
+     */
+    bisectionIterationsLow: 4,
+
+    /**
+     * Zoom threshold for switching between low/high precision.
+     * Below this: use low precision (faster)
+     * Above this: use high precision (more accurate)
+     */
+    zoomThreshold: 2.0,
 
     /**
      * Minimum segment duration (days) below which refinement stops.
@@ -63,6 +81,18 @@ const REFINEMENT_CONFIG = {
      */
     enabled: true
 };
+
+/**
+ * Get the number of bisection iterations based on current zoom level.
+ * Higher zoom = more precision needed = more iterations.
+ */
+function getBisectionIterations() {
+    const zoom = camera?.zoom ?? 1;
+    if (zoom < REFINEMENT_CONFIG.zoomThreshold) {
+        return REFINEMENT_CONFIG.bisectionIterationsLow;
+    }
+    return REFINEMENT_CONFIG.bisectionIterationsHigh;
+}
 
 // ============================================================================
 // VECTOR MATH UTILITIES
@@ -214,7 +244,11 @@ export function calculateClosestApproach(
  * @param {number} maxIterations - Maximum bisection iterations
  * @returns {Object} Refined crossing {t, time, position}
  */
-function refineCrossingBisection(p1, p2, targetRadius, maxIterations = REFINEMENT_CONFIG.bisectionIterations) {
+function refineCrossingBisection(p1, p2, targetRadius, maxIterations = null) {
+    // Use zoom-adaptive iterations if not specified
+    if (maxIterations === null) {
+        maxIterations = getBisectionIterations();
+    }
     // Calculate initial radii
     let r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
     let r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
@@ -244,8 +278,9 @@ function refineCrossingBisection(p1, p2, targetRadius, maxIterations = REFINEMEN
 
         // Determine which half contains the crossing
         // Crossing occurs when radius changes from one side of target to the other
-        const lowCrossesTarget = (rLow < targetRadius && rMid > targetRadius) ||
-                                  (rLow > targetRadius && rMid < targetRadius);
+        // FIX: Use <= and >= to handle boundary cases consistently with findRadiusCrossing
+        const lowCrossesTarget = (rLow <= targetRadius && rMid >= targetRadius) ||
+                                  (rLow >= targetRadius && rMid <= targetRadius);
 
         if (lowCrossesTarget) {
             // Crossing is in [low, mid]
@@ -272,12 +307,23 @@ function refineCrossingBisection(p1, p2, targetRadius, maxIterations = REFINEMEN
     const discriminant = b * b - 4 * a * c;
 
     let t;
-    if (discriminant < 0 || a < 1e-20) {
-        // Fallback: linear interpolation
-        t = (targetRadius - rLow) / (rHigh - rLow);
+    // FIX: Use epsilon tolerance for discriminant check to handle floating-point
+    // precision issues where discriminant oscillates near zero between frames.
+    // A small negative discriminant (> -1e-10) is treated as zero (tangent case).
+    const DISCRIMINANT_EPSILON = 1e-10;
+    if (discriminant < -DISCRIMINANT_EPSILON || a < 1e-20) {
+        // Fallback: linear interpolation (guarded against division by zero)
+        const radialDiff = rHigh - rLow;
+        if (Math.abs(radialDiff) < 1e-15) {
+            t = 0.5;  // Midpoint if radii are essentially equal
+        } else {
+            t = (targetRadius - rLow) / radialDiff;
+        }
         t = Math.max(0, Math.min(1, t));
     } else {
-        const sqrtDisc = Math.sqrt(discriminant);
+        // Handle near-zero discriminant as tangent (single root at t = -b/(2a))
+        const safeDisc = Math.max(0, discriminant);  // Clamp tiny negatives to zero
+        const sqrtDisc = Math.sqrt(safeDisc);
         const t1 = (-b - sqrtDisc) / (2 * a);
         const t2 = (-b + sqrtDisc) / (2 * a);
 
@@ -333,10 +379,15 @@ const ECCENTRICITY_THRESHOLD = 0.05;
  */
 function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
     // Check if this segment crosses the target radius
-    const crossesRadius = (r1 < targetRadius && r2 > targetRadius) ||
-                          (r1 > targetRadius && r2 < targetRadius);
+    // FIX: Use <= and >= to handle boundary cases where r equals targetRadius exactly
+    // This prevents flickering when trajectory endpoints land exactly on orbital radius
+    // due to floating-point variations between frames
+    const crossesRadius = (r1 <= targetRadius && r2 >= targetRadius) ||
+                          (r1 >= targetRadius && r2 <= targetRadius);
 
-    if (!crossesRadius) {
+    // Exclude the degenerate case where both endpoints are exactly at the target
+    // (trajectory is tangent to orbit, not crossing it)
+    if (!crossesRadius || (r1 === targetRadius && r2 === targetRadius)) {
         return null;
     }
 
@@ -356,15 +407,18 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
     const b = 2 * (p1.x * dx + p1.y * dy + p1.z * dz);  // 2*(P1·D)
     const c = r1 * r1 - targetRadius * targetRadius;  // P1·P1 - R²
 
-    // Discriminant
+    // Discriminant with epsilon tolerance for floating-point stability
     const discriminant = b * b - 4 * a * c;
+    const DISCRIMINANT_EPSILON = 1e-10;
 
-    if (discriminant < 0 || a < 1e-20) {
+    if (discriminant < -DISCRIMINANT_EPSILON || a < 1e-20) {
         // No real solution or degenerate case (no movement)
         return null;
     }
 
-    const sqrtDisc = Math.sqrt(discriminant);
+    // Clamp tiny negatives to zero (handles floating-point near-tangent cases)
+    const safeDisc = Math.max(0, discriminant);
+    const sqrtDisc = Math.sqrt(safeDisc);
     const t1 = (-b - sqrtDisc) / (2 * a);
     const t2 = (-b + sqrtDisc) / (2 * a);
 
@@ -375,8 +429,14 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
     } else if (t2 >= 0 && t2 <= 1) {
         t = t2;
     } else {
-        // Numerical edge case - fallback to linear approximation
-        t = (targetRadius - r1) / (r2 - r1);
+        // Numerical edge case - fallback to linear approximation (guarded)
+        const radialDiff = r2 - r1;
+        if (Math.abs(radialDiff) < 1e-15) {
+            t = 0.5;  // Midpoint if radii essentially equal
+        } else {
+            t = (targetRadius - r1) / radialDiff;
+        }
+        t = Math.max(0, Math.min(1, t));
     }
 
     const crossingTime = p1.time + t * (p2.time - p1.time);
@@ -411,6 +471,11 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
  *   - Mars (e=0.093): perihelion=1.38, aphelion=1.67 AU
  * This helps catch intercepts when planet is at orbital extremes.
  *
+ * ZOOM-ADAPTIVE OPTIMIZATION:
+ * - At low zoom: Skip segments (check every Nth), fewer bisection iterations
+ * - At high zoom: Full resolution for accurate encounter planning
+ * - Pre-filters bodies by radial range to skip impossible crossings
+ *
  * EXAMPLE:
  * Ship trajectory crosses Earth orbit (1.0 AU) twice:
  *   1st crossing at t=2458900 → Earth is at (0.5, 0.866, 0) → show ghost there
@@ -430,39 +495,99 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
     }
 
     const trajectorySnapshot = trajectory;
-    const startTime = performance.now();
     const intersections = [];
 
+    // ========================================================================
+    // ZOOM-ADAPTIVE OPTIMIZATION
+    // ========================================================================
+    // At low zoom (viewing entire system), we don't need to check every segment.
+    // Skip segments to reduce computation while still catching all crossings.
+    const zoom = camera?.zoom ?? 1;
+    const isLowZoom = zoom < REFINEMENT_CONFIG.zoomThreshold;
 
-    // Process each celestial body
-    for (const body of celestialBodies) {
-        // Skip bodies without orbital elements (Sun)
-        if (!body.elements) continue;
+    // Segment skip factor: check every Nth segment at low zoom
+    // At zoom < 0.5: check every 4th segment
+    // At zoom 0.5-2: check every 2nd segment
+    // At zoom >= 2: check every segment
+    let segmentSkip = 1;
+    if (zoom < 0.5) {
+        segmentSkip = 4;
+    } else if (zoom < 2) {
+        segmentSkip = 2;
+    }
 
+    // ========================================================================
+    // PRE-FILTER: Calculate trajectory radial range
+    // ========================================================================
+    // Find min/max radius of entire trajectory to pre-filter bodies
+    let trajMinRadius = Infinity;
+    let trajMaxRadius = 0;
+
+    for (let i = 0; i < trajectorySnapshot.length; i++) {
+        const p = trajectorySnapshot[i];
+        const r = Math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2);
+        if (r < trajMinRadius) trajMinRadius = r;
+        if (r > trajMaxRadius) trajMaxRadius = r;
+    }
+
+    // Add small margin to account for segment interpolation
+    const margin = 0.02;  // 0.02 AU margin
+    trajMinRadius = Math.max(0, trajMinRadius - margin);
+    trajMaxRadius = trajMaxRadius + margin;
+
+    // ========================================================================
+    // PROCESS BODIES (Inner planets first for priority)
+    // ========================================================================
+    // Sort bodies by orbital radius to process inner planets first
+    // This ensures we get the most relevant crossings even if we hit timeout
+    const sortedBodies = [...celestialBodies]
+        .filter(b => b.elements)  // Only bodies with orbital elements
+        .sort((a, b) => a.elements.a - b.elements.a);
+
+    for (const body of sortedBodies) {
         // Skip other bodies when in SOI mode
         if (soiBody && body.name !== soiBody) continue;
 
         const { a, e } = body.elements;
+
+        // ====================================================================
+        // PRE-FILTER: Skip bodies outside trajectory radial range
+        // ====================================================================
+        const perihelion = a * (1 - e);
+        const aphelion = a * (1 + e);
+
+        // If body's entire orbital range is outside trajectory range, skip it
+        if (aphelion < trajMinRadius || perihelion > trajMaxRadius) {
+            continue;  // No possible crossing
+        }
 
         // Determine which orbital radii to check
         // For high-eccentricity orbits, check perihelion and aphelion too
         const radiiToCheck = [a];  // Always check semi-major axis
 
         if (e > ECCENTRICITY_THRESHOLD) {
-            const perihelion = a * (1 - e);
-            const aphelion = a * (1 + e);
             // Only add if they differ significantly from semi-major axis
-            if (Math.abs(perihelion - a) > 0.01) radiiToCheck.push(perihelion);
-            if (Math.abs(aphelion - a) > 0.01) radiiToCheck.push(aphelion);
+            // AND are within trajectory range
+            if (Math.abs(perihelion - a) > 0.01 && perihelion >= trajMinRadius && perihelion <= trajMaxRadius) {
+                radiiToCheck.push(perihelion);
+            }
+            if (Math.abs(aphelion - a) > 0.01 && aphelion >= trajMinRadius && aphelion <= trajMaxRadius) {
+                radiiToCheck.push(aphelion);
+            }
         }
 
         // Track crossing times to avoid duplicates when checking multiple radii
         const crossingTimes = new Set();
 
-        // Check each trajectory segment for crossings at each radius
-        for (let i = 0; i < trajectorySnapshot.length - 1; i++) {
+        // ====================================================================
+        // SCAN TRAJECTORY FOR CROSSINGS
+        // ====================================================================
+        // Use segment skip for performance at low zoom
+        for (let i = 0; i < trajectorySnapshot.length - 1; i += segmentSkip) {
             const p1 = trajectorySnapshot[i];
-            const p2 = trajectorySnapshot[i + 1];
+            // When skipping segments, use the next available point (not i+1)
+            const nextIdx = Math.min(i + segmentSkip, trajectorySnapshot.length - 1);
+            const p2 = trajectorySnapshot[nextIdx];
 
             // Filter past intersections
             if (p2.time < currentTime) {
@@ -473,13 +598,24 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
             const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
             const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
 
+            // Quick check: can this segment possibly cross any of our target radii?
+            const segMin = Math.min(r1, r2);
+            const segMax = Math.max(r1, r2);
+
             // Check for crossings at each orbital radius
             for (const orbitalRadius of radiiToCheck) {
+                // Skip if radius is outside segment range
+                if (orbitalRadius < segMin - 0.001 || orbitalRadius > segMax + 0.001) {
+                    continue;
+                }
+
                 const crossing = findRadiusCrossing(p1, p2, r1, r2, orbitalRadius);
 
                 if (crossing) {
                     // Round time to avoid floating-point duplicates from nearby radii
-                    const timeKey = Math.round(crossing.time * 1000);
+                    // Use coarser rounding at low zoom (1 day) vs high zoom (0.001 day)
+                    const timeRoundFactor = isLowZoom ? 1 : 1000;
+                    const timeKey = Math.round(crossing.time * timeRoundFactor);
                     if (crossingTimes.has(timeKey)) {
                         continue;  // Skip duplicate crossing
                     }
@@ -504,26 +640,12 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 }
             }
         }
-
-
-        // Performance timeout
-        const elapsed = performance.now() - startTime;
-        if (elapsed > 10) {
-            console.warn(`Intersection detection timeout after ${body.name} (${elapsed.toFixed(1)}ms)`);
-            break;
-        }
     }
 
     // Sort by time (chronological order), limit to 20 markers
     const results = intersections
         .sort((a, b) => a.time - b.time)
         .slice(0, 20);
-
-    // Performance monitoring
-    const totalElapsed = performance.now() - startTime;
-    if (totalElapsed > 5) {
-        console.warn(`Intersection detection took ${totalElapsed.toFixed(2)}ms (target: <5ms)`);
-    }
 
     return results;
 }

@@ -102,10 +102,15 @@ function updatePositions() {
     // - If trajectory hash changes (sail settings, time, etc.) → recalculate
     // - If cache timestamp > 500ms old → recalculate
 
-    const trajectoryHash = getTrajectoryHash();
+    let trajectoryHash = getTrajectoryHash();
 
     // Check if intersection cache needs update
-    if (trajectoryHash && !isIntersectionCacheValid(trajectoryHash)) {
+    // FIX: Also recalculate when trajectoryHash is null (trajectory cache expired)
+    // This prevents the "hash null window" where intersection detection skips entirely
+    // and old ghost planet positions persist
+    const needsUpdate = !trajectoryHash || !isIntersectionCacheValid(trajectoryHash);
+
+    if (needsUpdate) {
         const player = getPlayerShip();
         if (player && player.orbitalElements && player.sail) {
             const soiBody = player.soiState?.isInSOI ? player.soiState.currentBody : null;
@@ -131,7 +136,10 @@ function updatePositions() {
                 extremeFlybyState: player.extremeFlybyState
             });
 
-            if (highResTrajectory && highResTrajectory.length > 1) {
+            // After predictTrajectory, the cache is updated - get fresh hash
+            trajectoryHash = getTrajectoryHash();
+
+            if (highResTrajectory && highResTrajectory.length > 1 && trajectoryHash) {
                 // Detect orbital crossings using high-resolution trajectory
                 const intersections = detectIntersections(
                     highResTrajectory,

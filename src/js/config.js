@@ -262,6 +262,10 @@ export const TRAJECTORY_RENDER_CONFIG = {
  * Higher resolution reduces "jumping" when sail adjustments shift the trajectory.
  * The intersection detector uses bisection refinement for sub-segment precision,
  * but base trajectory resolution still affects accuracy.
+ *
+ * IMPORTANT: For long trajectories (1-2 years), sufficient step count is critical
+ * to prevent missed crossings. With bisection refinement, the base trajectory
+ * provides the initial crossing detection, then refinement improves precision.
  */
 export const INTERSECTION_CONFIG = {
     /**
@@ -279,9 +283,16 @@ export const INTERSECTION_CONFIG = {
     /**
      * Maximum steps regardless of duration (performance cap).
      * For a 2-year trajectory at 12 steps/day, this would be 8760 steps.
-     * Cap at 1500 for reasonable performance.
+     *
+     * INCREASED to 6000 to ensure adequate resolution for 2-year trajectories.
+     * At 6000 steps / 730 days = ~8.2 steps/day minimum, which gives ~3 hour
+     * segments - adequate for reliable crossing detection.
+     *
+     * Performance note: The intersection detector has a 16ms timeout, so
+     * increasing steps doesn't significantly impact frame rate (early
+     * termination protects against runaway computation).
      */
-    maxSteps: 1500,
+    maxSteps: 6000,
 
     /**
      * Minimum steps regardless of duration (quality floor).

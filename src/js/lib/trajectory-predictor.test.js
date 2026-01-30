@@ -10,7 +10,7 @@
 
 import { predictTrajectory, clearTrajectoryCache } from './trajectory-predictor.js';
 import { getPosition } from './orbital.js';
-import { MU_SUN } from '../config.js';
+import { MU_SUN } from './orbital.js';
 
 // Test utilities
 function assert(condition, message) {
