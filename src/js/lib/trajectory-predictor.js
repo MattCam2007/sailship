@@ -18,10 +18,17 @@ import { getBodyByName } from '../data/celestialBodies.js';
 const DEFAULT_DURATION_DAYS = 60;
 const DEFAULT_STEPS = 200;
 const DEFAULT_MASS_KG = 10000;
-const CACHE_TTL_MS = 500;  // Increased from 100ms to 500ms for better performance
 const MIN_THRUST_THRESHOLD = 1e-20;
 const MAX_HELIOCENTRIC_RADIUS = 10;  // Stop prediction at 10 AU (beyond Jupiter)
 const MIN_HELIOCENTRIC_RADIUS = 0.01;  // Stop prediction at 0.01 AU (sun collision, ~1.5M km)
+
+// Cache TTL configuration
+// Uses adaptive TTL: shorter when trajectory is changing, longer when stable
+const CACHE_CONFIG = {
+    baseTTL: 500,           // Base TTL in ms (when trajectory is changing)
+    stableTTL: 2000,        // Extended TTL when trajectory is stable
+    stableThreshold: 3      // Number of frames with same hash to consider "stable"
+};
 
 // Use the same threshold as shipPhysics for consistency
 const EXTREME_ECCENTRICITY_THRESHOLD = PHYSICS_CONFIG?.extremeEccentricityThreshold || 50;
@@ -30,7 +37,8 @@ const EXTREME_ECCENTRICITY_THRESHOLD = PHYSICS_CONFIG?.extremeEccentricityThresh
 let trajectoryCache = {
     trajectory: null,
     lastUpdate: 0,
-    inputHash: null
+    inputHash: null,
+    stableCount: 0  // Tracks how many consecutive frames had the same hash
 };
 
 /**
@@ -116,11 +124,19 @@ export function predictTrajectory(params) {
     const now = Date.now();
     const hash = hashInputs(params);
 
+    // Adaptive TTL: use longer TTL when trajectory is stable
+    const isStable = trajectoryCache.stableCount >= CACHE_CONFIG.stableThreshold;
+    const ttl = isStable ? CACHE_CONFIG.stableTTL : CACHE_CONFIG.baseTTL;
+
     if (trajectoryCache.trajectory &&
         trajectoryCache.inputHash === hash &&
-        (now - trajectoryCache.lastUpdate) < CACHE_TTL_MS) {
+        (now - trajectoryCache.lastUpdate) < ttl) {
         return trajectoryCache.trajectory;
     }
+
+    // Track stability for adaptive TTL
+    const hashMatches = trajectoryCache.inputHash === hash;
+    const newStableCount = hashMatches ? trajectoryCache.stableCount + 1 : 0;
 
     // Propagate trajectory
     const trajectory = [];
@@ -336,11 +352,12 @@ export function predictTrajectory(params) {
         }
     }
 
-    // Update cache
+    // Update cache with stability tracking
     trajectoryCache = {
         trajectory,
         lastUpdate: now,
-        inputHash: hash
+        inputHash: hash,
+        stableCount: newStableCount
     };
 
     return trajectory;
@@ -357,7 +374,8 @@ export function clearTrajectoryCache() {
     trajectoryCache = {
         trajectory: null,
         lastUpdate: 0,
-        inputHash: null
+        inputHash: null,
+        stableCount: 0
     };
 }
 
@@ -367,8 +385,12 @@ export function clearTrajectoryCache() {
  */
 export function getCachedTrajectory() {
     const now = Date.now();
+    // Use adaptive TTL
+    const isStable = trajectoryCache.stableCount >= CACHE_CONFIG.stableThreshold;
+    const ttl = isStable ? CACHE_CONFIG.stableTTL : CACHE_CONFIG.baseTTL;
+
     if (trajectoryCache.trajectory &&
-        (now - trajectoryCache.lastUpdate) < CACHE_TTL_MS) {
+        (now - trajectoryCache.lastUpdate) < ttl) {
         return trajectoryCache.trajectory;
     }
     return null;
@@ -382,8 +404,12 @@ export function getCachedTrajectory() {
  */
 export function getTrajectoryHash() {
     const now = Date.now();
+    // Use adaptive TTL
+    const isStable = trajectoryCache.stableCount >= CACHE_CONFIG.stableThreshold;
+    const ttl = isStable ? CACHE_CONFIG.stableTTL : CACHE_CONFIG.baseTTL;
+
     if (trajectoryCache.inputHash &&
-        (now - trajectoryCache.lastUpdate) < CACHE_TTL_MS) {
+        (now - trajectoryCache.lastUpdate) < ttl) {
         return trajectoryCache.inputHash;
     }
     return null;

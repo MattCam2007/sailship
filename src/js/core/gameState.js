@@ -268,17 +268,32 @@ export function getTrajectoryDuration() {
  * CRITICAL FIX (F1): Uses trajectory hash directly from trajectory predictor
  * to ensure cache invalidates when trajectory shape changes (not just length)
  *
+ * STABILITY FIX: Uses a longer TTL when trajectory hash hasn't changed,
+ * reducing unnecessary recalculations that can cause flickering.
+ *
  * Cache structure:
  * {
  *   trajectoryHash: string (from trajectory-predictor),
  *   results: Array of intersection events,
- *   timestamp: performance.now() when cached
+ *   timestamp: performance.now() when cached,
+ *   stableCount: number of consecutive frames with same hash
  * }
  */
 let intersectionCache = {
     trajectoryHash: null,
     results: [],
-    timestamp: 0
+    timestamp: 0,
+    stableCount: 0  // Tracks how many times we've seen the same hash
+};
+
+/**
+ * Cache TTL configuration
+ * Longer TTL for stable trajectories reduces flickering and improves performance
+ */
+const INTERSECTION_CACHE_CONFIG = {
+    baseTTL: 500,           // Base TTL in ms (when trajectory is changing)
+    stableTTL: 2000,        // Extended TTL when trajectory is stable
+    stableThreshold: 3      // Number of frames with same hash to consider "stable"
 };
 
 /**
@@ -295,10 +310,15 @@ export function getIntersectionCache() {
  * @param {Array} results - Array of intersection events
  */
 export function setIntersectionCache(trajectoryHash, results) {
+    // Track stability: increment count if hash matches, reset if different
+    const hashMatches = intersectionCache.trajectoryHash === trajectoryHash;
+    const newStableCount = hashMatches ? intersectionCache.stableCount + 1 : 0;
+
     intersectionCache = {
         trajectoryHash,
         results,
-        timestamp: performance.now()
+        timestamp: performance.now(),
+        stableCount: newStableCount
     };
 }
 
@@ -310,7 +330,8 @@ export function clearIntersectionCache() {
     intersectionCache = {
         trajectoryHash: null,
         results: [],
-        timestamp: 0
+        timestamp: 0,
+        stableCount: 0
     };
 }
 
@@ -320,6 +341,9 @@ export function clearIntersectionCache() {
  * FIX (F1): Validates against trajectory predictor's hash
  * This prevents stale intersection data when trajectory shape changes
  *
+ * STABILITY FIX: Uses longer TTL when trajectory is stable (same hash for
+ * multiple frames). This prevents flickering from unnecessary recalculations.
+ *
  * @param {string} currentTrajectoryHash - Current hash from trajectory predictor
  * @returns {boolean} True if cache is valid and fresh
  */
@@ -327,9 +351,12 @@ export function isIntersectionCacheValid(currentTrajectoryHash) {
     if (!intersectionCache.trajectoryHash) return false;
     if (intersectionCache.trajectoryHash !== currentTrajectoryHash) return false;
 
-    // 500ms TTL (same as trajectory predictor cache)
+    // Adaptive TTL: longer when trajectory is stable
+    const isStable = intersectionCache.stableCount >= INTERSECTION_CACHE_CONFIG.stableThreshold;
+    const ttl = isStable ? INTERSECTION_CACHE_CONFIG.stableTTL : INTERSECTION_CACHE_CONFIG.baseTTL;
+
     const age = performance.now() - intersectionCache.timestamp;
-    return age < 500;
+    return age < ttl;
 }
 
 // ============================================================================
