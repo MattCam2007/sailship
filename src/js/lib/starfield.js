@@ -199,10 +199,8 @@ function equatorialToEcliptic(ra, dec, radius = 1000) {
 /**
  * Project star to screen coordinates
  *
- * Stars are at "infinity" so they don't translate with camera position.
- * Only camera rotation is applied to create the fixed background effect.
- *
- * This is different from project3D() which offsets by camera.target.
+ * Stars move with camera panning and tilting, appearing as part of the
+ * solar system scene rather than a fixed backdrop.
  *
  * @param {number} x - Ecliptic X coordinate (AU)
  * @param {number} y - Ecliptic Y coordinate (AU)
@@ -213,25 +211,28 @@ function equatorialToEcliptic(ra, dec, radius = 1000) {
  * @returns {{x: number, y: number}} Screen coordinates
  */
 function projectStarToScreen(x, y, z, centerX, centerY) {
-    // Stars are at infinity - only direction matters
-    // Apply exact same rotation as project3D, but no camera.target offset
+    // Apply camera target offset so stars move with panning
+    // Use a small fraction of camera.target to create subtle parallax
+    // (stars are far away, so they move less than nearby objects)
+    const parallaxFactor = 0.0001;  // Very small - stars barely shift with pan
+    x -= camera.target.x * parallaxFactor;
+    y -= camera.target.y * parallaxFactor;
+    z -= camera.target.z * parallaxFactor;
 
-    // Rotate around Z axis (same as project3D line 91-94)
+    // Rotate around Z axis (same as project3D)
     const cosZ = Math.cos(camera.angleZ);
     const sinZ = Math.sin(camera.angleZ);
     const x1 = x * cosZ - y * sinZ;
     const y1 = x * sinZ + y * cosZ;
 
-    // Rotate around X axis / tilt view (same as project3D line 97-100)
+    // Rotate around X axis / tilt view (same as project3D)
     const cosX = Math.cos(camera.angleX);
     const sinX = Math.sin(camera.angleX);
     const y2 = y1 * cosX - z * sinX;
     const z2 = y1 * sinX + z * cosX;
 
-    // Project to screen (same pattern as project3D line 104-105)
-    // But use fixed scale instead of variable scale * zoom
+    // Project to screen
     // Scale large enough so stars extend well beyond canvas edges
-    // This ensures we see stars in all directions (full sky coverage)
     const starScale = Math.max(centerX, centerY) * 2.0;
 
     return {
