@@ -284,15 +284,15 @@ export const INTERSECTION_CONFIG = {
      * Maximum steps regardless of duration (performance cap).
      * For a 2-year trajectory at 12 steps/day, this would be 8760 steps.
      *
-     * INCREASED from 1500 to 3000 to ensure adequate resolution for 2-year
-     * trajectories. At 3000 steps / 730 days = ~4 steps/day minimum, which
-     * gives 6-hour segments - still adequate for crossing detection when
-     * combined with bisection refinement.
+     * INCREASED to 6000 to ensure adequate resolution for 2-year trajectories.
+     * At 6000 steps / 730 days = ~8.2 steps/day minimum, which gives ~3 hour
+     * segments - adequate for reliable crossing detection.
      *
-     * Performance note: The intersection detector has a 10ms timeout, so
-     * increasing steps doesn't significantly impact frame rate.
+     * Performance note: The intersection detector has a 16ms timeout, so
+     * increasing steps doesn't significantly impact frame rate (early
+     * termination protects against runaway computation).
      */
-    maxSteps: 3000,
+    maxSteps: 6000,
 
     /**
      * Minimum steps regardless of duration (quality floor).

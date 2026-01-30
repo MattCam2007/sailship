@@ -546,10 +546,10 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
         .sort((a, b) => a.time - b.time)
         .slice(0, 20);
 
-    // Performance monitoring
+    // Performance monitoring (only warn if significantly over the 16ms timeout)
     const totalElapsed = performance.now() - startTime;
-    if (totalElapsed > 5) {
-        console.warn(`Intersection detection took ${totalElapsed.toFixed(2)}ms (target: <5ms)`);
+    if (totalElapsed > 20) {
+        console.warn(`Intersection detection took ${totalElapsed.toFixed(2)}ms (target: <16ms)`);
     }
 
     return results;

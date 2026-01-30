@@ -7,7 +7,7 @@
 
 import { calculateClosestApproach, detectIntersections } from './intersectionDetector.js';
 import { getPosition } from './orbital.js';
-import { J2000, MU_SUN } from '../config.js';
+import { J2000, MU_SUN } from './orbital.js';
 
 /**
  * Run all intersection detector tests

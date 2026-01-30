@@ -15,7 +15,7 @@
  */
 
 import { detectIntersections } from './intersectionDetector.js';
-import { J2000, MU_SUN } from '../config.js';
+import { J2000, MU_SUN } from './orbital.js';
 
 // Test configuration
 const EARTH_ORBIT = 1.0;  // AU
