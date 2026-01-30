@@ -35,21 +35,39 @@ let trajectoryCache = {
 
 /**
  * Generate a hash of inputs for cache invalidation.
+ *
+ * IMPORTANT: Orbital elements are rounded to prevent cache thrashing from
+ * tiny floating-point variations that occur every frame due to thrust application.
+ * Without rounding, the hash would change every frame, defeating the cache.
+ *
+ * Precision levels:
+ * - Semi-major axis (a): 6 decimals (~0.15 km at 1 AU) - enough for orbit shape
+ * - Eccentricity (e): 6 decimals - enough for orbit shape
+ * - Angles (i, Ω, ω, M0): 4 decimals (~0.0001 rad ≈ 0.006°) - visual precision
+ * - Sail angle/pitch: 2 decimals (0.01 rad ≈ 0.6°) - slider precision
+ * - Deployment: Integer percent - slider precision
  */
 function hashInputs(params) {
     const { orbitalElements, sail, mass, startTime, duration, steps, soiState, extremeFlybyState } = params;
+
+    // Round orbital elements to prevent floating-point drift from invalidating cache
+    // These small variations (<1e-10) occur every frame due to thrust calculations
+    const roundedElements = {
+        a: Math.round(orbitalElements.a * 1e6) / 1e6,      // 6 decimal places
+        e: Math.round(orbitalElements.e * 1e6) / 1e6,      // 6 decimal places
+        i: Math.round(orbitalElements.i * 1e4) / 1e4,      // 4 decimal places
+        Ω: Math.round(orbitalElements.Ω * 1e4) / 1e4,      // 4 decimal places
+        ω: Math.round(orbitalElements.ω * 1e4) / 1e4,      // 4 decimal places
+        M0: Math.round(orbitalElements.M0 * 1e4) / 1e4,    // 4 decimal places
+    };
+
     return JSON.stringify({
-        a: orbitalElements.a,
-        e: orbitalElements.e,
-        i: orbitalElements.i,
-        Ω: orbitalElements.Ω,
-        ω: orbitalElements.ω,
-        M0: orbitalElements.M0,
-        sailAngle: sail.angle,
-        sailPitch: sail.pitchAngle || 0,
-        sailDeploy: sail.deploymentPercent,
-        mass,
-        startTime: Math.round(startTime * 1000),  // Round to avoid floating point issues
+        ...roundedElements,
+        sailAngle: Math.round(sail.angle * 100) / 100,     // 2 decimal places
+        sailPitch: Math.round((sail.pitchAngle || 0) * 100) / 100,
+        sailDeploy: Math.round(sail.deploymentPercent),    // Integer
+        mass: Math.round(mass),                            // Integer kg
+        startTime: Math.round(startTime * 1000),           // Millisecond precision
         duration,
         steps,
         soiBody: soiState?.currentBody || 'SUN',

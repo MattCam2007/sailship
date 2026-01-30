@@ -244,8 +244,9 @@ function refineCrossingBisection(p1, p2, targetRadius, maxIterations = REFINEMEN
 
         // Determine which half contains the crossing
         // Crossing occurs when radius changes from one side of target to the other
-        const lowCrossesTarget = (rLow < targetRadius && rMid > targetRadius) ||
-                                  (rLow > targetRadius && rMid < targetRadius);
+        // FIX: Use <= and >= to handle boundary cases consistently with findRadiusCrossing
+        const lowCrossesTarget = (rLow <= targetRadius && rMid >= targetRadius) ||
+                                  (rLow >= targetRadius && rMid <= targetRadius);
 
         if (lowCrossesTarget) {
             // Crossing is in [low, mid]
@@ -272,12 +273,23 @@ function refineCrossingBisection(p1, p2, targetRadius, maxIterations = REFINEMEN
     const discriminant = b * b - 4 * a * c;
 
     let t;
-    if (discriminant < 0 || a < 1e-20) {
-        // Fallback: linear interpolation
-        t = (targetRadius - rLow) / (rHigh - rLow);
+    // FIX: Use epsilon tolerance for discriminant check to handle floating-point
+    // precision issues where discriminant oscillates near zero between frames.
+    // A small negative discriminant (> -1e-10) is treated as zero (tangent case).
+    const DISCRIMINANT_EPSILON = 1e-10;
+    if (discriminant < -DISCRIMINANT_EPSILON || a < 1e-20) {
+        // Fallback: linear interpolation (guarded against division by zero)
+        const radialDiff = rHigh - rLow;
+        if (Math.abs(radialDiff) < 1e-15) {
+            t = 0.5;  // Midpoint if radii are essentially equal
+        } else {
+            t = (targetRadius - rLow) / radialDiff;
+        }
         t = Math.max(0, Math.min(1, t));
     } else {
-        const sqrtDisc = Math.sqrt(discriminant);
+        // Handle near-zero discriminant as tangent (single root at t = -b/(2a))
+        const safeDisc = Math.max(0, discriminant);  // Clamp tiny negatives to zero
+        const sqrtDisc = Math.sqrt(safeDisc);
         const t1 = (-b - sqrtDisc) / (2 * a);
         const t2 = (-b + sqrtDisc) / (2 * a);
 
@@ -333,10 +345,15 @@ const ECCENTRICITY_THRESHOLD = 0.05;
  */
 function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
     // Check if this segment crosses the target radius
-    const crossesRadius = (r1 < targetRadius && r2 > targetRadius) ||
-                          (r1 > targetRadius && r2 < targetRadius);
+    // FIX: Use <= and >= to handle boundary cases where r equals targetRadius exactly
+    // This prevents flickering when trajectory endpoints land exactly on orbital radius
+    // due to floating-point variations between frames
+    const crossesRadius = (r1 <= targetRadius && r2 >= targetRadius) ||
+                          (r1 >= targetRadius && r2 <= targetRadius);
 
-    if (!crossesRadius) {
+    // Exclude the degenerate case where both endpoints are exactly at the target
+    // (trajectory is tangent to orbit, not crossing it)
+    if (!crossesRadius || (r1 === targetRadius && r2 === targetRadius)) {
         return null;
     }
 
@@ -356,15 +373,18 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
     const b = 2 * (p1.x * dx + p1.y * dy + p1.z * dz);  // 2*(P1·D)
     const c = r1 * r1 - targetRadius * targetRadius;  // P1·P1 - R²
 
-    // Discriminant
+    // Discriminant with epsilon tolerance for floating-point stability
     const discriminant = b * b - 4 * a * c;
+    const DISCRIMINANT_EPSILON = 1e-10;
 
-    if (discriminant < 0 || a < 1e-20) {
+    if (discriminant < -DISCRIMINANT_EPSILON || a < 1e-20) {
         // No real solution or degenerate case (no movement)
         return null;
     }
 
-    const sqrtDisc = Math.sqrt(discriminant);
+    // Clamp tiny negatives to zero (handles floating-point near-tangent cases)
+    const safeDisc = Math.max(0, discriminant);
+    const sqrtDisc = Math.sqrt(safeDisc);
     const t1 = (-b - sqrtDisc) / (2 * a);
     const t2 = (-b + sqrtDisc) / (2 * a);
 
@@ -375,8 +395,14 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
     } else if (t2 >= 0 && t2 <= 1) {
         t = t2;
     } else {
-        // Numerical edge case - fallback to linear approximation
-        t = (targetRadius - r1) / (r2 - r1);
+        // Numerical edge case - fallback to linear approximation (guarded)
+        const radialDiff = r2 - r1;
+        if (Math.abs(radialDiff) < 1e-15) {
+            t = 0.5;  // Midpoint if radii essentially equal
+        } else {
+            t = (targetRadius - r1) / radialDiff;
+        }
+        t = Math.max(0, Math.min(1, t));
     }
 
     const crossingTime = p1.time + t * (p2.time - p1.time);
@@ -506,9 +532,10 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
         }
 
 
-        // Performance timeout
+        // Performance timeout - increased from 10ms to 16ms to accommodate more steps
+        // and ensure inner planets are always processed before timeout
         const elapsed = performance.now() - startTime;
-        if (elapsed > 10) {
+        if (elapsed > 16) {
             console.warn(`Intersection detection timeout after ${body.name} (${elapsed.toFixed(1)}ms)`);
             break;
         }
