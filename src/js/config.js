@@ -225,6 +225,37 @@ export const DEFAULT_TRAJECTORY_CONFIG = {
 };
 
 /**
+ * Trajectory rendering configuration.
+ * Controls accuracy of the predicted trajectory path display.
+ *
+ * Higher resolution = more accurate trajectory prediction, but more CPU usage.
+ * The trajectory predictor applies thrust at each step, so larger steps mean
+ * thrust is held constant while the ship moves significantly, causing divergence.
+ */
+export const TRAJECTORY_RENDER_CONFIG = {
+    /**
+     * Steps per day for trajectory prediction.
+     * Higher = more accurate predictions, but more CPU usage.
+     *
+     * At 12 steps/day (2-hour segments), thrust direction changes are captured
+     * accurately enough that predicted position matches actual ship position.
+     */
+    stepsPerDay: 12,
+
+    /**
+     * Maximum steps regardless of duration (performance cap).
+     * For a 2-year trajectory at 12 steps/day, this would be 8760 steps.
+     * Cap at 1500 for reasonable performance.
+     */
+    maxSteps: 1500,
+
+    /**
+     * Minimum steps regardless of duration (quality floor).
+     */
+    minSteps: 200,
+};
+
+/**
  * Intersection detection configuration.
  * Controls accuracy of orbital crossing detection for encounter markers.
  *

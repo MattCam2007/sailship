@@ -15,7 +15,7 @@ import {
     getIntersectionCache,
     bodyFilters
 } from '../core/gameState.js';
-import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG } from '../config.js';
+import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG } from '../config.js';
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
 
@@ -796,8 +796,14 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
 
     // Get predicted trajectory with configurable duration
     const duration = trajectoryConfig.durationDays;
-    // Steps scale with duration for consistent visual density
-    const steps = Math.min(300, Math.max(100, Math.round(duration * 2.5)));
+    // Use high-resolution steps for accurate trajectory prediction
+    // Low resolution causes thrust to be held constant over large time steps,
+    // leading to trajectory divergence (ship doesn't end up where predicted)
+    const rawSteps = Math.round(duration * TRAJECTORY_RENDER_CONFIG.stepsPerDay);
+    const steps = Math.min(
+        TRAJECTORY_RENDER_CONFIG.maxSteps,
+        Math.max(TRAJECTORY_RENDER_CONFIG.minSteps, rawSteps)
+    );
 
     // Use current simulation date for trajectory prediction
     const startTime = getJulianDate();
