@@ -21,9 +21,10 @@ import { initUI, updateUI } from './ui/uiUpdater.js';
 import { initControls, updateAutoPilot, initMobileControls } from './ui/controls.js';
 import { initMobilePanels } from './ui/ui-components.js';
 import { updateShipPhysics } from './core/shipPhysics.js';
-import { getCachedTrajectory, getTrajectoryHash, clearTrajectoryCache } from './lib/trajectory-predictor.js';
+import { getCachedTrajectory, getTrajectoryHash, clearTrajectoryCache, predictTrajectory } from './lib/trajectory-predictor.js';
 import { detectIntersections } from './lib/intersectionDetector.js';
-import { clearIntersectionCache } from './core/gameState.js';
+import { clearIntersectionCache, trajectoryConfig } from './core/gameState.js';
+import { INTERSECTION_CONFIG } from './config.js';
 
 // Get canvas element
 const navCanvas = document.getElementById('navCanvas');
@@ -89,32 +90,51 @@ function updatePositions() {
     // ORBIT INTERSECTION DETECTION (Encounter Markers Feature)
     // ========================================================================
     // Detects when predicted trajectory crosses planetary orbital paths.
-    // Results cached and synchronized with trajectory hash to prevent redundant
-    // calculations (intersection detection is ~5ms, trajectory prediction is ~2ms).
+    // Uses a HIGH-RESOLUTION trajectory separate from the rendering trajectory
+    // for more accurate crossing time detection (reduces "ghost planet jumping").
+    //
+    // Resolution improvement:
+    // - Rendering trajectory: ~150-300 steps (visual density)
+    // - Intersection trajectory: ~720+ steps (12 steps/day × 60 days)
+    // - Combined with bisection refinement: ~25 second crossing time precision
     //
     // Cache invalidation:
     // - If trajectory hash changes (sail settings, time, etc.) → recalculate
     // - If cache timestamp > 500ms old → recalculate
-    //
-    // Rendering: drawIntersectionMarkers() in renderer.js shows ghost planets
-    // at their actual positions when trajectory crosses their orbits.
 
-    const trajectory = getCachedTrajectory();
+    const trajectoryHash = getTrajectoryHash();
 
-    if (trajectory && trajectory.length > 0) {
-        const trajectoryHash = getTrajectoryHash();
+    // Check if intersection cache needs update
+    if (trajectoryHash && !isIntersectionCacheValid(trajectoryHash)) {
+        const player = getPlayerShip();
+        if (player && player.orbitalElements && player.sail) {
+            const soiBody = player.soiState?.isInSOI ? player.soiState.currentBody : null;
+            const currentTime = getJulianDate();
 
-        // Check if intersection cache needs update
-        if (!isIntersectionCacheValid(trajectoryHash)) {
-            const player = getPlayerShip();
-            if (player) {
-                const soiBody = player.soiState.isInSOI ? player.soiState.currentBody : null;
+            // Calculate HIGH-RESOLUTION trajectory for intersection detection
+            // This is separate from the rendering trajectory for better accuracy
+            const duration = trajectoryConfig.durationDays;
+            const rawSteps = Math.round(duration * INTERSECTION_CONFIG.stepsPerDay);
+            const intersectionSteps = Math.min(
+                INTERSECTION_CONFIG.maxSteps,
+                Math.max(INTERSECTION_CONFIG.minSteps, rawSteps)
+            );
 
-                // Detect orbital crossings and get planet positions at crossing times
-                const currentTime = getJulianDate();
+            const highResTrajectory = predictTrajectory({
+                orbitalElements: player.orbitalElements,
+                sail: player.sail,
+                mass: player.mass || 10000,
+                startTime: currentTime,
+                duration: duration,
+                steps: intersectionSteps,
+                soiState: player.soiState,
+                extremeFlybyState: player.extremeFlybyState
+            });
 
+            if (highResTrajectory && highResTrajectory.length > 1) {
+                // Detect orbital crossings using high-resolution trajectory
                 const intersections = detectIntersections(
-                    trajectory,
+                    highResTrajectory,
                     celestialBodies,
                     currentTime,
                     soiBody

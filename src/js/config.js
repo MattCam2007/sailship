@@ -225,6 +225,40 @@ export const DEFAULT_TRAJECTORY_CONFIG = {
 };
 
 /**
+ * Intersection detection configuration.
+ * Controls accuracy of orbital crossing detection for encounter markers.
+ *
+ * Higher resolution reduces "jumping" when sail adjustments shift the trajectory.
+ * The intersection detector uses bisection refinement for sub-segment precision,
+ * but base trajectory resolution still affects accuracy.
+ */
+export const INTERSECTION_CONFIG = {
+    /**
+     * Steps per day for intersection detection trajectory.
+     * Higher = more accurate crossing times, but more CPU usage.
+     *
+     * Recommended values:
+     * - 4: ~6 hour segments (fast, but noticeable jumping)
+     * - 8: ~3 hour segments (balanced)
+     * - 12: ~2 hour segments (smooth, recommended)
+     * - 24: ~1 hour segments (very smooth, higher CPU)
+     */
+    stepsPerDay: 12,
+
+    /**
+     * Maximum steps regardless of duration (performance cap).
+     * For a 2-year trajectory at 12 steps/day, this would be 8760 steps.
+     * Cap at 1500 for reasonable performance.
+     */
+    maxSteps: 1500,
+
+    /**
+     * Minimum steps regardless of duration (quality floor).
+     */
+    minSteps: 200,
+};
+
+/**
  * Default display options.
  */
 export const DEFAULT_DISPLAY_OPTIONS = {
