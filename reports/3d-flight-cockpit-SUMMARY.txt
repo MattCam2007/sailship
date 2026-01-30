@@ -1,0 +1,182 @@
+================================================================================
+3D FLIGHT COCKPIT - FAILURE ANALYSIS SUMMARY
+================================================================================
+Date: 2026-01-30
+Overall Confidence: MEDIUM (65%)
+
+================================================================================
+TOP 3 CRITICAL CONCERNS
+================================================================================
+
+PHYSICS/REALISM:
+  1. [CRITICAL] Missing depth guards in perspective projection
+     - Z2 can equal 0 → division by zero → NaN propagation
+     - Affects future perspective mode implementation
+     - Impact: Cascading failures across render pipeline
+     
+  2. [HIGH] Orthographic projection, not perspective
+     - Claims "perspective projection" but uses orthographic
+     - Objects don't shrink with distance (unrealistic)
+     - Impact: Doesn't deliver promised cockpit view
+     
+  3. [MEDIUM] calculateScaledRadius() lacks input validation
+     - Accepts undefined, negative, NaN radiusKm
+     - Can return NaN silently
+     - Impact: Visual glitches, render crashes
+
+FUNCTIONALITY:
+  1. [HIGH] Display option dependencies not enforced
+     - showIntersectionMarkers can be true without showOrbits
+     - Creates confusing UI state (ghost planets, no orbits)
+     - Impact: User confusion, visual inconsistency
+     
+  2. [MEDIUM] Animation frame never cancelled
+     - Game loop runs indefinitely in background
+     - Memory leak on browser navigation
+     - Impact: Long-session performance degradation
+     
+  3. [MEDIUM] Unstable depth-based sorting
+     - Overlapping objects render in undefined order
+     - Causes visual flicker when ships dock with bodies
+     - Impact: Visual artifacts, professional appearance
+
+ARCHITECTURE:
+  1. [HIGH] Tight coupling of projection system
+     - project3D() hard-coded to orthographic + global camera
+     - Cannot switch modes at runtime
+     - Impact: Future feature work blocked (cockpit mode)
+     
+  2. [MEDIUM] State management fragmented
+     - displayOptions, bodyFilters, trajectoryConfig scattered
+     - Multiple sources of truth (object + localStorage + DOM)
+     - Impact: Complex refactoring needed later
+     
+  3. [LOW] Starfield performance tight but acceptable
+     - 5,080 stars × precession + projection per frame
+     - Current: ~3-5ms (safe), but vulnerable to zoom/time scale
+     - Impact: Performance degradation at extreme settings
+
+FAILURE MODES:
+  1. [CRITICAL] Canvas element assumed to exist
+     - No null checks before #navCanvas usage
+     - Missing HTML element → immediate crash
+     - Impact: Complete game failure on deployment error
+     
+  2. [HIGH] NaN propagation silently truncates trajectories
+     - Invalid orbital elements skip rendering without warning
+     - Extreme eccentricity/time scale triggers NaN
+     - Impact: Silent data loss, prediction stops working
+     
+  3. [HIGH] Extreme zoom levels cause infinite grid loop
+     - Grid rendering at zoom=1000000 → maxRadius overflow
+     - r += scale loop condition becomes infinite
+     - Impact: Browser freeze, unresponsive UI
+
+================================================================================
+NUMERICAL STABILITY ASSESSMENT
+================================================================================
+
+64-bit Float Precision:
+  ✓ Adequate for AU scale (±15 decimal digits sufficient)
+  ✗ Division by small depth values needs guards
+  ✗ Input validation missing in radius calculations
+  ✓ Trajectory predictor has isFinite() checks
+
+Extreme Value Handling:
+  ⚠ Time scales up to 1000000x supported but untested
+  ⚠ Zoom levels exceed safe projection bounds
+  ⚠ No clamping on orbital element values
+
+================================================================================
+SEVERITY BREAKDOWN
+================================================================================
+
+Critical (Block Release):     2 issues
+  - Depth guards missing
+  - Canvas element not found
+
+High Priority (Soon):         7 issues
+  - Orthographic vs perspective mismatch
+  - Display option dependencies
+  - Animation frame cancellation
+  - Tight projection coupling
+  - Overlap sorting instability
+  - NaN propagation
+  - Grid overflow at extreme zoom
+
+Medium Priority (1 month):    5 issues
+  - Input validation gaps
+  - State management fragmentation
+  - Performance monitoring
+  - Browser compatibility
+  - Extreme value safeguards
+
+Low Priority (Next release):  4 issues
+  - Starfield metrics
+  - Projection mode abstraction
+  - Precession formula bounds checking
+  - Enhanced error messages
+
+TOTAL: 18 issues identified (2 critical, 7 high, 5 medium, 4 low)
+
+================================================================================
+RECOMMENDED ACTIONS
+================================================================================
+
+IMMEDIATE (Must fix before release):
+  [ ] Add depth guards: if (depth < 0.001) return null;
+  [ ] Validate canvas: if (!navCanvas) throw error;
+  [ ] Enforce display option constraints
+  [ ] Cancel animation frame on page unload
+
+SHORT TERM (1-2 weeks):
+  [ ] Implement true perspective projection
+  [ ] Add input validation to calculateScaledRadius()
+  [ ] Implement stable depth sorting (with tie-breaker)
+  [ ] Add performance monitoring
+
+MEDIUM TERM (1 month):
+  [ ] Abstract projection system (orthographic ↔ perspective)
+  [ ] Centralize state management
+  [ ] Add extreme value clamping
+  [ ] Improve error messages
+
+================================================================================
+RELEASE READINESS
+================================================================================
+
+Status:     CONDITIONAL (not ready for public release)
+Confidence: 65% (MEDIUM)
+
+Recommended for:
+  ✓ Closed beta testing
+  ✓ Controlled audience with known usage patterns
+  ✗ Public release
+
+Required before public release:
+  - All CRITICAL issues resolved (2)
+  - All HIGH priority issues addressed (7)
+  - Input validation complete
+  - Animation frame cancellation implemented
+  - Canvas element validation added
+
+Estimated effort to release-ready: 8-12 hours
+
+================================================================================
+PERFORMANCE PROFILE
+================================================================================
+
+Expected bottlenecks (in order):
+  1. Grid rendering at high zoom (2-5ms)
+  2. Starfield precession + projection (3-5ms)
+  3. Depth-based body sorting (1-2ms)
+  4. Trajectory prediction (5-10ms, separate from rendering)
+  5. Label rendering (1-3ms)
+
+Memory usage:
+  - Starfield: ~275KB (loaded asynchronously)
+  - Trajectory cache: ~1-5MB (depends on duration + resolution)
+  - Gradient cache: ~10-50KB (LRU with 100-item limit)
+  ⚠ Animation frame not cancelled → grows over time
+
+================================================================================
