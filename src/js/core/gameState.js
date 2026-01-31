@@ -433,6 +433,72 @@ export function getClosestApproachForBody(bodyName) {
 }
 
 // ============================================================================
+// Node Crossings Cache (for plane change maneuvers)
+// ============================================================================
+
+/**
+ * Cache for node crossing calculations.
+ * Shows where trajectory crosses the target's orbital plane.
+ * These are optimal points for plane change maneuvers.
+ */
+let nodeCrossingsCache = {
+    trajectoryHash: null,
+    targetBody: null,        // Which body's plane we're tracking
+    results: [],             // Array of {type: 'AN'|'DN', time, position, daysFromNow}
+    timestamp: 0
+};
+
+/**
+ * Get node crossings cache
+ * @returns {Object} Cache object
+ */
+export function getNodeCrossingsCache() {
+    return nodeCrossingsCache;
+}
+
+/**
+ * Set node crossings cache with new results
+ * @param {string} trajectoryHash - Hash from trajectory predictor
+ * @param {string} targetBody - Name of the target body
+ * @param {Array} results - Array of node crossing results
+ */
+export function setNodeCrossingsCache(trajectoryHash, targetBody, results) {
+    nodeCrossingsCache = {
+        trajectoryHash,
+        targetBody,
+        results,
+        timestamp: performance.now()
+    };
+}
+
+/**
+ * Clear node crossings cache
+ */
+export function clearNodeCrossingsCache() {
+    nodeCrossingsCache = {
+        trajectoryHash: null,
+        targetBody: null,
+        results: [],
+        timestamp: 0
+    };
+}
+
+/**
+ * Check if node crossings cache is valid
+ * @param {string} currentTrajectoryHash - Current hash from trajectory predictor
+ * @param {string} targetBody - Current target body name
+ * @returns {boolean} True if cache is valid and fresh
+ */
+export function isNodeCrossingsCacheValid(currentTrajectoryHash, targetBody) {
+    if (!nodeCrossingsCache.trajectoryHash) return false;
+    if (nodeCrossingsCache.trajectoryHash !== currentTrajectoryHash) return false;
+    if (nodeCrossingsCache.targetBody !== targetBody) return false;
+
+    const age = performance.now() - nodeCrossingsCache.timestamp;
+    return age < 1000;
+}
+
+// ============================================================================
 // Focus Functions
 // ============================================================================
 

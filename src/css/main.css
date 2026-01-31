@@ -1457,6 +1457,31 @@ body::after {
 }
 
 /* ============================================================================
+   INCLINATION DELTA COLORS
+   ============================================================================ */
+
+.delta-low {
+    color: var(--green) !important;
+    text-shadow:
+        0 0 8px var(--green),
+        0 0 12px var(--green);
+}
+
+.delta-med {
+    color: var(--orange) !important;
+    text-shadow:
+        0 0 8px var(--orange),
+        0 0 12px var(--orange);
+}
+
+.delta-high {
+    color: var(--coral) !important;
+    text-shadow:
+        0 0 8px var(--coral),
+        0 0 12px var(--coral);
+}
+
+/* ============================================================================
    NAVIGATION COMPUTER STYLES
    ============================================================================ */
 

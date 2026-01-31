@@ -4,6 +4,7 @@
 
 import { destination, getDestinationInfo, predictClosestApproach, computeNavigationPlan, computeApproachPlan, computeCapturePlan, computeEscapePlan } from '../core/navigation.js';
 import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPILOT_PHASES, getClosestApproachForBody } from '../core/gameState.js';
+import { getBodyByName } from '../data/celestialBodies.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
 
@@ -43,7 +44,12 @@ export function initUI() {
         // SOI status elements
         soiStatus: document.getElementById('soiStatus'),
         soiBody: document.getElementById('soiBody'),
-        relVelocity: document.getElementById('relVelocity')
+        relVelocity: document.getElementById('relVelocity'),
+        // Orbital plane / inclination elements
+        shipInclination: document.getElementById('shipInclination'),
+        targetInclination: document.getElementById('targetInclination'),
+        deltaInclination: document.getElementById('deltaInclination'),
+        planeChangeDirection: document.getElementById('planeChangeDirection')
     };
 
     // Initialize sail display with current values
@@ -60,6 +66,7 @@ export function updateUI() {
     updateSailDisplay();
     updateNavigationComputer();
     updateSOIStatus();
+    updateInclinationDisplay();
 }
 
 /**
@@ -530,5 +537,65 @@ function updateSOIStatus() {
     // Update current parent body
     if (elements.soiBody) {
         elements.soiBody.textContent = currentBody;
+    }
+}
+
+/**
+ * Update orbital plane / inclination display
+ * Shows ship inclination, target inclination, and delta-i
+ */
+function updateInclinationDisplay() {
+    const player = getPlayerShip();
+    if (!player || !player.orbitalElements) return;
+
+    const targetBody = getBodyByName(destination);
+    if (!targetBody || !targetBody.elements) return;
+
+    // Get inclinations in radians, convert to degrees
+    const shipIncRad = player.orbitalElements.i || 0;
+    const targetIncRad = targetBody.elements.i || 0;
+
+    const shipIncDeg = shipIncRad * 180 / Math.PI;
+    const targetIncDeg = targetIncRad * 180 / Math.PI;
+
+    // Calculate delta-i (simple difference for now)
+    // Note: This is simplified - true delta-i depends on relative longitude of ascending node
+    const deltaIncDeg = Math.abs(targetIncDeg - shipIncDeg);
+
+    // Determine direction needed
+    let direction = '---';
+    if (deltaIncDeg < 0.1) {
+        direction = 'MATCHED';
+    } else if (targetIncDeg > shipIncDeg) {
+        direction = 'RAISE (+pitch)';
+    } else {
+        direction = 'LOWER (-pitch)';
+    }
+
+    // Update display elements
+    if (elements.shipInclination) {
+        elements.shipInclination.textContent = shipIncDeg.toFixed(2) + '°';
+    }
+
+    if (elements.targetInclination) {
+        elements.targetInclination.textContent = targetIncDeg.toFixed(2) + '°';
+    }
+
+    if (elements.deltaInclination) {
+        elements.deltaInclination.textContent = deltaIncDeg.toFixed(2) + '°';
+
+        // Color code based on magnitude
+        elements.deltaInclination.classList.remove('delta-low', 'delta-med', 'delta-high');
+        if (deltaIncDeg < 1) {
+            elements.deltaInclination.classList.add('delta-low');
+        } else if (deltaIncDeg < 5) {
+            elements.deltaInclination.classList.add('delta-med');
+        } else {
+            elements.deltaInclination.classList.add('delta-high');
+        }
+    }
+
+    if (elements.planeChangeDirection) {
+        elements.planeChangeDirection.textContent = direction;
     }
 }

@@ -13,6 +13,7 @@ import {
     getTime,
     getJulianDate,
     getIntersectionCache,
+    getNodeCrossingsCache,
     bodyFilters
 } from '../core/gameState.js';
 import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG } from '../config.js';
@@ -1112,6 +1113,84 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
 }
 
 /**
+ * Draw node crossing markers (AN/DN) on the trajectory
+ * Shows where trajectory crosses the target's orbital plane - optimal for plane changes
+ *
+ * Visual style: Diamond markers with "AN" or "DN" labels and time offset
+ */
+function drawNodeMarkers(centerX, centerY, scale) {
+    // Check toggles - requires predicted path to be visible
+    if (!displayOptions.showPredictedPath) return;
+
+    const cache = getNodeCrossingsCache();
+    if (!cache.results || cache.results.length === 0) return;
+
+    const player = getPlayerShip();
+    if (!player) return;
+
+    const julianDate = getJulianDate();
+
+    // Colors for node markers
+    const AN_COLOR = '#4ce88d';  // Green for ascending node
+    const DN_COLOR = '#e84c88';  // Pink for descending node
+
+    for (const node of cache.results) {
+        // Project node position to screen
+        const projected = project3D(node.position.x, node.position.y, node.position.z, centerX, centerY, scale);
+        if (!projected) continue;
+
+        // Cull off-screen markers
+        if (projected.x < -50 || projected.x > canvas.width + 50) continue;
+        if (projected.y < -50 || projected.y > canvas.height + 50) continue;
+
+        const color = node.type === 'AN' ? AN_COLOR : DN_COLOR;
+        const markerSize = 8;
+
+        // Draw diamond marker
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(projected.x, projected.y - markerSize);  // Top
+        ctx.lineTo(projected.x + markerSize, projected.y);  // Right
+        ctx.lineTo(projected.x, projected.y + markerSize);  // Bottom
+        ctx.lineTo(projected.x - markerSize, projected.y);  // Left
+        ctx.closePath();
+        ctx.stroke();
+
+        // Fill with semi-transparent color
+        ctx.globalAlpha = 0.3;
+        ctx.fill();
+
+        ctx.restore();
+
+        // Draw label with time offset
+        const timeOffset = formatTimeOffset(julianDate, node.time);
+        const labelText = `${node.type} ${timeOffset}`;
+
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.font = 'bold 10px monospace';
+        ctx.fillStyle = color;
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 3;
+
+        // Position label to the right of marker
+        const labelX = projected.x + markerSize + 4;
+        const labelY = projected.y + 3;
+
+        // Draw text with outline for readability
+        ctx.strokeText(labelText, labelX, labelY);
+        ctx.fillText(labelText, labelX, labelY);
+
+        ctx.restore();
+    }
+}
+
+/**
  * Draw a ship
  */
 function drawShip(ship, centerX, centerY, scale) {
@@ -1231,6 +1310,9 @@ export function render() {
 
     // Draw intersection markers (ghost planets at future encounter points)
     drawIntersectionMarkers(centerX, centerY, scale);
+
+    // Draw node crossing markers (AN/DN for plane change opportunities)
+    drawNodeMarkers(centerX, centerY, scale);
 
     // Draw flight path
     drawFlightPath(centerX, centerY, scale);

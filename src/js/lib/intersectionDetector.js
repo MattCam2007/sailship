@@ -781,6 +781,107 @@ export function detectClosestApproaches(trajectory, celestialBodies, currentTime
 }
 
 // ============================================================================
+// NODE CROSSING DETECTION (for plane change maneuvers)
+// ============================================================================
+
+/**
+ * Detect where the trajectory crosses a target body's orbital plane.
+ * These "node crossings" are the optimal points for plane change maneuvers.
+ *
+ * ORBITAL MECHANICS CONTEXT:
+ * Changing orbital inclination is expensive (requires thrust perpendicular to
+ * your orbital velocity). The most efficient points to change planes are at
+ * the "nodes" - where your orbit crosses the target's orbital plane.
+ *
+ * At the ascending node (AN): trajectory crosses from below to above target plane
+ * At the descending node (DN): trajectory crosses from above to below target plane
+ *
+ * @param {Array} trajectory - Array of {x, y, z, time} points
+ * @param {Object} targetElements - Target body's orbital elements {i, Ω, ...}
+ * @param {number} currentTime - Current game Julian date
+ * @returns {Array} Node crossings: [{type: 'AN'|'DN', time, position, daysFromNow}, ...]
+ */
+export function detectNodeCrossings(trajectory, targetElements, currentTime) {
+    // Guard: Empty or invalid trajectory
+    if (!trajectory || trajectory.length < 2) {
+        return [];
+    }
+
+    // Guard: No valid target elements
+    if (!targetElements || targetElements.i === undefined) {
+        return [];
+    }
+
+    const { i, Ω } = targetElements;
+
+    // If target has negligible inclination, nodes are meaningless
+    if (Math.abs(i) < 0.001) {  // < 0.06°
+        return [];
+    }
+
+    // Get the normal vector to the target's orbital plane
+    const normal = getOrbitalPlaneNormal(i, Ω);
+
+    const crossings = [];
+
+    // Scan trajectory for plane crossings
+    for (let idx = 0; idx < trajectory.length - 1; idx++) {
+        const p1 = trajectory[idx];
+        const p2 = trajectory[idx + 1];
+
+        // Skip past segments
+        if (p2.time < currentTime) continue;
+
+        // Calculate signed distance from target's orbital plane for both points
+        // d = n · P (positive = above plane, negative = below)
+        const d1 = normal.x * p1.x + normal.y * p1.y + normal.z * p1.z;
+        const d2 = normal.x * p2.x + normal.y * p2.y + normal.z * p2.z;
+
+        // Check if segment crosses the plane (signs differ or one is zero)
+        if (d1 * d2 > 0) {
+            continue; // Both on same side, no crossing
+        }
+
+        // Avoid division by zero for segments parallel to plane
+        const dDiff = d2 - d1;
+        if (Math.abs(dDiff) < 1e-15) {
+            continue;
+        }
+
+        // Find crossing parameter t where d(t) = 0
+        const t = -d1 / dDiff;
+        const tClamped = Math.max(0, Math.min(1, t));
+
+        // Calculate crossing position
+        const crossingPos = {
+            x: p1.x + tClamped * (p2.x - p1.x),
+            y: p1.y + tClamped * (p2.y - p1.y),
+            z: p1.z + tClamped * (p2.z - p1.z)
+        };
+
+        // Calculate crossing time
+        const crossingTime = p1.time + tClamped * (p2.time - p1.time);
+
+        // Determine node type based on direction of crossing
+        // AN: going from negative (below) to positive (above) → d1 < 0, d2 > 0
+        // DN: going from positive (above) to negative (below) → d1 > 0, d2 < 0
+        const nodeType = d1 < d2 ? 'AN' : 'DN';
+
+        crossings.push({
+            type: nodeType,
+            time: crossingTime,
+            position: crossingPos,
+            daysFromNow: crossingTime - currentTime
+        });
+    }
+
+    // Sort by time (chronological order)
+    crossings.sort((a, b) => a.time - b.time);
+
+    return crossings;
+}
+
+// ============================================================================
 // CONSOLE TESTS & DIAGNOSTICS
 // ============================================================================
 

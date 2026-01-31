@@ -22,14 +22,19 @@ import { initControls, updateAutoPilot, initMobileControls } from './ui/controls
 import { initMobilePanels } from './ui/ui-components.js';
 import { updateShipPhysics } from './core/shipPhysics.js';
 import { getCachedTrajectory, getTrajectoryHash, clearTrajectoryCache, predictTrajectory } from './lib/trajectory-predictor.js';
-import { detectIntersections, detectClosestApproaches } from './lib/intersectionDetector.js';
+import { detectIntersections, detectClosestApproaches, detectNodeCrossings } from './lib/intersectionDetector.js';
 import {
     clearIntersectionCache,
     trajectoryConfig,
     setClosestApproachCache,
     isClosestApproachCacheValid,
-    clearClosestApproachCache
+    clearClosestApproachCache,
+    setNodeCrossingsCache,
+    isNodeCrossingsCacheValid,
+    clearNodeCrossingsCache
 } from './core/gameState.js';
+import { destination } from './core/navigation.js';
+import { getBodyByName } from './data/celestialBodies.js';
 import { INTERSECTION_CONFIG } from './config.js';
 
 // Get canvas element
@@ -54,6 +59,7 @@ function performMemoryCleanup() {
     clearTrajectoryCache();
     clearIntersectionCache();
     clearClosestApproachCache();
+    clearNodeCrossingsCache();
     clearGradientCache();
 
     // Get canvas context for state reset
@@ -167,6 +173,18 @@ function updatePositions() {
                         currentTime
                     );
                     setClosestApproachCache(trajectoryHash, closestApproaches);
+                }
+
+                // Detect node crossings for the current destination
+                // Shows where trajectory crosses target's orbital plane (optimal for plane changes)
+                const targetBody = getBodyByName(destination);
+                if (targetBody && targetBody.elements && !isNodeCrossingsCacheValid(trajectoryHash, destination)) {
+                    const nodeCrossings = detectNodeCrossings(
+                        highResTrajectory,
+                        targetBody.elements,
+                        currentTime
+                    );
+                    setNodeCrossingsCache(trajectoryHash, destination, nodeCrossings);
                 }
             }
         }
