@@ -306,6 +306,7 @@ export const INTERSECTION_CONFIG = {
 export const DEFAULT_DISPLAY_OPTIONS = {
     showStarfield: true,            // Background star map with date-accurate positions
     showOrbits: true,
+    showTargetOrbitOnly: false,     // When true, only show destination planet's orbit
     showLabels: true,
     showTrajectory: true,
     showGrid: true,

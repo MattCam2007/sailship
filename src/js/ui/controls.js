@@ -126,6 +126,7 @@ function initDisplayOptions() {
     const options = {
         'showStarfield': 'showStarfield',
         'showOrbits': 'showOrbits',
+        'showTargetOrbitOnly': 'showTargetOrbitOnly',
         'showLabels': 'showLabels',
         'showTrajectory': 'showTrajectory',
         'showPredictedTrajectory': 'showPredictedTrajectory',

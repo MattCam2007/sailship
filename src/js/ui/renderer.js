@@ -341,6 +341,17 @@ function drawGrid(centerX, centerY, scale) {
 function drawOrbit(body, centerX, centerY, scale) {
     if (!displayOptions.showOrbits || !body.elements) return;
 
+    // Filter to show only target orbit when enabled
+    if (displayOptions.showTargetOrbitOnly) {
+        // Show orbit if: body is destination, body is parent of destination, or destination is a moon of this body
+        const isTarget = body.name === destination;
+        const isTargetParent = body.name === celestialBodies.find(b => b.name === destination)?.parent;
+        const targetBody = celestialBodies.find(b => b.name === destination);
+        const isParentOfTarget = targetBody && targetBody.parent === body.name;
+
+        if (!isTarget && !isTargetParent && !isParentOfTarget) return;
+    }
+
     // Hide orbits at extreme zoom - they're sun-centered and become visually confusing
     // when zoomed close to a planet (planet appears centered but orbit doesn't)
     if (camera.zoom > 50) return;
