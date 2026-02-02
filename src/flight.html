@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLIGHT VIEW // COCKPIT</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="css/main.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+
+        .flight-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #flightCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: crosshair;
+        }
+
+        .flight-nav-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(76, 232, 141, 0.2);
+            border: 1px solid rgba(76, 232, 141, 0.5);
+            color: #4ce88d;
+            padding: 10px 20px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            z-index: 100;
+        }
+
+        .flight-nav-button:hover {
+            background: rgba(76, 232, 141, 0.4);
+        }
+
+        .flight-help {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 10px;
+            z-index: 100;
+        }
+
+        .flight-title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #e85d4c;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 14px;
+            letter-spacing: 2px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="flight-container">
+        <canvas id="flightCanvas"></canvas>
+    </div>
+
+    <div class="flight-title">COCKPIT VIEW</div>
+
+    <button class="flight-nav-button" onclick="window.location.href='index.html'">
+        ← NAVIGATION VIEW
+    </button>
+
+    <div class="flight-help">
+        DRAG: Look around | SCROLL: Zoom | R: Reset view | ESC: Exit | []: Sail yaw | {}: Sail pitch | -=: Deploy
+    </div>
+
+    <script type="module" src="js/flight-main.js"></script>
+</body>
+</html>
