@@ -255,10 +255,31 @@ The predicted trajectory duration can be adjusted from 30 days to 2 years (730 d
 
 ## Keyboard Shortcuts
 
-### Sail Controls
+### Sail Controls (Legacy)
 - `[` / `]` - Adjust sail yaw angle ±5°
 - `-` / `=` - Adjust deployment ±10%
 - `{` / `}` - Adjust pitch angle ±5°
+
+### Fine-Tune Sail Controls (Accessibility)
+For precise orbital insertions and users who need fine motor control:
+
+**Select Control:**
+- `1` - Select DEPLOYMENT
+- `2` - Select YAW
+- `3` - Select PITCH
+
+**Adjust Selected Control:**
+- `↑` / `↓` - Increase/decrease selected control
+
+**Resolution Modes (press `F` to cycle):**
+| Mode | Angles | Deployment |
+|------|--------|------------|
+| COARSE | ±10° | ±25% |
+| NORMAL | ±5° | ±10% |
+| FINE | ±1° | ±1% |
+| ULTRA | ±0.1° | ±0.1% |
+
+The selected control is highlighted in the SAIL panel. Click control rows or the resolution indicator to change settings with mouse.
 
 ### Camera Controls
 - `Q` / `E` - Rotate view

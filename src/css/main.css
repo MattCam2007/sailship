@@ -1130,6 +1130,97 @@ body::after {
     padding: 2px 0;
 }
 
+/* Fine-tune keyboard control styles */
+.sail-control-row.selectable {
+    padding: 4px 6px;
+    margin: 0 -6px;
+    border-radius: 2px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    border: 1px solid transparent;
+}
+
+.sail-control-row.selectable:hover {
+    background: rgba(232, 93, 76, 0.1);
+    border-color: rgba(232, 93, 76, 0.2);
+}
+
+.sail-control-row.selectable.selected {
+    background: rgba(232, 93, 76, 0.15);
+    border-color: var(--coral);
+    box-shadow:
+        0 0 8px rgba(232, 93, 76, 0.3),
+        inset 0 0 8px rgba(232, 93, 76, 0.1);
+}
+
+.sail-control-row .key-hint {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    font-size: 9px;
+    background: rgba(232, 93, 76, 0.2);
+    border: 1px solid var(--coral-dim);
+    border-radius: 2px;
+    margin-right: 6px;
+    color: var(--coral);
+    vertical-align: middle;
+}
+
+.sail-control-row.selected .key-hint {
+    background: var(--coral);
+    color: var(--bg-dark);
+    border-color: var(--coral-bright);
+}
+
+/* Fine-tune indicator panel */
+.fine-tune-indicator {
+    margin-top: 12px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--coral-dim);
+    border-radius: 2px;
+}
+
+.fine-tune-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    margin-bottom: 4px;
+}
+
+.fine-tune-label {
+    color: var(--text-dim);
+    letter-spacing: 1px;
+}
+
+.fine-tune-value {
+    color: var(--cyan);
+    font-weight: bold;
+    padding: 2px 8px;
+    background: rgba(0, 217, 255, 0.1);
+    border: 1px solid var(--cyan-dim);
+    border-radius: 2px;
+    transition: all 0.15s ease;
+}
+
+.fine-tune-value:hover {
+    background: rgba(0, 217, 255, 0.2);
+    border-color: var(--cyan);
+    box-shadow: 0 0 8px rgba(0, 217, 255, 0.3);
+}
+
+.fine-tune-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 4px;
+    background: rgba(232, 93, 76, 0.05);
+    border-radius: 2px;
+    letter-spacing: 0.5px;
+}
+
 .sail-slider {
     -webkit-appearance: none;
     appearance: none;
