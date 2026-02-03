@@ -50,6 +50,128 @@ const touchState = {
     lastCenter: { x: 0, y: 0 }  // Center point for delta calculations
 };
 
+// ============================================================================
+// Fine-Tune Keyboard Control State
+// ============================================================================
+
+/**
+ * Resolution modes for keyboard sail adjustments
+ * Each mode defines step sizes for angles and deployment
+ */
+export const RESOLUTION_MODES = {
+    COARSE: { name: 'COARSE', angleStep: 10, deployStep: 25 },
+    NORMAL: { name: 'NORMAL', angleStep: 5, deployStep: 10 },
+    FINE:   { name: 'FINE',   angleStep: 1, deployStep: 1 },
+    ULTRA:  { name: 'ULTRA',  angleStep: 0.1, deployStep: 0.1 }
+};
+
+/**
+ * Available sail controls that can be selected for keyboard adjustment
+ */
+export const SAIL_CONTROLS = {
+    DEPLOYMENT: 'deployment',
+    YAW: 'yaw',
+    PITCH: 'pitch'
+};
+
+/**
+ * State for the fine-tune keyboard control system
+ * Tracks which control is selected and the current resolution mode
+ */
+export const fineTuneState = {
+    selectedControl: SAIL_CONTROLS.YAW,  // Default to yaw (most commonly adjusted)
+    resolutionMode: RESOLUTION_MODES.NORMAL,
+    resolutionOrder: ['COARSE', 'NORMAL', 'FINE', 'ULTRA']  // Cycle order
+};
+
+/**
+ * Cycle to the next resolution mode
+ */
+export function cycleResolutionMode() {
+    const currentIndex = fineTuneState.resolutionOrder.indexOf(fineTuneState.resolutionMode.name);
+    const nextIndex = (currentIndex + 1) % fineTuneState.resolutionOrder.length;
+    const nextModeName = fineTuneState.resolutionOrder[nextIndex];
+    fineTuneState.resolutionMode = RESOLUTION_MODES[nextModeName];
+    updateFineTuneUI();
+}
+
+/**
+ * Select a sail control for keyboard adjustment
+ * @param {string} control - One of SAIL_CONTROLS values
+ */
+export function selectSailControl(control) {
+    if (Object.values(SAIL_CONTROLS).includes(control)) {
+        fineTuneState.selectedControl = control;
+        updateFineTuneUI();
+    }
+}
+
+/**
+ * Update the fine-tune UI indicator to reflect current state
+ */
+export function updateFineTuneUI() {
+    // Update resolution display
+    const resolutionDisplay = document.getElementById('fineTuneResolution');
+    if (resolutionDisplay) {
+        resolutionDisplay.textContent = fineTuneState.resolutionMode.name;
+    }
+
+    // Update selected control highlight
+    const controls = ['deployment', 'yaw', 'pitch'];
+    controls.forEach(control => {
+        const row = document.getElementById(`sailControl${control.charAt(0).toUpperCase() + control.slice(1)}`);
+        if (row) {
+            row.classList.toggle('selected', fineTuneState.selectedControl === control);
+        }
+    });
+
+    // Update the keyboard hint display
+    const hintDisplay = document.getElementById('fineTuneHint');
+    if (hintDisplay) {
+        const mode = fineTuneState.resolutionMode;
+        const controlName = fineTuneState.selectedControl.toUpperCase();
+        const step = fineTuneState.selectedControl === SAIL_CONTROLS.DEPLOYMENT
+            ? `${mode.deployStep}%`
+            : `${mode.angleStep}°`;
+        hintDisplay.textContent = `↑/↓: ${controlName} ±${step}`;
+    }
+}
+
+/**
+ * Initialize the fine-tune keyboard control UI
+ * Sets up initial state display and click handlers for control selection
+ */
+function initFineTuneControls() {
+    // Set initial UI state
+    updateFineTuneUI();
+
+    // Add click handlers to sail control rows for mouse/touch selection
+    const controlRows = [
+        { id: 'sailControlDeployment', control: SAIL_CONTROLS.DEPLOYMENT },
+        { id: 'sailControlYaw', control: SAIL_CONTROLS.YAW },
+        { id: 'sailControlPitch', control: SAIL_CONTROLS.PITCH }
+    ];
+
+    controlRows.forEach(({ id, control }) => {
+        const row = document.getElementById(id);
+        if (row) {
+            row.addEventListener('click', () => {
+                selectSailControl(control);
+            });
+            row.style.cursor = 'pointer';
+        }
+    });
+
+    // Add click handler to resolution display to cycle modes
+    const resolutionDisplay = document.getElementById('fineTuneResolution');
+    if (resolutionDisplay) {
+        resolutionDisplay.addEventListener('click', () => {
+            cycleResolutionMode();
+        });
+        resolutionDisplay.style.cursor = 'pointer';
+    }
+}
+
 /**
  * Initialize all control event listeners
  * @param {HTMLCanvasElement} canvas
@@ -62,6 +184,7 @@ export function initControls(canvas) {
     initExpandablePanels();
     initRightPanelTabs();
     initSailControls();
+    initFineTuneControls();
     initAutoPilotControls();
     initKeyboardShortcuts();
     initMouseControls(canvas);
@@ -510,6 +633,61 @@ function initKeyboardShortcuts() {
 
         // Skip manual sail controls if autopilot is engaged
         if (isAutoPilotEnabled()) return;
+
+        // Fine-tune control selection with 1, 2, 3
+        if (e.key === '1') {
+            selectSailControl(SAIL_CONTROLS.DEPLOYMENT);
+            return;
+        }
+        if (e.key === '2') {
+            selectSailControl(SAIL_CONTROLS.YAW);
+            return;
+        }
+        if (e.key === '3') {
+            selectSailControl(SAIL_CONTROLS.PITCH);
+            return;
+        }
+
+        // Resolution mode cycling with F
+        if (e.key === 'f' || e.key === 'F') {
+            cycleResolutionMode();
+            return;
+        }
+
+        // Arrow key adjustments for selected control
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();  // Prevent page scroll
+            const direction = e.key === 'ArrowUp' ? 1 : -1;
+            const mode = fineTuneState.resolutionMode;
+
+            switch (fineTuneState.selectedControl) {
+                case SAIL_CONTROLS.DEPLOYMENT:
+                    if (deploySlider) {
+                        const currentDeploy = parseFloat(deploySlider.value);
+                        const newDeploy = Math.max(0, Math.min(100, currentDeploy + direction * mode.deployStep));
+                        deploySlider.value = newDeploy;
+                        deploySlider.dispatchEvent(new Event('input'));
+                    }
+                    break;
+                case SAIL_CONTROLS.YAW:
+                    if (angleSlider) {
+                        const currentAngle = parseFloat(angleSlider.value);
+                        const newAngle = Math.max(-90, Math.min(90, currentAngle + direction * mode.angleStep));
+                        angleSlider.value = newAngle;
+                        angleSlider.dispatchEvent(new Event('input'));
+                    }
+                    break;
+                case SAIL_CONTROLS.PITCH:
+                    if (pitchSlider) {
+                        const currentPitch = parseFloat(pitchSlider.value);
+                        const newPitch = Math.max(-90, Math.min(90, currentPitch + direction * mode.angleStep));
+                        pitchSlider.value = newPitch;
+                        pitchSlider.dispatchEvent(new Event('input'));
+                    }
+                    break;
+            }
+            return;
+        }
 
         // Sail yaw angle adjustments with [ and ]
         // Negative = retrograde (lower orbit), Positive = prograde (raise orbit)
