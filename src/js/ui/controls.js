@@ -13,7 +13,11 @@ import {
     computeApproachPlan,
     computeCapturePlan,
     computeEscapePlan,
-    getDestinationInfo
+    getDestinationInfo,
+    computeOptimalCourse,
+    getCachedOptimalCourse,
+    applyComputedCourse,
+    getCourseComputationState
 } from '../core/navigation.js';
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount } from '../data/ships.js';
@@ -186,6 +190,7 @@ export function initControls(canvas) {
     initSailControls();
     initFineTuneControls();
     initAutoPilotControls();
+    initCoursePlotter();
     initKeyboardShortcuts();
     initMouseControls(canvas);
     initTouchControls(canvas);
@@ -1056,6 +1061,111 @@ function initAutoPilotControls() {
             updateAutoPilotUI(newState);
         });
     }
+}
+
+/**
+ * Set up course plotter controls
+ */
+function initCoursePlotter() {
+    const plotBtn = document.getElementById('plotCourseBtn');
+    const applyBtn = document.getElementById('applyCourseBtn');
+    const resultDiv = document.getElementById('courseResult');
+
+    if (plotBtn) {
+        plotBtn.addEventListener('click', async () => {
+            // Check if already computing
+            const state = getCourseComputationState();
+            if (state.computing) return;
+
+            // Update button to show computing state
+            plotBtn.classList.add('computing');
+            plotBtn.querySelector('.course-btn-text').textContent = 'COMPUTING...';
+            applyBtn.disabled = true;
+
+            // Clear previous result
+            resultDiv.classList.remove('has-solution');
+            resultDiv.innerHTML = '<div class="course-status">Phase 1/3: Scanning...</div>';
+
+            try {
+                const course = await computeOptimalCourse((progress) => {
+                    // Update progress display
+                    const phaseNames = ['', 'Scanning parameter space', 'Refining candidates', 'Final optimization'];
+                    const phaseName = phaseNames[progress.phase] || progress.message;
+                    const pct = Math.round(progress.progress * 100);
+                    resultDiv.innerHTML = `<div class="course-status">Phase ${progress.phase}/3: ${phaseName}... ${pct}%</div>`;
+                });
+
+                // Update button state
+                plotBtn.classList.remove('computing');
+                plotBtn.querySelector('.course-btn-text').textContent = 'PLOT COURSE';
+
+                if (course) {
+                    displayCourseResult(course, resultDiv);
+                    applyBtn.disabled = false;
+                } else {
+                    resultDiv.innerHTML = '<div class="course-status">No solution found</div>';
+                }
+            } catch (error) {
+                console.error('Course computation error:', error);
+                plotBtn.classList.remove('computing');
+                plotBtn.querySelector('.course-btn-text').textContent = 'PLOT COURSE';
+                resultDiv.innerHTML = '<div class="course-status">Computation failed</div>';
+            }
+        });
+    }
+
+    if (applyBtn) {
+        applyBtn.addEventListener('click', () => {
+            const course = getCachedOptimalCourse();
+            if (course && applyComputedCourse(course)) {
+                // Update sail display
+                updateSailDisplay();
+                // Visual feedback
+                applyBtn.textContent = 'APPLIED';
+                setTimeout(() => {
+                    applyBtn.textContent = 'APPLY COURSE';
+                }, 1500);
+            }
+        });
+    }
+}
+
+/**
+ * Display course computation result
+ * @param {Object} course - Computed course solution
+ * @param {HTMLElement} container - Result container element
+ */
+function displayCourseResult(course, container) {
+    const qualityClass = course.quality.toLowerCase().replace('_', '-');
+    const arrivalDays = Math.round(course.timeToClosest);
+    const distanceAU = course.minDistance.toFixed(4);
+
+    container.classList.add('has-solution');
+    container.innerHTML = `
+        <div class="course-settings">
+            <div class="course-row">
+                <span class="course-label">YAW</span>
+                <span class="course-value">${course.yawDeg.toFixed(1)}°</span>
+            </div>
+            <div class="course-row">
+                <span class="course-label">PITCH</span>
+                <span class="course-value">${course.pitchDeg.toFixed(1)}°</span>
+            </div>
+            <div class="course-row">
+                <span class="course-label">DEPLOY</span>
+                <span class="course-value">${course.deployment}%</span>
+            </div>
+            <div class="course-row">
+                <span class="course-label">ETA</span>
+                <span class="course-value">${arrivalDays}d</span>
+            </div>
+            <div class="course-row">
+                <span class="course-label">CLOSEST</span>
+                <span class="course-value">${distanceAU} AU</span>
+            </div>
+            <div class="course-quality ${qualityClass}">${course.quality.replace('_', ' ')}</div>
+        </div>
+    `;
 }
 
 /**

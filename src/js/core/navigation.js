@@ -13,6 +13,7 @@ import { getPlayerShip } from '../data/ships.js';
 import { getPosition, getVelocity } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
 import { getSOIRadius, getGravitationalParam } from '../lib/soi.js';
+import { solveCourse } from '../lib/course-solver.js';
 
 // Current destination
 export let destination = 'MARS';
@@ -699,4 +700,128 @@ export function computeEscapePlan() {
         parentBody: player.soiState.currentBody,
         escapeReady: e >= 0.9,
     };
+}
+
+// ============================================================================
+// Optimal Course Computation - Hybrid Coarse-to-Fine Search
+// ============================================================================
+
+// Cache for computed course
+let optimalCourseCache = {
+    result: null,
+    destination: null,
+    computing: false,
+    progress: null
+};
+
+/**
+ * Get the current course computation state.
+ * @returns {Object} { computing, progress, result }
+ */
+export function getCourseComputationState() {
+    return {
+        computing: optimalCourseCache.computing,
+        progress: optimalCourseCache.progress,
+        result: optimalCourseCache.result
+    };
+}
+
+/**
+ * Compute optimal course to current destination.
+ *
+ * Uses hybrid coarse-to-fine search algorithm:
+ *   Phase 1: Coarse sweep (91 evaluations)
+ *   Phase 2: Fine search (405 evaluations)
+ *   Phase 3: Ultra-fine polish (49 evaluations)
+ *
+ * @param {Function} onProgress - Progress callback ({phase, progress, message})
+ * @returns {Promise<Object|null>} Course solution or null
+ */
+export async function computeOptimalCourse(onProgress = null) {
+    // Prevent concurrent computations
+    if (optimalCourseCache.computing) {
+        console.log('[NAVIGATION] Course computation already in progress');
+        return null;
+    }
+
+    const player = getPlayerShip();
+    const target = getBodyByName(destination);
+
+    if (!player || !target) {
+        console.warn('[NAVIGATION] Cannot compute course: missing player or target');
+        return null;
+    }
+
+    // Mark as computing
+    optimalCourseCache.computing = true;
+    optimalCourseCache.progress = { phase: 0, progress: 0, message: 'Starting...' };
+    optimalCourseCache.destination = destination;
+
+    try {
+        const result = await solveCourse(player, target, {}, (progress) => {
+            optimalCourseCache.progress = progress;
+            onProgress?.(progress);
+        });
+
+        // Store result
+        optimalCourseCache.result = result;
+        optimalCourseCache.computing = false;
+
+        if (result) {
+            console.log(`[NAVIGATION] Course computed: yaw=${result.yawDeg.toFixed(1)}°, ` +
+                        `pitch=${result.pitchDeg.toFixed(1)}°, ` +
+                        `distance=${result.minDistance.toFixed(4)} AU, ` +
+                        `quality=${result.quality}`);
+        }
+
+        return result;
+
+    } catch (error) {
+        console.error('[NAVIGATION] Course computation failed:', error);
+        optimalCourseCache.computing = false;
+        optimalCourseCache.result = null;
+        return null;
+    }
+}
+
+/**
+ * Get cached optimal course result.
+ * @returns {Object|null} Cached course or null
+ */
+export function getCachedOptimalCourse() {
+    // Invalidate if destination changed
+    if (optimalCourseCache.destination !== destination) {
+        optimalCourseCache.result = null;
+    }
+    return optimalCourseCache.result;
+}
+
+/**
+ * Clear the optimal course cache.
+ */
+export function clearOptimalCourseCache() {
+    optimalCourseCache.result = null;
+    optimalCourseCache.destination = null;
+}
+
+/**
+ * Apply computed course to ship sail.
+ * @param {Object} course - Course solution from computeOptimalCourse
+ * @returns {boolean} True if applied successfully
+ */
+export function applyComputedCourse(course) {
+    if (!course) return false;
+
+    const player = getPlayerShip();
+    if (!player || !player.sail) return false;
+
+    // Apply sail settings
+    player.sail.angle = course.yawDeg * Math.PI / 180;
+    player.sail.pitchAngle = course.pitchDeg * Math.PI / 180;
+    player.sail.deploymentPercent = course.deployment;
+
+    console.log(`[NAVIGATION] Applied course: yaw=${course.yawDeg.toFixed(1)}°, ` +
+                `pitch=${course.pitchDeg.toFixed(1)}°, deployment=${course.deployment}%`);
+
+    return true;
 }
