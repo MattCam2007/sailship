@@ -360,6 +360,145 @@ export function isIntersectionCacheValid(currentTrajectoryHash) {
 }
 
 // ============================================================================
+// Closest Approach Cache (Solution #5)
+// ============================================================================
+
+/**
+ * Cache for closest approach calculations.
+ * Shows minimum distance to each planet over the trajectory.
+ *
+ * Unlike intersection detection (which shows orbital radius crossings),
+ * this answers: "What's my minimum distance to each planet?"
+ */
+let closestApproachCache = {
+    trajectoryHash: null,
+    results: [],           // Array of {bodyName, minDistance, time, daysFromNow, shipPos, bodyPos}
+    timestamp: 0
+};
+
+/**
+ * Get closest approach cache
+ * @returns {Object} Cache object with {trajectoryHash, results, timestamp}
+ */
+export function getClosestApproachCache() {
+    return closestApproachCache;
+}
+
+/**
+ * Set closest approach cache with new results
+ * @param {string} trajectoryHash - Hash from trajectory predictor
+ * @param {Array} results - Array of closest approach results
+ */
+export function setClosestApproachCache(trajectoryHash, results) {
+    closestApproachCache = {
+        trajectoryHash,
+        results,
+        timestamp: performance.now()
+    };
+}
+
+/**
+ * Clear closest approach cache
+ */
+export function clearClosestApproachCache() {
+    closestApproachCache = {
+        trajectoryHash: null,
+        results: [],
+        timestamp: 0
+    };
+}
+
+/**
+ * Check if closest approach cache is valid for given trajectory hash
+ * @param {string} currentTrajectoryHash - Current hash from trajectory predictor
+ * @returns {boolean} True if cache is valid and fresh
+ */
+export function isClosestApproachCacheValid(currentTrajectoryHash) {
+    if (!closestApproachCache.trajectoryHash) return false;
+    if (closestApproachCache.trajectoryHash !== currentTrajectoryHash) return false;
+
+    // Use same TTL as intersection cache (1 second for stable trajectories)
+    const age = performance.now() - closestApproachCache.timestamp;
+    return age < 1000;
+}
+
+/**
+ * Get closest approach for a specific body from cache
+ * @param {string} bodyName - Name of the celestial body
+ * @returns {Object|null} Closest approach info or null if not found
+ */
+export function getClosestApproachForBody(bodyName) {
+    if (!closestApproachCache.results) return null;
+    return closestApproachCache.results.find(r => r.bodyName === bodyName) || null;
+}
+
+// ============================================================================
+// Node Crossings Cache (for plane change maneuvers)
+// ============================================================================
+
+/**
+ * Cache for node crossing calculations.
+ * Shows where trajectory crosses the target's orbital plane.
+ * These are optimal points for plane change maneuvers.
+ */
+let nodeCrossingsCache = {
+    trajectoryHash: null,
+    targetBody: null,        // Which body's plane we're tracking
+    results: [],             // Array of {type: 'AN'|'DN', time, position, daysFromNow}
+    timestamp: 0
+};
+
+/**
+ * Get node crossings cache
+ * @returns {Object} Cache object
+ */
+export function getNodeCrossingsCache() {
+    return nodeCrossingsCache;
+}
+
+/**
+ * Set node crossings cache with new results
+ * @param {string} trajectoryHash - Hash from trajectory predictor
+ * @param {string} targetBody - Name of the target body
+ * @param {Array} results - Array of node crossing results
+ */
+export function setNodeCrossingsCache(trajectoryHash, targetBody, results) {
+    nodeCrossingsCache = {
+        trajectoryHash,
+        targetBody,
+        results,
+        timestamp: performance.now()
+    };
+}
+
+/**
+ * Clear node crossings cache
+ */
+export function clearNodeCrossingsCache() {
+    nodeCrossingsCache = {
+        trajectoryHash: null,
+        targetBody: null,
+        results: [],
+        timestamp: 0
+    };
+}
+
+/**
+ * Check if node crossings cache is valid
+ * @param {string} currentTrajectoryHash - Current hash from trajectory predictor
+ * @param {string} targetBody - Current target body name
+ * @returns {boolean} True if cache is valid and fresh
+ */
+export function isNodeCrossingsCacheValid(currentTrajectoryHash, targetBody) {
+    if (!nodeCrossingsCache.trajectoryHash) return false;
+    if (nodeCrossingsCache.trajectoryHash !== currentTrajectoryHash) return false;
+    if (nodeCrossingsCache.targetBody !== targetBody) return false;
+
+    const age = performance.now() - nodeCrossingsCache.timestamp;
+    return age < 1000;
+}
+
+// ============================================================================
 // Focus Functions
 // ============================================================================
 
