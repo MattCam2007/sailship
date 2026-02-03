@@ -1249,6 +1249,12 @@ body::after {
     color: var(--coral-bright);
 }
 
+.display-options label.sub-option {
+    padding-left: 20px;
+    font-size: 9px;
+    opacity: 0.8;
+}
+
 /* ============================================================================
    TRAJECTORY CONFIGURATION
    ============================================================================ */
