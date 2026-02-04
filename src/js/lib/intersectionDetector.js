@@ -35,6 +35,7 @@
 import { getPosition } from './orbital.js';
 import { SOI_RADII } from '../config.js';
 import { camera } from '../core/camera.js';
+import { isCourseRecentlyApplied } from '../core/gameState.js';
 
 // ============================================================================
 // CROSSING REFINEMENT CONFIGURATION
@@ -85,8 +86,20 @@ const REFINEMENT_CONFIG = {
 /**
  * Get the number of bisection iterations based on current zoom level.
  * Higher zoom = more precision needed = more iterations.
+ *
+ * FIX #5: Force high precision after course application.
+ * When user applies a computed course and then zooms in to verify the intercept,
+ * we want stable ghost planet positions. Without this fix, zooming in would
+ * change precision from low (4 iterations, ~27min) to high (10 iterations, ~25sec),
+ * causing ghost positions to "jump" as the more precise crossing time is calculated.
  */
 function getBisectionIterations() {
+    // Fix #5: Force high precision after course application
+    // This prevents ghost position "jumping" when user zooms in to verify intercept
+    if (isCourseRecentlyApplied()) {
+        return REFINEMENT_CONFIG.bisectionIterationsHigh;
+    }
+
     const zoom = camera?.zoom ?? 1;
     if (zoom < REFINEMENT_CONFIG.zoomThreshold) {
         return REFINEMENT_CONFIG.bisectionIterationsLow;

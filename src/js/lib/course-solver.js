@@ -1,7 +1,31 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.0)
+ * Course Solver - Automatic Course Plotting (v3.4)
  *
  * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ *
+ * v3.4 CHANGE: Display Solver's Crossing Time (Fix #4)
+ *   - Added crossingJulianDate to evaluateCandidate return
+ *   - Added crossingJulianDate to crossingInfo in buildSolution
+ *   - UI can now display the exact crossing time the solver optimized for
+ *   - Helps users see if displayed ghost differs from solver's target
+ *
+ * v3.3 CHANGE: Shared Configuration (Fix #3)
+ *   - Import INTERSECTION_CONFIG from config.js for trajectory parameters
+ *   - CONFIG.stepsPerDay/maxSteps/minSteps now reference shared config
+ *   - Guarantees identical trajectory resolution between solver and detector
+ *   - Eliminates configuration drift risk
+ *
+ * v3.2 CHANGE: Quadratic Interpolation (Fix #2)
+ *   - Replaced linear interpolation with quadratic solving in findRadiusCrossingsInTrajectory
+ *   - Solves ||P(t)||² = R² for exact crossing point
+ *   - Matches algorithm used by intersection detector
+ *   - Crossing time error reduced from 5-30 minutes to ~seconds
+ *
+ * v3.1 CHANGE: Dynamic Resolution (Fix #1)
+ *   - Steps calculated dynamically based on duration: min(6000, max(500, days * 12))
+ *   - Matches intersection detector resolution (~2 hour intervals)
+ *   - For 365-day horizon: ~4380 steps (was fixed 1000)
+ *   - Crossing time discrepancy reduced from ±4 hours to ±1 hour
  *
  * v3.0 MAJOR CHANGE: Crossing-Aware Optimization
  *   - Evaluates candidates based on ORBITAL CROSSING distance, not global minimum
@@ -10,7 +34,7 @@
  *
  * Algorithm features:
  *   - Denser coarse sweep (5° steps)
- *   - High simulation resolution (1000 steps for solar sail accuracy)
+ *   - Dynamic simulation resolution (12 steps/day, matching detector)
  *   - Expanded ultra-fine window (±2°)
  *   - Multi-horizon search (180, 365, 540, 730, 1095, 1460 days)
  *   - Gradient descent polish (50 iterations post-grid)
@@ -24,6 +48,7 @@
 import { getPosition, getVelocity } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
 import { getJulianDate } from '../core/gameState.js';
+import { INTERSECTION_CONFIG } from '../config.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -52,8 +77,14 @@ const CONFIG = {
 
     // Simulation parameters (high resolution for solar sail accuracy)
     defaultMaxDays: 365,
-    defaultSteps: 1000,  // Increased from 200 for ~8.5 hour intervals
     defaultDeployment: 100,
+
+    // Dynamic step calculation (Fix #1 - match intersection detector resolution)
+    // Fix #3: Import shared trajectory parameters from config.js
+    // This guarantees solver and intersection detector use identical resolution
+    stepsPerDay: INTERSECTION_CONFIG.stepsPerDay,   // ~2 hour intervals (12 steps/day)
+    maxSteps: INTERSECTION_CONFIG.maxSteps,         // Cap to prevent excessive computation
+    minSteps: INTERSECTION_CONFIG.minSteps,         // Quality floor for short durations
 
     // Multi-horizon search durations (days)
     horizons: [180, 365, 540, 730, 1095, 1460],
@@ -129,10 +160,66 @@ function calculateAngularSeparation(pos1, pos2) {
 }
 
 /**
+ * Solve for the exact crossing parameter using quadratic equation (Fix #2).
+ * For P(t) = P1 + t*(P2-P1), solves ||P(t)||² = R²
+ *
+ * This gives exact crossing times (within floating-point precision) instead of
+ * the approximate linear interpolation which had 5-30 minute errors.
+ *
+ * @param {Object} p1 - Start point {x, y, z}
+ * @param {Object} p2 - End point {x, y, z}
+ * @param {number} targetRadius - Target radius to find crossing for
+ * @returns {number|null} Parameter t in [0,1] or null if no valid crossing
+ */
+export function solveQuadraticCrossing(p1, p2, targetRadius) {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dz = p2.z - p1.z;
+
+    // Quadratic coefficients for ||P(t)||² = R²
+    // Expanding: (p1.x + t*dx)² + (p1.y + t*dy)² + (p1.z + t*dz)² = R²
+    // a*t² + b*t + c = 0
+    const a = dx * dx + dy * dy + dz * dz;
+    const b = 2 * (p1.x * dx + p1.y * dy + p1.z * dz);
+    const r1sq = p1.x * p1.x + p1.y * p1.y + p1.z * p1.z;
+    const c = r1sq - targetRadius * targetRadius;
+
+    // Check for degenerate case (no movement)
+    if (a < 1e-20) {
+        return null;
+    }
+
+    const discriminant = b * b - 4 * a * c;
+
+    // Epsilon tolerance for near-zero discriminant (tangent case)
+    // Matches the tolerance used in intersectionDetector.js
+    const EPSILON = 1e-10;
+    if (discriminant < -EPSILON) {
+        return null; // No real solution
+    }
+
+    // Clamp tiny negatives to zero (handles floating-point near-tangent cases)
+    const safeDisc = Math.max(0, discriminant);
+    const sqrtDisc = Math.sqrt(safeDisc);
+
+    const t1 = (-b - sqrtDisc) / (2 * a);
+    const t2 = (-b + sqrtDisc) / (2 * a);
+
+    // Return the first valid solution in [0, 1]
+    if (t1 >= 0 && t1 <= 1) {
+        return t1;
+    } else if (t2 >= 0 && t2 <= 1) {
+        return t2;
+    }
+
+    return null;
+}
+
+/**
  * Find all orbital radius crossings in a trajectory.
  *
  * Detects when ship crosses the target's semi-major axis distance from the Sun.
- * Uses the same algorithm as intersectionDetector for consistency with ghost planets.
+ * Uses the same quadratic algorithm as intersectionDetector for consistency with ghost planets.
  *
  * @param {Array} trajectory - Array of {x, y, z, time} points
  * @param {number} targetRadius - Target orbital radius (semi-major axis) in AU
@@ -168,17 +255,20 @@ function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
             continue;
         }
 
-        // Calculate exact crossing point using linear interpolation
-        // (Good enough for our purposes - intersectionDetector uses quadratic
-        // but linear is fine for the solver's needs)
-        const radialDiff = r2 - r1;
-        let t;
-        if (Math.abs(radialDiff) < 1e-15) {
-            t = 0.5;
-        } else {
-            t = (targetRadius - r1) / radialDiff;
+        // Calculate exact crossing point using QUADRATIC solving (Fix #2)
+        // This matches the intersection detector's algorithm for consistency
+        // and reduces crossing time error from 5-30 minutes to ~seconds
+        let t = solveQuadraticCrossing(p1, p2, targetRadius);
+
+        if (t === null) {
+            // Fallback to linear if quadratic fails (rare edge case)
+            const radialDiff = r2 - r1;
+            if (Math.abs(radialDiff) < 1e-15) {
+                t = 0.5;  // Midpoint if radii are essentially equal
+            } else {
+                t = Math.max(0, Math.min(1, (targetRadius - r1) / radialDiff));
+            }
         }
-        t = Math.max(0, Math.min(1, t));
 
         const crossingTime = p1.time + t * (p2.time - p1.time);
         const crossingPos = {
@@ -244,9 +334,14 @@ function distance3D(pos1, pos2) {
 export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) {
     const {
         maxDays = CONFIG.defaultMaxDays,
-        steps = CONFIG.defaultSteps,
         deployment = CONFIG.defaultDeployment
     } = options;
+
+    // Calculate steps dynamically based on duration (Fix #1 - match intersection detector)
+    // Formula: min(maxSteps, max(minSteps, duration * stepsPerDay))
+    // This ensures consistent ~2 hour intervals matching the intersection detector
+    const rawSteps = Math.round(maxDays * CONFIG.stepsPerDay);
+    const steps = options.steps || Math.min(CONFIG.maxSteps, Math.max(CONFIG.minSteps, rawSteps));
 
     // Validate inputs
     if (!ship?.orbitalElements || !target?.elements) {
@@ -422,7 +517,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                 totalCrossings: crossings.length,
                 angularSeparationDeg: bestAngularSep * (180 / Math.PI),
                 crossingDirection: bestCrossing.direction,
-                usedCrossingAware: true
+                usedCrossingAware: true,
+                // Fix #4: Store crossing Julian date for UI display
+                crossingJulianDate: bestCrossing.time
             };
         }
 
@@ -458,7 +555,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                     totalCrossings: crossings.length,
                     angularSeparationDeg: bestFailedAngularSep * (180 / Math.PI),
                     crossingDirection: bestFailedCrossing.direction,
-                    usedCrossingAware: true
+                    usedCrossingAware: true,
+                    // Fix #4: Store crossing Julian date for UI display
+                    crossingJulianDate: bestFailedCrossing.time
                 };
             }
         }
@@ -491,7 +590,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         totalCrossings: 0,
         angularSeparationDeg: 180,  // Unknown/invalid
         crossingDirection: 'none',
-        usedCrossingAware: false  // Fell back to global minimum
+        usedCrossingAware: false,  // Fell back to global minimum
+        // Fix #4: No crossing found, so no crossing date
+        crossingJulianDate: null
     };
 }
 
@@ -1051,12 +1152,14 @@ function buildSolution(result, metrics) {
         confidence,
 
         // v3.0: Crossing-aware metadata
+        // Fix #4: Added crossingJulianDate for UI display of solver's computed crossing time
         crossingInfo: {
             crossingIndex: result.crossingIndex ?? -1,
             totalCrossings: result.totalCrossings ?? 0,
             angularSeparationDeg: result.angularSeparationDeg ?? 180,
             crossingDirection: result.crossingDirection ?? 'unknown',
-            usedCrossingAware: result.usedCrossingAware ?? false
+            usedCrossingAware: result.usedCrossingAware ?? false,
+            crossingJulianDate: result.crossingJulianDate ?? null
         },
 
         // Search metrics
@@ -1081,4 +1184,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.0 loaded - Crossing-aware optimization with phase constraints');
+console.log('[COURSE_SOLVER] Module v3.4 loaded - Exposes crossingJulianDate for UI display');

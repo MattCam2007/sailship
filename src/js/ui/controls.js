@@ -3,7 +3,7 @@
  */
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
-import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters } from '../core/gameState.js';
+import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied } from '../core/gameState.js';
 import { resizeCanvas } from './renderer.js';
 import {
     setDestination,
@@ -1137,6 +1137,11 @@ function initCoursePlotter() {
         applyBtn.addEventListener('click', () => {
             const course = getCachedOptimalCourse();
             if (course && applyComputedCourse(course)) {
+                // Fix #5: Mark that a course was applied so intersection detector
+                // forces high precision, preventing ghost position "jumping" when
+                // user zooms in to verify the intercept
+                markCourseApplied();
+
                 // Sync slider positions with the precise course values
                 const deploySlider = document.getElementById('sailDeployment');
                 const angleSlider = document.getElementById('sailAngle');
@@ -1194,6 +1199,7 @@ function displayCourseResult(course, container) {
 
     // v3.0: Format crossing info
     let crossingText = '';
+    let crossingTimeText = '';
     if (course.crossingInfo && course.crossingInfo.usedCrossingAware) {
         const ci = course.crossingInfo;
         if (ci.totalCrossings > 0) {
@@ -1201,13 +1207,18 @@ function displayCourseResult(course, container) {
             const crossingNum = ci.crossingIndex + 1;
             const direction = ci.crossingDirection === 'outbound' ? '↑' : '↓';
             crossingText = `#${crossingNum}/${ci.totalCrossings} ${direction}`;
+
+            // Fix #4: Format crossing time as "T+XXd Xh" from timeToClosest (days)
+            const crossingDays = Math.floor(course.timeToClosest);
+            const crossingHours = Math.round((course.timeToClosest - crossingDays) * 24);
+            crossingTimeText = `T+${crossingDays}d ${crossingHours}h`;
         }
     }
 
     // v3.0: Format phase angle (angular separation)
     let phaseText = '';
     if (course.crossingInfo && course.crossingInfo.angularSeparationDeg < 180) {
-        const phaseDeg = course.crossingInfo.angularSeparationDeg.toFixed(0);
+        const phaseDeg = course.crossingInfo.angularSeparationDeg.toFixed(1);
         phaseText = `${phaseDeg}°`;
     }
 
@@ -1241,6 +1252,10 @@ function displayCourseResult(course, container) {
             ${crossingText ? `<div class="course-row">
                 <span class="course-label">CROSSING</span>
                 <span class="course-value">${crossingText}</span>
+            </div>` : ''}
+            ${crossingTimeText ? `<div class="course-row">
+                <span class="course-label">TIME</span>
+                <span class="course-value">${crossingTimeText}</span>
             </div>` : ''}
             ${phaseText ? `<div class="course-row">
                 <span class="course-label">PHASE</span>
