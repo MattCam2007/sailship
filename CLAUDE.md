@@ -251,7 +251,7 @@ Left panel sections can be collapsed/expanded by clicking their headers. Panel s
 The right panel uses a tab system (SAIL/NAV/AUTO) for organizing controls and data. Tab state persists across sessions.
 
 ### Trajectory Configuration
-The predicted trajectory duration can be adjusted from 30 days to 2 years (730 days). Use the slider or preset buttons for quick selection. The RESET button returns to default (60 days).
+The predicted trajectory duration can be adjusted from 30 days to 5 years (1825 days). Use the slider or preset buttons (60d, 6mo, 1yr, 2yr, 3yr, 5yr) for quick selection. The RESET button returns to default (60 days). Extended range supports outer planet transfers and course solver multi-horizon search.
 
 ## Keyboard Shortcuts
 
