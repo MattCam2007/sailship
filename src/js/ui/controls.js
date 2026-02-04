@@ -3,7 +3,7 @@
  */
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
-import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied } from '../core/gameState.js';
+import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
 import { resizeCanvas } from './renderer.js';
 import {
     setDestination,
@@ -17,7 +17,8 @@ import {
     computeOptimalCourse,
     getCachedOptimalCourse,
     applyComputedCourse,
-    getCourseComputationState
+    getCourseComputationState,
+    isRefinementMode
 } from '../core/navigation.js';
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount } from '../data/ships.js';
@@ -1045,6 +1046,11 @@ export function populateObjectList() {
                 setDestination(obj.name);
                 setDestinationName(obj.name);
                 generateFlightPath();
+
+                // Clear transit state when destination changes
+                // This disables refinement mode until a new course is applied
+                clearTransitState('destination changed');
+                updatePlotButtonText();
             }
         });
         list.appendChild(item);
@@ -1067,6 +1073,30 @@ function initAutoPilotControls() {
             updateAutoPilotUI(newState);
         });
     }
+}
+
+/**
+ * Update the plot button text based on whether refinement mode is active.
+ *
+ * Shows "REFINE COURSE" when:
+ * - A course has been applied (transit state active)
+ * - Current destination matches the applied course destination
+ * - Current sail settings are within ±20° of applied course
+ *
+ * Shows "PLOT COURSE" in all other cases.
+ */
+export function updatePlotButtonText() {
+    const plotBtn = document.getElementById('plotCourseBtn');
+    if (!plotBtn) return;
+
+    const btnText = plotBtn.querySelector('.course-btn-text');
+    if (!btnText) return;
+
+    // Don't update if currently computing
+    if (plotBtn.classList.contains('computing')) return;
+
+    const useRefinement = isRefinementMode();
+    btnText.textContent = useRefinement ? 'REFINE COURSE' : 'PLOT COURSE';
 }
 
 /**
@@ -1094,10 +1124,15 @@ function initCoursePlotter() {
 
             try {
                 const course = await computeOptimalCourse((progress) => {
-                    // Update progress display with multi-horizon feedback
+                    // Update progress display with multi-horizon or refinement mode feedback
                     let statusText;
                     if (progress.phase === 'starting') {
-                        statusText = 'Initializing...';
+                        statusText = progress.message || 'Initializing...';
+                    } else if (progress.phase === 'refinement-mode') {
+                        // Refinement mode progress (narrower search)
+                        const pct = Math.round((progress.progress || 0) * 100);
+                        const subPhase = progress.subPhase || '';
+                        statusText = `Refining: ${subPhase} (${pct}%)`;
                     } else if (progress.phase === 'multi-horizon') {
                         const horizonNum = (progress.horizonIndex || 0) + 1;
                         const horizonTotal = progress.horizonCount || 6;
@@ -1116,7 +1151,7 @@ function initCoursePlotter() {
 
                 // Update button state
                 plotBtn.classList.remove('computing');
-                plotBtn.querySelector('.course-btn-text').textContent = 'PLOT COURSE';
+                updatePlotButtonText();  // Update based on refinement mode
 
                 if (course) {
                     displayCourseResult(course, resultDiv);
@@ -1127,7 +1162,7 @@ function initCoursePlotter() {
             } catch (error) {
                 console.error('Course computation error:', error);
                 plotBtn.classList.remove('computing');
-                plotBtn.querySelector('.course-btn-text').textContent = 'PLOT COURSE';
+                updatePlotButtonText();  // Update based on refinement mode
                 resultDiv.innerHTML = '<div class="course-status">Computation failed</div>';
             }
         });
@@ -1171,6 +1206,9 @@ function initCoursePlotter() {
                 setTimeout(() => {
                     applyBtn.textContent = 'APPLY COURSE';
                 }, 1500);
+
+                // Update plot button to show "REFINE COURSE" since course is now applied
+                updatePlotButtonText();
             }
         });
     }

@@ -13,7 +13,7 @@
 
 import { getPosition, getVelocity, MU_SUN, getPeriapsis } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
-import { getJulianDate } from './gameState.js';
+import { getJulianDate, clearTransitState, getTransitState } from './gameState.js';
 import { celestialBodies, getBodyByName } from '../data/celestialBodies.js';
 import {
     checkSOIEntry,
@@ -701,6 +701,13 @@ function handleSOIEntry(ship, shipPosHelio, shipVelHelio, planetName, julianDate
         currentBody: planetName,
         isInSOI: true
     };
+
+    // Clear transit state if we've arrived at our destination (FM1 review finding)
+    // This prevents stale refinement mode after arrival
+    const transit = getTransitState();
+    if (transit.active && transit.destination === planetName) {
+        clearTransitState('arrival at destination');
+    }
 
     // Set cooldown for this specific body
     lastSOITransitionTime = julianDate;

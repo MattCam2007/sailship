@@ -595,3 +595,72 @@ export function markCourseApplied() {
 export function isCourseRecentlyApplied() {
     return Date.now() - lastCourseApplyTime < COURSE_PRECISION_WINDOW_MS;
 }
+
+// ============================================================================
+// Transit State Tracking (Course Refinement Feature)
+// ============================================================================
+
+/**
+ * Track when a course has been applied and with what settings.
+ *
+ * This enables "refinement mode" where re-plotting a course uses the
+ * existing sail settings as a starting point for a narrower search,
+ * rather than doing a full grid search.
+ *
+ * Transit state is cleared when:
+ * - Destination changes
+ * - Player enters destination's SOI (arrival)
+ * - Player manually adjusts sail settings significantly (>20° difference)
+ */
+let transitState = {
+    active: false,           // Course has been applied
+    destination: null,       // Target body name at time of apply
+    appliedCourse: null,     // { yawDeg, pitchDeg, deployment }
+    appliedAt: null          // Julian date when applied
+};
+
+/**
+ * Set transit state when a course is applied.
+ * @param {string} destination - Target body name
+ * @param {Object} course - Course settings { yawDeg, pitchDeg, deployment }
+ * @param {number} julianDate - Current Julian date
+ */
+export function setTransitState(destination, course, julianDate) {
+    transitState = {
+        active: true,
+        destination,
+        appliedCourse: {
+            yawDeg: course.yawDeg,
+            pitchDeg: course.pitchDeg,
+            deployment: course.deployment
+        },
+        appliedAt: julianDate
+    };
+    console.log(`[GAMESTATE] Transit state set: destination=${destination}, ` +
+                `yaw=${course.yawDeg.toFixed(1)}°, pitch=${course.pitchDeg.toFixed(1)}°`);
+}
+
+/**
+ * Clear transit state.
+ * Called when destination changes, on arrival, or when sail settings drift too far.
+ * @param {string} reason - Reason for clearing (for logging)
+ */
+export function clearTransitState(reason = 'unspecified') {
+    if (transitState.active) {
+        console.log(`[GAMESTATE] Transit state cleared: reason=${reason}`);
+    }
+    transitState = {
+        active: false,
+        destination: null,
+        appliedCourse: null,
+        appliedAt: null
+    };
+}
+
+/**
+ * Get current transit state.
+ * @returns {Object} Transit state object
+ */
+export function getTransitState() {
+    return { ...transitState };
+}
