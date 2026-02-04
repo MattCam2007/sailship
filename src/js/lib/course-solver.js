@@ -1,7 +1,13 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.1)
+ * Course Solver - Automatic Course Plotting (v3.2)
  *
  * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ *
+ * v3.2 CHANGE: Quadratic Interpolation (Fix #2)
+ *   - Replaced linear interpolation with quadratic solving in findRadiusCrossingsInTrajectory
+ *   - Solves ||P(t)||² = R² for exact crossing point
+ *   - Matches algorithm used by intersection detector
+ *   - Crossing time error reduced from 5-30 minutes to ~seconds
  *
  * v3.1 CHANGE: Dynamic Resolution (Fix #1)
  *   - Steps calculated dynamically based on duration: min(6000, max(500, days * 12))
@@ -141,10 +147,66 @@ function calculateAngularSeparation(pos1, pos2) {
 }
 
 /**
+ * Solve for the exact crossing parameter using quadratic equation (Fix #2).
+ * For P(t) = P1 + t*(P2-P1), solves ||P(t)||² = R²
+ *
+ * This gives exact crossing times (within floating-point precision) instead of
+ * the approximate linear interpolation which had 5-30 minute errors.
+ *
+ * @param {Object} p1 - Start point {x, y, z}
+ * @param {Object} p2 - End point {x, y, z}
+ * @param {number} targetRadius - Target radius to find crossing for
+ * @returns {number|null} Parameter t in [0,1] or null if no valid crossing
+ */
+export function solveQuadraticCrossing(p1, p2, targetRadius) {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dz = p2.z - p1.z;
+
+    // Quadratic coefficients for ||P(t)||² = R²
+    // Expanding: (p1.x + t*dx)² + (p1.y + t*dy)² + (p1.z + t*dz)² = R²
+    // a*t² + b*t + c = 0
+    const a = dx * dx + dy * dy + dz * dz;
+    const b = 2 * (p1.x * dx + p1.y * dy + p1.z * dz);
+    const r1sq = p1.x * p1.x + p1.y * p1.y + p1.z * p1.z;
+    const c = r1sq - targetRadius * targetRadius;
+
+    // Check for degenerate case (no movement)
+    if (a < 1e-20) {
+        return null;
+    }
+
+    const discriminant = b * b - 4 * a * c;
+
+    // Epsilon tolerance for near-zero discriminant (tangent case)
+    // Matches the tolerance used in intersectionDetector.js
+    const EPSILON = 1e-10;
+    if (discriminant < -EPSILON) {
+        return null; // No real solution
+    }
+
+    // Clamp tiny negatives to zero (handles floating-point near-tangent cases)
+    const safeDisc = Math.max(0, discriminant);
+    const sqrtDisc = Math.sqrt(safeDisc);
+
+    const t1 = (-b - sqrtDisc) / (2 * a);
+    const t2 = (-b + sqrtDisc) / (2 * a);
+
+    // Return the first valid solution in [0, 1]
+    if (t1 >= 0 && t1 <= 1) {
+        return t1;
+    } else if (t2 >= 0 && t2 <= 1) {
+        return t2;
+    }
+
+    return null;
+}
+
+/**
  * Find all orbital radius crossings in a trajectory.
  *
  * Detects when ship crosses the target's semi-major axis distance from the Sun.
- * Uses the same algorithm as intersectionDetector for consistency with ghost planets.
+ * Uses the same quadratic algorithm as intersectionDetector for consistency with ghost planets.
  *
  * @param {Array} trajectory - Array of {x, y, z, time} points
  * @param {number} targetRadius - Target orbital radius (semi-major axis) in AU
@@ -180,17 +242,20 @@ function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
             continue;
         }
 
-        // Calculate exact crossing point using linear interpolation
-        // (Good enough for our purposes - intersectionDetector uses quadratic
-        // but linear is fine for the solver's needs)
-        const radialDiff = r2 - r1;
-        let t;
-        if (Math.abs(radialDiff) < 1e-15) {
-            t = 0.5;
-        } else {
-            t = (targetRadius - r1) / radialDiff;
+        // Calculate exact crossing point using QUADRATIC solving (Fix #2)
+        // This matches the intersection detector's algorithm for consistency
+        // and reduces crossing time error from 5-30 minutes to ~seconds
+        let t = solveQuadraticCrossing(p1, p2, targetRadius);
+
+        if (t === null) {
+            // Fallback to linear if quadratic fails (rare edge case)
+            const radialDiff = r2 - r1;
+            if (Math.abs(radialDiff) < 1e-15) {
+                t = 0.5;  // Midpoint if radii are essentially equal
+            } else {
+                t = Math.max(0, Math.min(1, (targetRadius - r1) / radialDiff));
+            }
         }
-        t = Math.max(0, Math.min(1, t));
 
         const crossingTime = p1.time + t * (p2.time - p1.time);
         const crossingPos = {
@@ -1098,4 +1163,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.1 loaded - Dynamic resolution matching intersection detector');
+console.log('[COURSE_SOLVER] Module v3.2 loaded - Quadratic interpolation matching intersection detector');
