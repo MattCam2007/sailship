@@ -1,7 +1,13 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.0)
+ * Course Solver - Automatic Course Plotting (v3.1)
  *
  * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ *
+ * v3.1 CHANGE: Dynamic Resolution (Fix #1)
+ *   - Steps calculated dynamically based on duration: min(6000, max(500, days * 12))
+ *   - Matches intersection detector resolution (~2 hour intervals)
+ *   - For 365-day horizon: ~4380 steps (was fixed 1000)
+ *   - Crossing time discrepancy reduced from ±4 hours to ±1 hour
  *
  * v3.0 MAJOR CHANGE: Crossing-Aware Optimization
  *   - Evaluates candidates based on ORBITAL CROSSING distance, not global minimum
@@ -10,7 +16,7 @@
  *
  * Algorithm features:
  *   - Denser coarse sweep (5° steps)
- *   - High simulation resolution (1000 steps for solar sail accuracy)
+ *   - Dynamic simulation resolution (12 steps/day, matching detector)
  *   - Expanded ultra-fine window (±2°)
  *   - Multi-horizon search (180, 365, 540, 730, 1095, 1460 days)
  *   - Gradient descent polish (50 iterations post-grid)
@@ -52,8 +58,14 @@ const CONFIG = {
 
     // Simulation parameters (high resolution for solar sail accuracy)
     defaultMaxDays: 365,
-    defaultSteps: 1000,  // Increased from 200 for ~8.5 hour intervals
     defaultDeployment: 100,
+
+    // Dynamic step calculation (Fix #1 - match intersection detector resolution)
+    // The intersection detector uses 12 steps/day for ~2 hour intervals
+    // This ensures crossing time discrepancies stay below ±1 hour
+    stepsPerDay: 12,     // Match intersection detector (12 steps/day = ~2 hour intervals)
+    maxSteps: 6000,      // Cap to prevent excessive computation (matches detector)
+    minSteps: 500,       // Quality floor for short durations
 
     // Multi-horizon search durations (days)
     horizons: [180, 365, 540, 730, 1095, 1460],
@@ -244,9 +256,14 @@ function distance3D(pos1, pos2) {
 export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) {
     const {
         maxDays = CONFIG.defaultMaxDays,
-        steps = CONFIG.defaultSteps,
         deployment = CONFIG.defaultDeployment
     } = options;
+
+    // Calculate steps dynamically based on duration (Fix #1 - match intersection detector)
+    // Formula: min(maxSteps, max(minSteps, duration * stepsPerDay))
+    // This ensures consistent ~2 hour intervals matching the intersection detector
+    const rawSteps = Math.round(maxDays * CONFIG.stepsPerDay);
+    const steps = options.steps || Math.min(CONFIG.maxSteps, Math.max(CONFIG.minSteps, rawSteps));
 
     // Validate inputs
     if (!ship?.orbitalElements || !target?.elements) {
@@ -1081,4 +1098,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.0 loaded - Crossing-aware optimization with phase constraints');
+console.log('[COURSE_SOLVER] Module v3.1 loaded - Dynamic resolution matching intersection detector');

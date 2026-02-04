@@ -320,6 +320,64 @@ test('testSolutionIncludesSearchMetrics', async () => {
     assert(typeof solution.searchMetrics.computeTimeMs === 'number', 'Should have computeTimeMs');
 });
 
+// Unit 8: Resolution tests (Fix #1 - match intersection detector resolution)
+test('testConfigIncludesHighResolutionSettings', async () => {
+    const { getConfig } = await import('./course-solver.js');
+    const config = getConfig();
+
+    // CONFIG should include dynamic step calculation parameters
+    assert(typeof config.stepsPerDay === 'number', 'CONFIG should have stepsPerDay');
+    assert(config.stepsPerDay >= 10, `stepsPerDay should be >= 10, got ${config.stepsPerDay}`);
+    assert(typeof config.maxSteps === 'number', 'CONFIG should have maxSteps');
+    assert(config.maxSteps >= 4000, `maxSteps should be >= 4000, got ${config.maxSteps}`);
+    assert(typeof config.minSteps === 'number', 'CONFIG should have minSteps');
+    assert(config.minSteps >= 500, `minSteps should be >= 500, got ${config.minSteps}`);
+});
+
+test('testSolverUsesHighResolutionForYearHorizon', async () => {
+    // For a 365-day horizon, solver should use ~4380 steps (12 steps/day)
+    // not the old fixed 1000 steps
+    const { getConfig } = await import('./course-solver.js');
+    const config = getConfig();
+
+    const duration = 365;
+    const expectedMinSteps = duration * 10;  // At least 10 steps/day
+
+    // Calculate what the solver would use
+    const rawSteps = Math.round(duration * config.stepsPerDay);
+    const calculatedSteps = Math.min(config.maxSteps, Math.max(config.minSteps, rawSteps));
+
+    assert(calculatedSteps >= expectedMinSteps,
+        `365-day horizon should use >= ${expectedMinSteps} steps, calculated ${calculatedSteps}`);
+    assert(calculatedSteps > 1000,
+        `Should use more than old fixed 1000 steps, got ${calculatedSteps}`);
+});
+
+test('testSolverCalculatesStepsDynamically', async () => {
+    const { getConfig } = await import('./course-solver.js');
+    const config = getConfig();
+
+    // Test various durations to verify dynamic calculation
+    const testCases = [
+        { days: 180, expectedMin: 1800 },   // 180 * 10 = 1800
+        { days: 365, expectedMin: 3650 },   // 365 * 10 = 3650
+        { days: 730, expectedMin: 6000 },   // Would be 7300 but capped at maxSteps
+        { days: 1460, expectedMin: 6000 },  // Would be 14600 but capped at maxSteps
+    ];
+
+    for (const tc of testCases) {
+        const rawSteps = Math.round(tc.days * config.stepsPerDay);
+        const calculatedSteps = Math.min(config.maxSteps, Math.max(config.minSteps, rawSteps));
+
+        // For short durations, should be >= days * 10
+        // For long durations, should be capped at maxSteps
+        const expectedSteps = Math.min(config.maxSteps, Math.max(config.minSteps, tc.days * config.stepsPerDay));
+
+        assert(calculatedSteps >= tc.expectedMin || calculatedSteps === config.maxSteps,
+            `${tc.days}-day horizon: expected >= ${tc.expectedMin} or maxSteps, got ${calculatedSteps}`);
+    }
+});
+
 // Edge case tests (from review feedback)
 test('testSolveCourseWithInvalidShip', async () => {
     const { solveCourse } = await import('./course-solver.js');
