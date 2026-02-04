@@ -1,7 +1,13 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.3)
+ * Course Solver - Automatic Course Plotting (v3.4)
  *
  * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ *
+ * v3.4 CHANGE: Display Solver's Crossing Time (Fix #4)
+ *   - Added crossingJulianDate to evaluateCandidate return
+ *   - Added crossingJulianDate to crossingInfo in buildSolution
+ *   - UI can now display the exact crossing time the solver optimized for
+ *   - Helps users see if displayed ghost differs from solver's target
  *
  * v3.3 CHANGE: Shared Configuration (Fix #3)
  *   - Import INTERSECTION_CONFIG from config.js for trajectory parameters
@@ -511,7 +517,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                 totalCrossings: crossings.length,
                 angularSeparationDeg: bestAngularSep * (180 / Math.PI),
                 crossingDirection: bestCrossing.direction,
-                usedCrossingAware: true
+                usedCrossingAware: true,
+                // Fix #4: Store crossing Julian date for UI display
+                crossingJulianDate: bestCrossing.time
             };
         }
 
@@ -547,7 +555,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                     totalCrossings: crossings.length,
                     angularSeparationDeg: bestFailedAngularSep * (180 / Math.PI),
                     crossingDirection: bestFailedCrossing.direction,
-                    usedCrossingAware: true
+                    usedCrossingAware: true,
+                    // Fix #4: Store crossing Julian date for UI display
+                    crossingJulianDate: bestFailedCrossing.time
                 };
             }
         }
@@ -580,7 +590,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         totalCrossings: 0,
         angularSeparationDeg: 180,  // Unknown/invalid
         crossingDirection: 'none',
-        usedCrossingAware: false  // Fell back to global minimum
+        usedCrossingAware: false,  // Fell back to global minimum
+        // Fix #4: No crossing found, so no crossing date
+        crossingJulianDate: null
     };
 }
 
@@ -1140,12 +1152,14 @@ function buildSolution(result, metrics) {
         confidence,
 
         // v3.0: Crossing-aware metadata
+        // Fix #4: Added crossingJulianDate for UI display of solver's computed crossing time
         crossingInfo: {
             crossingIndex: result.crossingIndex ?? -1,
             totalCrossings: result.totalCrossings ?? 0,
             angularSeparationDeg: result.angularSeparationDeg ?? 180,
             crossingDirection: result.crossingDirection ?? 'unknown',
-            usedCrossingAware: result.usedCrossingAware ?? false
+            usedCrossingAware: result.usedCrossingAware ?? false,
+            crossingJulianDate: result.crossingJulianDate ?? null
         },
 
         // Search metrics
@@ -1170,4 +1184,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.3 loaded - Shared config with intersection detector');
+console.log('[COURSE_SOLVER] Module v3.4 loaded - Exposes crossingJulianDate for UI display');
