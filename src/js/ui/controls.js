@@ -3,7 +3,7 @@
  */
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
-import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters } from '../core/gameState.js';
+import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied } from '../core/gameState.js';
 import { resizeCanvas } from './renderer.js';
 import {
     setDestination,
@@ -1137,6 +1137,11 @@ function initCoursePlotter() {
         applyBtn.addEventListener('click', () => {
             const course = getCachedOptimalCourse();
             if (course && applyComputedCourse(course)) {
+                // Fix #5: Mark that a course was applied so intersection detector
+                // forces high precision, preventing ghost position "jumping" when
+                // user zooms in to verify the intercept
+                markCourseApplied();
+
                 // Sync slider positions with the precise course values
                 const deploySlider = document.getElementById('sailDeployment');
                 const angleSlider = document.getElementById('sailAngle');

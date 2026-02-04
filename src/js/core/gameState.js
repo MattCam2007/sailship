@@ -553,3 +553,45 @@ export function setCustomSpeed(multiplier) {
     currentSpeed = 'custom';
     timeScale = value * REAL_TIME_RATE;
 }
+
+// ============================================================================
+// Course Apply Tracking (Fix #5)
+// ============================================================================
+
+/**
+ * Track when a course was last applied for precision management.
+ *
+ * PROBLEM: The intersection detector uses zoom-adaptive precision:
+ * - Low zoom: 4 bisection iterations (~27 minute precision)
+ * - High zoom: 10 bisection iterations (~25 second precision)
+ *
+ * When user applies a course solution at low zoom and then zooms in to verify,
+ * the ghost planet position may "jump" because precision changes.
+ *
+ * SOLUTION: After applying a course, force high precision for a window of time
+ * regardless of zoom level, ensuring stable ghost positions for verification.
+ */
+let lastCourseApplyTime = 0;
+
+/**
+ * Duration in milliseconds to force high precision after course apply.
+ * 5 minutes provides ample time for the user to zoom in and verify intercept.
+ */
+const COURSE_PRECISION_WINDOW_MS = 300000;  // 5 minutes
+
+/**
+ * Mark that a course was just applied.
+ * Call this when the "APPLY COURSE" button is clicked.
+ */
+export function markCourseApplied() {
+    lastCourseApplyTime = Date.now();
+}
+
+/**
+ * Check if a course was recently applied (within the precision window).
+ * Used by intersection detector to determine if high precision should be forced.
+ * @returns {boolean} True if course was applied within COURSE_PRECISION_WINDOW_MS
+ */
+export function isCourseRecentlyApplied() {
+    return Date.now() - lastCourseApplyTime < COURSE_PRECISION_WINDOW_MS;
+}
