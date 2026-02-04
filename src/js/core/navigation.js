@@ -8,7 +8,7 @@
  */
 
 import { getBodyByName } from '../data/celestialBodies.js';
-import { getJulianDate } from './gameState.js';
+import { getJulianDate, setTransitState, clearTransitState, getTransitState, getTrajectoryDuration } from './gameState.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getPosition, getVelocity } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
@@ -729,10 +729,18 @@ export function getCourseComputationState() {
 /**
  * Compute optimal course to current destination.
  *
- * Uses hybrid coarse-to-fine search algorithm:
+ * Supports two modes:
+ *
+ * FULL MODE (default):
  *   Phase 1: Coarse sweep (91 evaluations)
  *   Phase 2: Fine search (405 evaluations)
  *   Phase 3: Ultra-fine polish (49 evaluations)
+ *   + Multi-horizon search and iterative refinement
+ *
+ * REFINEMENT MODE (when isRefinementMode() returns true):
+ *   - Narrow search around current sail settings
+ *   - Single horizon (uses current trajectory duration)
+ *   - Faster completion (~5-10s vs ~30-45s)
  *
  * @param {Function} onProgress - Progress callback ({phase, progress, message})
  * @returns {Promise<Object|null>} Course solution or null
@@ -758,7 +766,26 @@ export async function computeOptimalCourse(onProgress = null) {
     optimalCourseCache.destination = destination;
 
     try {
-        const result = await solveCourse(player, target, {}, (progress) => {
+        // Check for refinement mode
+        const useRefinementMode = isRefinementMode();
+        const seedSettings = useRefinementMode ? getRefinementSeedSettings() : null;
+
+        // Build solver options
+        const solverOptions = {};
+
+        if (useRefinementMode && seedSettings) {
+            // Refinement mode: narrow search around current settings
+            solverOptions.refinementMode = true;
+            solverOptions.seedSettings = seedSettings;
+            solverOptions.maxDays = getTrajectoryDuration();  // Use current trajectory slider setting
+
+            console.log(`[NAVIGATION] Using REFINEMENT mode (seed: yaw=${seedSettings.yawDeg.toFixed(1)}°, ` +
+                        `pitch=${seedSettings.pitchDeg.toFixed(1)}°, horizon=${solverOptions.maxDays}d)`);
+        } else {
+            console.log('[NAVIGATION] Using FULL mode (multi-horizon search)');
+        }
+
+        const result = await solveCourse(player, target, solverOptions, (progress) => {
             optimalCourseCache.progress = progress;
             onProgress?.(progress);
         });
@@ -768,7 +795,8 @@ export async function computeOptimalCourse(onProgress = null) {
         optimalCourseCache.computing = false;
 
         if (result) {
-            console.log(`[NAVIGATION] Course computed: yaw=${result.yawDeg.toFixed(1)}°, ` +
+            const modeLabel = result.usedRefinementMode ? 'REFINEMENT' : 'FULL';
+            console.log(`[NAVIGATION] Course computed (${modeLabel}): yaw=${result.yawDeg.toFixed(1)}°, ` +
                         `pitch=${result.pitchDeg.toFixed(1)}°, ` +
                         `distance=${result.minDistance.toFixed(4)} AU, ` +
                         `quality=${result.quality}`);
@@ -804,6 +832,85 @@ export function clearOptimalCourseCache() {
     optimalCourseCache.destination = null;
 }
 
+// ============================================================================
+// Refinement Mode Detection (Course Refinement Feature)
+// ============================================================================
+
+/**
+ * Maximum angular difference (degrees) between current and applied sail settings
+ * for refinement mode to be active. If player adjusts sails beyond this threshold,
+ * we assume they're making a major course change and should use full search.
+ */
+const REFINEMENT_DRIFT_THRESHOLD = 20;
+
+/**
+ * Check if course refinement mode should be used.
+ *
+ * Refinement mode is active when:
+ * 1. A course has been applied (transit state active)
+ * 2. Current destination matches the transit destination
+ * 3. Current sail settings are within ±20° of the applied course (F1 review finding)
+ *
+ * When active, re-plotting uses narrower search bounds around current settings.
+ *
+ * @returns {boolean} True if refinement mode should be used
+ */
+export function isRefinementMode() {
+    const transit = getTransitState();
+
+    // Check if transit is active
+    if (!transit.active) {
+        return false;
+    }
+
+    // Check if destination matches
+    if (transit.destination !== destination) {
+        return false;
+    }
+
+    // Check if current sail settings are close to applied course (F1)
+    const player = getPlayerShip();
+    if (!player || !player.sail) {
+        return false;
+    }
+
+    const currentYawDeg = (player.sail.angle || 0) * (180 / Math.PI);
+    const currentPitchDeg = (player.sail.pitchAngle || 0) * (180 / Math.PI);
+
+    const yawDiff = Math.abs(currentYawDeg - transit.appliedCourse.yawDeg);
+    const pitchDiff = Math.abs(currentPitchDeg - transit.appliedCourse.pitchDeg);
+
+    // If sail settings have drifted too far, use full search
+    if (yawDiff > REFINEMENT_DRIFT_THRESHOLD || pitchDiff > REFINEMENT_DRIFT_THRESHOLD) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Get the seed settings for refinement mode.
+ * Returns the current sail settings to center the narrow search around.
+ *
+ * @returns {Object|null} { yawDeg, pitchDeg, deployment } or null if not in refinement mode
+ */
+export function getRefinementSeedSettings() {
+    if (!isRefinementMode()) {
+        return null;
+    }
+
+    const player = getPlayerShip();
+    if (!player || !player.sail) {
+        return null;
+    }
+
+    return {
+        yawDeg: (player.sail.angle || 0) * (180 / Math.PI),
+        pitchDeg: (player.sail.pitchAngle || 0) * (180 / Math.PI),
+        deployment: player.sail.deploymentPercent || 100
+    };
+}
+
 /**
  * Apply computed course to ship sail.
  * @param {Object} course - Course solution from computeOptimalCourse
@@ -819,6 +926,10 @@ export function applyComputedCourse(course) {
     player.sail.angle = course.yawDeg * Math.PI / 180;
     player.sail.pitchAngle = course.pitchDeg * Math.PI / 180;
     player.sail.deploymentPercent = course.deployment;
+
+    // Set transit state for course refinement feature
+    // This enables re-plotting to use narrower search bounds
+    setTransitState(destination, course, getJulianDate());
 
     console.log(`[NAVIGATION] Applied course: yaw=${course.yawDeg.toFixed(1)}°, ` +
                 `pitch=${course.pitchDeg.toFixed(1)}°, deployment=${course.deployment}%`);
