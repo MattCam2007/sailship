@@ -1,12 +1,17 @@
 /**
- * Course Solver - Automatic Course Plotting (v2.0)
+ * Course Solver - Automatic Course Plotting (v3.0)
  *
- * Enhanced hybrid search algorithm for optimal sail settings to intercept targets.
+ * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
  *
- * Algorithm improvements (v2.0):
- *   - Denser coarse sweep (5° steps instead of 10°)
+ * v3.0 MAJOR CHANGE: Crossing-Aware Optimization
+ *   - Evaluates candidates based on ORBITAL CROSSING distance, not global minimum
+ *   - Phase constraint ensures planet is angularly close at crossing time
+ *   - Results directly correspond to displayed ghost planets
+ *
+ * Algorithm features:
+ *   - Denser coarse sweep (5° steps)
  *   - High simulation resolution (1000 steps for solar sail accuracy)
- *   - Expanded ultra-fine window (±2° instead of ±0.5°)
+ *   - Expanded ultra-fine window (±2°)
  *   - Multi-horizon search (180, 365, 540, 730, 1095, 1460 days)
  *   - Gradient descent polish (50 iterations post-grid)
  *   - Iterative refinement (retry with expanded bounds if marginal)
@@ -72,18 +77,162 @@ const CONFIG = {
     yieldFrequency: 10,
 
     // Timeout for entire solve operation (ms)
-    maxSolveTimeMs: 90000  // 90 seconds
+    maxSolveTimeMs: 90000,  // 90 seconds
+
+    // ========================================================================
+    // CROSSING-AWARE SOLVER CONFIGURATION (v3.0)
+    // ========================================================================
+
+    // Phase constraint: maximum angular separation (radians) between ship and planet
+    // at crossing time for a valid intercept candidate.
+    // 30° = 0.52 rad - planet must be within 30° of crossing point
+    // 45° = 0.79 rad - more lenient, catches wider transfer windows
+    maxPhaseAngle: 0.79,  // ~45 degrees - allows reasonable transfer windows
+
+    // Minimum steps between crossings to consider them distinct
+    // Prevents detecting the same crossing multiple times due to numerical noise
+    minCrossingGap: 5,
+
+    // Whether to use crossing-aware evaluation (can disable for debugging)
+    useCrossingAware: true
 };
+
+// ============================================================================
+// CROSSING DETECTION HELPERS (v3.0)
+// ============================================================================
+
+/**
+ * Calculate angular separation between two 3D positions (viewed from origin).
+ *
+ * θ = arccos( (P1 · P2) / (|P1| × |P2|) )
+ *
+ * @param {Object} pos1 - First position {x, y, z}
+ * @param {Object} pos2 - Second position {x, y, z}
+ * @returns {number} Angular separation in radians [0, π]
+ */
+function calculateAngularSeparation(pos1, pos2) {
+    const mag1 = Math.sqrt(pos1.x ** 2 + pos1.y ** 2 + pos1.z ** 2);
+    const mag2 = Math.sqrt(pos2.x ** 2 + pos2.y ** 2 + pos2.z ** 2);
+
+    // Guard against zero vectors
+    if (mag1 < 1e-15 || mag2 < 1e-15) {
+        return 0;
+    }
+
+    const dot = pos1.x * pos2.x + pos1.y * pos2.y + pos1.z * pos2.z;
+    const cosAngle = dot / (mag1 * mag2);
+
+    // Clamp to [-1, 1] to handle floating-point errors
+    const clampedCos = Math.max(-1, Math.min(1, cosAngle));
+
+    return Math.acos(clampedCos);
+}
+
+/**
+ * Find all orbital radius crossings in a trajectory.
+ *
+ * Detects when ship crosses the target's semi-major axis distance from the Sun.
+ * Uses the same algorithm as intersectionDetector for consistency with ghost planets.
+ *
+ * @param {Array} trajectory - Array of {x, y, z, time} points
+ * @param {number} targetRadius - Target orbital radius (semi-major axis) in AU
+ * @returns {Array} Array of crossing events: [{index, time, position, direction}, ...]
+ *                  direction: 'outbound' (r increasing) or 'inbound' (r decreasing)
+ */
+function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
+    const crossings = [];
+
+    if (!trajectory || trajectory.length < 2) {
+        return crossings;
+    }
+
+    let lastCrossingIndex = -CONFIG.minCrossingGap;  // Allow first crossing at index 0
+
+    for (let i = 0; i < trajectory.length - 1; i++) {
+        const p1 = trajectory[i];
+        const p2 = trajectory[i + 1];
+
+        const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
+        const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
+
+        // Check if segment crosses target radius
+        const crossesOutbound = r1 < targetRadius && r2 >= targetRadius;
+        const crossesInbound = r1 > targetRadius && r2 <= targetRadius;
+
+        if (!crossesOutbound && !crossesInbound) {
+            continue;
+        }
+
+        // Skip if too close to last crossing (prevents duplicate detection)
+        if (i - lastCrossingIndex < CONFIG.minCrossingGap) {
+            continue;
+        }
+
+        // Calculate exact crossing point using linear interpolation
+        // (Good enough for our purposes - intersectionDetector uses quadratic
+        // but linear is fine for the solver's needs)
+        const radialDiff = r2 - r1;
+        let t;
+        if (Math.abs(radialDiff) < 1e-15) {
+            t = 0.5;
+        } else {
+            t = (targetRadius - r1) / radialDiff;
+        }
+        t = Math.max(0, Math.min(1, t));
+
+        const crossingTime = p1.time + t * (p2.time - p1.time);
+        const crossingPos = {
+            x: p1.x + t * (p2.x - p1.x),
+            y: p1.y + t * (p2.y - p1.y),
+            z: p1.z + t * (p2.z - p1.z)
+        };
+
+        crossings.push({
+            index: i,
+            time: crossingTime,
+            position: crossingPos,
+            direction: crossesOutbound ? 'outbound' : 'inbound'
+        });
+
+        lastCrossingIndex = i;
+    }
+
+    return crossings;
+}
+
+/**
+ * Calculate 3D distance between two positions.
+ *
+ * @param {Object} pos1 - First position {x, y, z}
+ * @param {Object} pos2 - Second position {x, y, z}
+ * @returns {number} Distance in AU
+ */
+function distance3D(pos1, pos2) {
+    const dx = pos2.x - pos1.x;
+    const dy = pos2.y - pos1.y;
+    const dz = pos2.z - pos1.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
 
 // ============================================================================
 // CORE EVALUATION
 // ============================================================================
 
 /**
- * Evaluate a single candidate sail configuration.
+ * Evaluate a single candidate sail configuration (v3.0 - CROSSING-AWARE).
  *
- * Simulates the ship's trajectory with given yaw/pitch settings and finds
- * the closest approach to the target.
+ * v3.0 CHANGE: Evaluates based on ORBITAL CROSSING distance, not global minimum.
+ *
+ * Algorithm:
+ *   1. Simulate trajectory with given sail settings
+ *   2. Detect all orbital radius crossings (where ship crosses target's semi-major axis)
+ *   3. For each crossing, compute:
+ *      - Planet's actual position at crossing time
+ *      - Distance between ship and planet at crossing
+ *      - Angular separation (phase constraint)
+ *   4. Return the best crossing that passes phase constraint
+ *
+ * This ensures the solver result corresponds directly to displayed ghost planets.
  *
  * @param {number} yawDeg - Sail yaw angle in degrees
  * @param {number} pitchDeg - Sail pitch angle in degrees
@@ -106,12 +255,15 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             pitchDeg,
             minDistance: Infinity,
             timeToClosest: 0,
-            status: 'INVALID'
+            status: 'INVALID',
+            crossingIndex: -1,
+            angularSeparationDeg: 180
         };
     }
 
     const startTime = getJulianDate();
     const timeStep = maxDays / steps;
+    const targetRadius = target.elements.a;  // Semi-major axis
 
     // Clone ship orbital elements for simulation
     let simElements = { ...ship.orbitalElements };
@@ -130,10 +282,14 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
 
     const mass = ship.mass || 10000;
 
-    let minDistance = Infinity;
-    let minDistanceTime = 0;
+    // Build trajectory array for crossing detection
+    const trajectory = [];
 
-    // Forward simulation
+    // Also track global minimum as fallback (when no crossings found)
+    let globalMinDistance = Infinity;
+    let globalMinDistanceTime = 0;
+
+    // Forward simulation - build trajectory
     for (let i = 0; i <= steps; i++) {
         const simTime = startTime + i * timeStep;
 
@@ -146,16 +302,23 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             break;
         }
 
-        // Calculate distance
+        // Store trajectory point
+        trajectory.push({
+            x: shipPos.x,
+            y: shipPos.y,
+            z: shipPos.z,
+            time: simTime
+        });
+
+        // Track global minimum as fallback
         const dx = targetPos.x - shipPos.x;
         const dy = targetPos.y - shipPos.y;
         const dz = targetPos.z - shipPos.z;
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-        // Track closest approach
-        if (dist < minDistance) {
-            minDistance = dist;
-            minDistanceTime = i * timeStep;
+        if (dist < globalMinDistance) {
+            globalMinDistance = dist;
+            globalMinDistanceTime = (simTime - startTime);
         }
 
         // Apply sail thrust for next step
@@ -191,24 +354,144 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         }
     }
 
-    // Determine status
+    // ========================================================================
+    // CROSSING-AWARE EVALUATION (v3.0)
+    // ========================================================================
+
+    if (CONFIG.useCrossingAware && trajectory.length > 1) {
+        // Detect all orbital radius crossings
+        const crossings = findRadiusCrossingsInTrajectory(trajectory, targetRadius);
+
+        // Evaluate each crossing
+        let bestCrossing = null;
+        let bestDistance = Infinity;
+        let bestAngularSep = Math.PI;
+        let bestCrossingIndex = -1;
+
+        for (let ci = 0; ci < crossings.length; ci++) {
+            const crossing = crossings[ci];
+
+            // Get planet's actual position at crossing time
+            const planetPos = getPosition(target.elements, crossing.time);
+
+            // Validate planet position
+            if (!isFinite(planetPos.x)) continue;
+
+            // Calculate distance at crossing
+            const crossingDistance = distance3D(crossing.position, planetPos);
+
+            // Calculate angular separation (phase constraint)
+            const angularSep = calculateAngularSeparation(crossing.position, planetPos);
+
+            // PHASE CONSTRAINT: Skip crossings where planet is too far angularly
+            // This ensures we only accept solutions where the planet is actually "there"
+            if (angularSep > CONFIG.maxPhaseAngle) {
+                continue;  // Planet is on the other side of its orbit
+            }
+
+            // Track best crossing that passes phase constraint
+            if (crossingDistance < bestDistance) {
+                bestDistance = crossingDistance;
+                bestAngularSep = angularSep;
+                bestCrossingIndex = ci;
+                bestCrossing = crossing;
+            }
+        }
+
+        // If we found a valid crossing, use it
+        if (bestCrossing) {
+            let status;
+            if (bestDistance < CONFIG.interceptThreshold) {
+                status = 'INTERCEPT';
+            } else if (bestDistance < CONFIG.nearMissThreshold) {
+                status = 'NEAR_MISS';
+            } else if (bestDistance < CONFIG.marginalThreshold) {
+                status = 'MARGINAL';
+            } else {
+                status = 'NO_INTERCEPT';
+            }
+
+            return {
+                yawDeg,
+                pitchDeg,
+                minDistance: bestDistance,
+                timeToClosest: bestCrossing.time - startTime,
+                status,
+                // v3.0 crossing metadata
+                crossingIndex: bestCrossingIndex,
+                totalCrossings: crossings.length,
+                angularSeparationDeg: bestAngularSep * (180 / Math.PI),
+                crossingDirection: bestCrossing.direction,
+                usedCrossingAware: true
+            };
+        }
+
+        // No valid crossings found - check if there were any crossings at all
+        if (crossings.length > 0) {
+            // There were crossings but all failed phase constraint
+            // Return the best crossing anyway but mark as phase-constrained failure
+            let bestFailedCrossing = null;
+            let bestFailedDistance = Infinity;
+            let bestFailedAngularSep = Math.PI;
+
+            for (const crossing of crossings) {
+                const planetPos = getPosition(target.elements, crossing.time);
+                if (!isFinite(planetPos.x)) continue;
+                const crossingDistance = distance3D(crossing.position, planetPos);
+                const angularSep = calculateAngularSeparation(crossing.position, planetPos);
+
+                if (crossingDistance < bestFailedDistance) {
+                    bestFailedDistance = crossingDistance;
+                    bestFailedAngularSep = angularSep;
+                    bestFailedCrossing = crossing;
+                }
+            }
+
+            if (bestFailedCrossing) {
+                return {
+                    yawDeg,
+                    pitchDeg,
+                    minDistance: bestFailedDistance,
+                    timeToClosest: bestFailedCrossing.time - startTime,
+                    status: 'PHASE_MISS',  // Planet exists but is too far angularly
+                    crossingIndex: 0,
+                    totalCrossings: crossings.length,
+                    angularSeparationDeg: bestFailedAngularSep * (180 / Math.PI),
+                    crossingDirection: bestFailedCrossing.direction,
+                    usedCrossingAware: true
+                };
+            }
+        }
+    }
+
+    // ========================================================================
+    // FALLBACK: No crossings found - use global minimum (original behavior)
+    // ========================================================================
+    // This happens when trajectory doesn't cross target's orbital radius at all
+    // (e.g., targeting outer planet from inner orbit without enough delta-v)
+
     let status;
-    if (minDistance < CONFIG.interceptThreshold) {
+    if (globalMinDistance < CONFIG.interceptThreshold) {
         status = 'INTERCEPT';
-    } else if (minDistance < CONFIG.nearMissThreshold) {
+    } else if (globalMinDistance < CONFIG.nearMissThreshold) {
         status = 'NEAR_MISS';
-    } else if (minDistance < CONFIG.marginalThreshold) {
+    } else if (globalMinDistance < CONFIG.marginalThreshold) {
         status = 'MARGINAL';
     } else {
-        status = 'NO_INTERCEPT';
+        status = 'NO_CROSSING';  // Different from NO_INTERCEPT to indicate no crossing found
     }
 
     return {
         yawDeg,
         pitchDeg,
-        minDistance,
-        timeToClosest: minDistanceTime,
-        status
+        minDistance: globalMinDistance,
+        timeToClosest: globalMinDistanceTime,
+        status,
+        crossingIndex: -1,
+        totalCrossings: 0,
+        angularSeparationDeg: 180,  // Unknown/invalid
+        crossingDirection: 'none',
+        usedCrossingAware: false  // Fell back to global minimum
     };
 }
 
@@ -708,6 +991,7 @@ export async function solveCourseSimple(ship, target, options = {}, onProgress =
  */
 function buildSolution(result, metrics) {
     // Determine quality rating
+    // v3.0: Account for new status types (PHASE_MISS, NO_CROSSING)
     let quality;
     if (result.minDistance < CONFIG.interceptThreshold) {
         quality = 'INTERCEPT';
@@ -715,18 +999,35 @@ function buildSolution(result, metrics) {
         quality = 'NEAR_MISS';
     } else if (result.minDistance < CONFIG.marginalThreshold) {
         quality = 'MARGINAL';
+    } else if (result.status === 'PHASE_MISS') {
+        quality = 'PHASE_MISS';  // New: crossed orbit but planet was elsewhere
+    } else if (result.status === 'NO_CROSSING') {
+        quality = 'NO_CROSSING';  // New: didn't cross target's orbital radius
     } else {
         quality = 'NO_SOLUTION';
     }
 
     // Calculate confidence based on result quality
+    // v3.0: Factor in angular separation for crossing-aware results
     let confidence;
     if (quality === 'INTERCEPT') {
         confidence = 0.95;
     } else if (quality === 'NEAR_MISS') {
-        confidence = 0.8;
+        confidence = 0.85;
     } else if (quality === 'MARGINAL') {
-        confidence = 0.5;
+        // v3.0: Boost confidence if angular separation is good
+        const angularSep = result.angularSeparationDeg || 180;
+        if (angularSep < 15) {
+            confidence = 0.7;  // Good phase alignment
+        } else if (angularSep < 30) {
+            confidence = 0.6;
+        } else {
+            confidence = 0.5;
+        }
+    } else if (quality === 'PHASE_MISS') {
+        confidence = 0.2;  // Low confidence - wrong timing
+    } else if (quality === 'NO_CROSSING') {
+        confidence = 0.1;  // Very low - can't reach target's orbit
     } else {
         confidence = 0.3;
     }
@@ -748,6 +1049,15 @@ function buildSolution(result, metrics) {
         // Quality assessment
         quality,
         confidence,
+
+        // v3.0: Crossing-aware metadata
+        crossingInfo: {
+            crossingIndex: result.crossingIndex ?? -1,
+            totalCrossings: result.totalCrossings ?? 0,
+            angularSeparationDeg: result.angularSeparationDeg ?? 180,
+            crossingDirection: result.crossingDirection ?? 'unknown',
+            usedCrossingAware: result.usedCrossingAware ?? false
+        },
 
         // Search metrics
         searchMetrics: {
@@ -771,4 +1081,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v2.0 loaded - Enhanced accuracy');
+console.log('[COURSE_SOLVER] Module v3.0 loaded - Crossing-aware optimization with phase constraints');

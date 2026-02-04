@@ -1192,6 +1192,25 @@ function displayCourseResult(course, container) {
         }
     }
 
+    // v3.0: Format crossing info
+    let crossingText = '';
+    if (course.crossingInfo && course.crossingInfo.usedCrossingAware) {
+        const ci = course.crossingInfo;
+        if (ci.totalCrossings > 0) {
+            // Show which crossing is targeted (1-indexed for user display)
+            const crossingNum = ci.crossingIndex + 1;
+            const direction = ci.crossingDirection === 'outbound' ? '↑' : '↓';
+            crossingText = `#${crossingNum}/${ci.totalCrossings} ${direction}`;
+        }
+    }
+
+    // v3.0: Format phase angle (angular separation)
+    let phaseText = '';
+    if (course.crossingInfo && course.crossingInfo.angularSeparationDeg < 180) {
+        const phaseDeg = course.crossingInfo.angularSeparationDeg.toFixed(0);
+        phaseText = `${phaseDeg}°`;
+    }
+
     container.classList.add('has-solution');
     container.innerHTML = `
         <div class="course-settings">
@@ -1218,6 +1237,14 @@ function displayCourseResult(course, container) {
             ${transferText ? `<div class="course-row">
                 <span class="course-label">TRANSFER</span>
                 <span class="course-value">${transferText}</span>
+            </div>` : ''}
+            ${crossingText ? `<div class="course-row">
+                <span class="course-label">CROSSING</span>
+                <span class="course-value">${crossingText}</span>
+            </div>` : ''}
+            ${phaseText ? `<div class="course-row">
+                <span class="course-label">PHASE</span>
+                <span class="course-value">${phaseText}</span>
             </div>` : ''}
             <div class="course-quality ${qualityClass}">${course.quality.replace('_', ' ')}</div>
         </div>
