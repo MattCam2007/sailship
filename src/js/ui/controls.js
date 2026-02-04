@@ -1094,11 +1094,24 @@ function initCoursePlotter() {
 
             try {
                 const course = await computeOptimalCourse((progress) => {
-                    // Update progress display
-                    const phaseNames = ['', 'Scanning parameter space', 'Refining candidates', 'Final optimization'];
-                    const phaseName = phaseNames[progress.phase] || progress.message;
-                    const pct = Math.round(progress.progress * 100);
-                    resultDiv.innerHTML = `<div class="course-status">Phase ${progress.phase}/3: ${phaseName}... ${pct}%</div>`;
+                    // Update progress display with multi-horizon feedback
+                    let statusText;
+                    if (progress.phase === 'starting') {
+                        statusText = 'Initializing...';
+                    } else if (progress.phase === 'multi-horizon') {
+                        const horizonNum = (progress.horizonIndex || 0) + 1;
+                        const horizonTotal = progress.horizonCount || 6;
+                        const horizonDays = progress.currentHorizon || 365;
+                        const subPhase = progress.subPhase || '';
+                        statusText = `Horizon ${horizonNum}/${horizonTotal} (${horizonDays}d): ${subPhase}`;
+                    } else if (progress.phase === 'refinement') {
+                        statusText = progress.message || 'Refining solution...';
+                    } else if (progress.phase === 'complete') {
+                        statusText = 'Complete';
+                    } else {
+                        statusText = progress.message || 'Computing...';
+                    }
+                    resultDiv.innerHTML = `<div class="course-status">${statusText}</div>`;
                 });
 
                 // Update button state
@@ -1168,6 +1181,17 @@ function displayCourseResult(course, container) {
     const arrivalDays = Math.round(course.timeToClosest);
     const distanceAU = course.minDistance.toFixed(4);
 
+    // Format transfer horizon (show as years if > 365 days)
+    let transferText = '';
+    if (course.horizonDays) {
+        if (course.horizonDays >= 365) {
+            const years = (course.horizonDays / 365).toFixed(1);
+            transferText = `${years}yr`;
+        } else {
+            transferText = `${course.horizonDays}d`;
+        }
+    }
+
     container.classList.add('has-solution');
     container.innerHTML = `
         <div class="course-settings">
@@ -1191,6 +1215,10 @@ function displayCourseResult(course, container) {
                 <span class="course-label">CLOSEST</span>
                 <span class="course-value">${distanceAU} AU</span>
             </div>
+            ${transferText ? `<div class="course-row">
+                <span class="course-label">TRANSFER</span>
+                <span class="course-value">${transferText}</span>
+            </div>` : ''}
             <div class="course-quality ${qualityClass}">${course.quality.replace('_', ' ')}</div>
         </div>
     `;

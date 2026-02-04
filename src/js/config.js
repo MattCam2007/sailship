@@ -217,11 +217,16 @@ export const SCALE_RENDERING_CONFIG = {
 /**
  * Default trajectory prediction configuration.
  * Controls how far into the future the predicted path extends.
+ *
+ * Extended to 5 years (1825 days) to support:
+ * - Outer planet transfers (Jupiter: ~2-3 years, Saturn: ~3-6 years)
+ * - Course solver multi-horizon search
+ * - Optimal phase alignment detection
  */
 export const DEFAULT_TRAJECTORY_CONFIG = {
     durationDays: 60,      // Default prediction length
     minDays: 30,           // Minimum allowed
-    maxDays: 730,          // Maximum: 2 years
+    maxDays: 1825,         // Maximum: 5 years
 };
 
 /**

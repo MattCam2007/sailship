@@ -208,15 +208,16 @@
                                     <span class="data-value" id="trajectoryDurationValue">60 days</span>
                                 </div>
                                 <input type="range" class="config-slider" id="trajectoryDuration"
-                                       min="30" max="730" value="60" step="10"
-                                       title="Adjust prediction duration (30-730 days)"
+                                       min="30" max="1825" value="60" step="30"
+                                       title="Adjust prediction duration (30 days - 5 years)"
                                        aria-label="Trajectory prediction duration in days">
                                 <div class="config-presets">
-                                    <button class="preset-btn" data-days="30" title="Predict 30 days ahead" aria-label="30 day prediction">30d</button>
-                                    <button class="preset-btn active" data-days="60" title="Predict 60 days ahead" aria-label="60 day prediction">60d</button>
+                                    <button class="preset-btn" data-days="60" title="Predict 60 days ahead" aria-label="60 day prediction">60d</button>
                                     <button class="preset-btn" data-days="180" title="Predict 6 months ahead" aria-label="6 month prediction">6mo</button>
                                     <button class="preset-btn" data-days="365" title="Predict 1 year ahead" aria-label="1 year prediction">1yr</button>
                                     <button class="preset-btn" data-days="730" title="Predict 2 years ahead" aria-label="2 year prediction">2yr</button>
+                                    <button class="preset-btn" data-days="1095" title="Predict 3 years ahead" aria-label="3 year prediction">3yr</button>
+                                    <button class="preset-btn" data-days="1825" title="Predict 5 years ahead" aria-label="5 year prediction">5yr</button>
                                 </div>
                                 <button class="config-reset-btn" id="trajectoryConfigReset" title="Reset to default (60 days)" aria-label="Reset trajectory configuration to default">RESET</button>
                             </div>

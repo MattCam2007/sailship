@@ -111,10 +111,10 @@ const INTERCEPT_CACHE_DURATION = 500; // ms between recalculations
  * sail thrust, and finds when/where we get closest to the destination.
  *
  * @param {number} maxDays - Maximum days to simulate (default 365)
- * @param {number} steps - Number of simulation steps (default 200)
+ * @param {number} steps - Number of simulation steps (default 500, increased for solar sail accuracy)
  * @returns {Object|null} Intercept prediction data
  */
-export function predictClosestApproach(maxDays = 365, steps = 200) {
+export function predictClosestApproach(maxDays = 365, steps = 500) {
     // Throttle calculation - expensive operation
     const now = Date.now();
     if (interceptCache.result && (now - interceptCache.lastUpdate) < INTERCEPT_CACHE_DURATION) {
@@ -269,10 +269,10 @@ const NAV_STRATEGIES = [
  *
  * @param {Object} sailOverride - Sail settings to use {angleDeg, deployment}
  * @param {number} maxDays - Maximum days to simulate
- * @param {number} steps - Number of simulation steps
+ * @param {number} steps - Number of simulation steps (default 400 for quick nav planning)
  * @returns {Object} Simulation result {closestDistance, timeToClosest, status}
  */
-function simulateWithStrategy(sailOverride, maxDays = 365, steps = 200) {
+function simulateWithStrategy(sailOverride, maxDays = 365, steps = 400) {
     const player = getPlayerShip();
     const dest = getBodyByName(destination);
 
