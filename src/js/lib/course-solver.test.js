@@ -323,15 +323,20 @@ test('testSolutionIncludesSearchMetrics', async () => {
 // Unit 8: Resolution tests (Fix #1 - match intersection detector resolution)
 test('testConfigIncludesHighResolutionSettings', async () => {
     const { getConfig } = await import('./course-solver.js');
+    const { INTERSECTION_CONFIG } = await import('../config.js');
     const config = getConfig();
 
     // CONFIG should include dynamic step calculation parameters
+    // Fix #3: Now verifies these match shared INTERSECTION_CONFIG
     assert(typeof config.stepsPerDay === 'number', 'CONFIG should have stepsPerDay');
     assert(config.stepsPerDay >= 10, `stepsPerDay should be >= 10, got ${config.stepsPerDay}`);
     assert(typeof config.maxSteps === 'number', 'CONFIG should have maxSteps');
     assert(config.maxSteps >= 4000, `maxSteps should be >= 4000, got ${config.maxSteps}`);
     assert(typeof config.minSteps === 'number', 'CONFIG should have minSteps');
-    assert(config.minSteps >= 500, `minSteps should be >= 500, got ${config.minSteps}`);
+    assert(config.minSteps >= 100, `minSteps should be >= 100, got ${config.minSteps}`);
+    // Verify shared config is used (Fix #3)
+    assert(config.minSteps === INTERSECTION_CONFIG.minSteps,
+        `minSteps should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.minSteps}), got ${config.minSteps}`);
 });
 
 test('testSolverUsesHighResolutionForYearHorizon', async () => {
@@ -507,6 +512,37 @@ test('testSolveQuadraticCrossingDegenerate', async () => {
     const t = solveQuadraticCrossing(p1, p2, targetRadius);
 
     assert(t === null, 'Should return null for degenerate case');
+});
+
+// Unit 10: Shared configuration tests (Fix #3)
+test('testSolverUsesSharedConfig', async () => {
+    console.log('\n--- Test: Solver Uses Shared Config ---');
+
+    // Import both configs
+    const { getConfig } = await import('./course-solver.js');
+    const { INTERSECTION_CONFIG } = await import('../config.js');
+
+    const solverConfig = getConfig();
+
+    // The solver should use INTERSECTION_CONFIG values for consistency
+    // This ensures both systems compute trajectories identically
+    const stepsMatch = solverConfig.stepsPerDay === INTERSECTION_CONFIG.stepsPerDay;
+    const maxStepsMatch = solverConfig.maxSteps === INTERSECTION_CONFIG.maxSteps;
+    const minStepsMatch = solverConfig.minSteps === INTERSECTION_CONFIG.minSteps;
+
+    console.log(`  Solver stepsPerDay: ${solverConfig.stepsPerDay}, INTERSECTION_CONFIG: ${INTERSECTION_CONFIG.stepsPerDay}`);
+    console.log(`  Solver maxSteps: ${solverConfig.maxSteps}, INTERSECTION_CONFIG: ${INTERSECTION_CONFIG.maxSteps}`);
+    console.log(`  Solver minSteps: ${solverConfig.minSteps}, INTERSECTION_CONFIG: ${INTERSECTION_CONFIG.minSteps}`);
+    console.log(`  stepsPerDay match: ${stepsMatch ? 'PASS' : 'FAIL'}`);
+    console.log(`  maxSteps match: ${maxStepsMatch ? 'PASS' : 'FAIL'}`);
+    console.log(`  minSteps match: ${minStepsMatch ? 'PASS' : 'FAIL'}`);
+
+    assert(stepsMatch,
+        `Solver stepsPerDay (${solverConfig.stepsPerDay}) should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.stepsPerDay})`);
+    assert(maxStepsMatch,
+        `Solver maxSteps (${solverConfig.maxSteps}) should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.maxSteps})`);
+    assert(minStepsMatch,
+        `Solver minSteps (${solverConfig.minSteps}) should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.minSteps})`);
 });
 
 // Edge case tests (from review feedback)

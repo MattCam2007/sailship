@@ -1,7 +1,13 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.2)
+ * Course Solver - Automatic Course Plotting (v3.3)
  *
  * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ *
+ * v3.3 CHANGE: Shared Configuration (Fix #3)
+ *   - Import INTERSECTION_CONFIG from config.js for trajectory parameters
+ *   - CONFIG.stepsPerDay/maxSteps/minSteps now reference shared config
+ *   - Guarantees identical trajectory resolution between solver and detector
+ *   - Eliminates configuration drift risk
  *
  * v3.2 CHANGE: Quadratic Interpolation (Fix #2)
  *   - Replaced linear interpolation with quadratic solving in findRadiusCrossingsInTrajectory
@@ -36,6 +42,7 @@
 import { getPosition, getVelocity } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
 import { getJulianDate } from '../core/gameState.js';
+import { INTERSECTION_CONFIG } from '../config.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -67,11 +74,11 @@ const CONFIG = {
     defaultDeployment: 100,
 
     // Dynamic step calculation (Fix #1 - match intersection detector resolution)
-    // The intersection detector uses 12 steps/day for ~2 hour intervals
-    // This ensures crossing time discrepancies stay below ±1 hour
-    stepsPerDay: 12,     // Match intersection detector (12 steps/day = ~2 hour intervals)
-    maxSteps: 6000,      // Cap to prevent excessive computation (matches detector)
-    minSteps: 500,       // Quality floor for short durations
+    // Fix #3: Import shared trajectory parameters from config.js
+    // This guarantees solver and intersection detector use identical resolution
+    stepsPerDay: INTERSECTION_CONFIG.stepsPerDay,   // ~2 hour intervals (12 steps/day)
+    maxSteps: INTERSECTION_CONFIG.maxSteps,         // Cap to prevent excessive computation
+    minSteps: INTERSECTION_CONFIG.minSteps,         // Quality floor for short durations
 
     // Multi-horizon search durations (days)
     horizons: [180, 365, 540, 730, 1095, 1460],
@@ -1163,4 +1170,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.2 loaded - Quadratic interpolation matching intersection detector');
+console.log('[COURSE_SOLVER] Module v3.3 loaded - Shared config with intersection detector');
