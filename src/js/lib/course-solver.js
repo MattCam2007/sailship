@@ -7,8 +7,8 @@
  * Algorithm:
  *   Phase 1 (Coarse):    91 evaluations at 10° resolution
  *   Phase 2 (Fine):     405 evaluations at 2° resolution around top 5
- *   Phase 3 (Ultra):     49 evaluations at 0.5° resolution around best
- *   Total:             ~545 evaluations, ~5 seconds
+ *   Phase 3 (Ultra):    121 evaluations at 0.1° resolution around best
+ *   Total:             ~617 evaluations, ~6 seconds
  *
  * Uses async/await with yields to prevent UI blocking.
  */
@@ -38,9 +38,9 @@ const CONFIG = {
     fineRadius: 8,
     topCandidates: 5,
 
-    // Phase 3: Ultra-fine polish
-    ultraStep: 0.5,
-    ultraRadius: 1.5,
+    // Phase 3: Ultra-fine polish (matches UI ULTRA resolution of 0.1°)
+    ultraStep: 0.1,
+    ultraRadius: 0.5,
 
     // Simulation parameters
     defaultMaxDays: 365,
@@ -311,7 +311,8 @@ export async function fineSearch(topCandidates, ship, target, options = {}, onPr
 /**
  * Phase 3: Ultra-fine polish around best result.
  *
- * Searches ±1.5° in 0.5° steps for final precision.
+ * Searches ±0.5° in 0.1° steps for final precision.
+ * Matches UI ULTRA resolution mode for consistent precision.
  *
  * @param {Object} candidate - Best result from fine search
  * @param {Object} ship - Ship object
@@ -364,7 +365,7 @@ export async function ultraFinePolish(candidate, ship, target, options = {}, onP
  * Orchestrates the three-phase search:
  *   1. Coarse sweep (91 evaluations)
  *   2. Fine search (up to 405 evaluations)
- *   3. Ultra-fine polish (49 evaluations)
+ *   3. Ultra-fine polish (121 evaluations at 0.1° resolution)
  *
  * @param {Object} ship - Ship object with orbitalElements and sail
  * @param {Object} target - Target object with elements
@@ -426,7 +427,7 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
         onProgress?.({ phase: 3, progress: p, message: 'Final optimization...' });
     });
 
-    totalEvaluations += 49;
+    totalEvaluations += 121; // 11x11 grid at 0.1° resolution
 
     return buildSolution(ultraResult, {
         totalEvaluations,

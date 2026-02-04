@@ -217,12 +217,20 @@ export function updateSailDisplay() {
 
     // Update slider value displays if sail exists
     if (player.sail) {
+        // Helper to format values - show decimal only if not a whole number
+        const formatValue = (val, suffix) => {
+            // Round to 1 decimal place to avoid floating point noise
+            const rounded = Math.round(val * 10) / 10;
+            const display = Number.isInteger(rounded) ? rounded : rounded.toFixed(1);
+            return display + suffix;
+        };
+
         if (elements.sailDeployValue) {
-            elements.sailDeployValue.textContent = Math.round(player.sail.deploymentPercent) + '%';
+            elements.sailDeployValue.textContent = formatValue(player.sail.deploymentPercent, '%');
         }
         if (elements.sailAngleValue) {
-            const degrees = Math.round(player.sail.angle * 180 / Math.PI);
-            elements.sailAngleValue.textContent = degrees + '°';
+            const degrees = player.sail.angle * 180 / Math.PI;
+            elements.sailAngleValue.textContent = formatValue(degrees, '°');
         }
 
         // Update mobile sail widget values
@@ -235,23 +243,23 @@ export function updateSailDisplay() {
         const mobilePitchSlider = document.getElementById('mobileSailPitch');
 
         if (mobileDeployValue) {
-            mobileDeployValue.textContent = Math.round(player.sail.deploymentPercent) + '%';
+            mobileDeployValue.textContent = formatValue(player.sail.deploymentPercent, '%');
         }
         if (mobileDeploySlider) {
             mobileDeploySlider.value = player.sail.deploymentPercent;
         }
 
-        const yawDeg = Math.round(player.sail.angle * 180 / Math.PI);
+        const yawDeg = player.sail.angle * 180 / Math.PI;
         if (mobileYawValue) {
-            mobileYawValue.textContent = yawDeg + '°';
+            mobileYawValue.textContent = formatValue(yawDeg, '°');
         }
         if (mobileYawSlider) {
             mobileYawSlider.value = yawDeg;
         }
 
-        const pitchDeg = Math.round((player.sail.pitchAngle || 0) * 180 / Math.PI);
+        const pitchDeg = (player.sail.pitchAngle || 0) * 180 / Math.PI;
         if (mobilePitchValue) {
-            mobilePitchValue.textContent = pitchDeg + '°';
+            mobilePitchValue.textContent = formatValue(pitchDeg, '°');
         }
         if (mobilePitchSlider) {
             mobilePitchSlider.value = pitchDeg;
