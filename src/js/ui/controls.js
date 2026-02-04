@@ -509,13 +509,15 @@ function initSailControls() {
     // Deployment slider handler
     if (deploySlider) {
         deploySlider.addEventListener('input', () => {
-            const value = parseInt(deploySlider.value, 10);
+            const value = parseFloat(deploySlider.value);
             const player = getPlayerShip();
             if (player) {
                 setSailDeployment(player, value);
             }
             if (deployValue) {
-                deployValue.textContent = value + '%';
+                // Show decimal only if not a whole number
+                const displayValue = Number.isInteger(value) ? value : value.toFixed(1);
+                deployValue.textContent = displayValue + '%';
             }
             updateSailDisplay();
         });
@@ -524,13 +526,13 @@ function initSailControls() {
     // Yaw angle slider handler
     if (angleSlider) {
         angleSlider.addEventListener('input', () => {
-            const degrees = parseInt(angleSlider.value, 10);
+            const degrees = parseFloat(angleSlider.value);
             const radians = degrees * Math.PI / 180;
             const player = getPlayerShip();
             if (player) {
                 const oldAngle = player.sail?.angle || 0;
                 setSailAngle(player, radians);
-                console.log(`[SAIL] Yaw changed: ${(oldAngle * 180 / Math.PI).toFixed(1)}° → ${degrees}°`);
+                console.log(`[SAIL] Yaw changed: ${(oldAngle * 180 / Math.PI).toFixed(1)}° → ${degrees.toFixed(1)}°`);
                 // Log current orbital state for correlation
                 if (player.velocity && player.orbitalElements) {
                     const vMag = Math.sqrt(player.velocity.x**2 + player.velocity.y**2 + player.velocity.z**2);
@@ -544,7 +546,9 @@ function initSailControls() {
                 }
             }
             if (angleValue) {
-                angleValue.textContent = degrees + '°';
+                // Show decimal only if not a whole number
+                const displayValue = Number.isInteger(degrees) ? degrees : degrees.toFixed(1);
+                angleValue.textContent = displayValue + '°';
             }
             updateSailDisplay();
         });
@@ -553,13 +557,13 @@ function initSailControls() {
     // Pitch angle slider handler
     if (pitchSlider) {
         pitchSlider.addEventListener('input', () => {
-            const degrees = parseInt(pitchSlider.value, 10);
+            const degrees = parseFloat(pitchSlider.value);
             const radians = degrees * Math.PI / 180;
             const player = getPlayerShip();
             if (player) {
                 const oldPitch = player.sail?.pitchAngle || 0;
                 setSailPitch(player, radians);
-                console.log(`[SAIL] Pitch changed: ${(oldPitch * 180 / Math.PI).toFixed(1)}° → ${degrees}°`);
+                console.log(`[SAIL] Pitch changed: ${(oldPitch * 180 / Math.PI).toFixed(1)}° → ${degrees.toFixed(1)}°`);
                 // Log current orbital state for correlation
                 if (player.velocity) {
                     const vMag = Math.sqrt(player.velocity.x**2 + player.velocity.y**2 + player.velocity.z**2);
@@ -567,7 +571,9 @@ function initSailControls() {
                 }
             }
             if (pitchValue) {
-                pitchValue.textContent = degrees + '°';
+                // Show decimal only if not a whole number
+                const displayValue = Number.isInteger(degrees) ? degrees : degrees.toFixed(1);
+                pitchValue.textContent = displayValue + '°';
             }
             updateSailDisplay();
         });
@@ -1118,7 +1124,29 @@ function initCoursePlotter() {
         applyBtn.addEventListener('click', () => {
             const course = getCachedOptimalCourse();
             if (course && applyComputedCourse(course)) {
-                // Update sail display
+                // Sync slider positions with the precise course values
+                const deploySlider = document.getElementById('sailDeployment');
+                const angleSlider = document.getElementById('sailAngle');
+                const pitchSlider = document.getElementById('sailPitch');
+                const deployValue = document.getElementById('sailDeployValue');
+                const angleValue = document.getElementById('sailAngleValue');
+                const pitchValue = document.getElementById('sailPitchValue');
+
+                // Helper to format values - show decimal only if not a whole number
+                const formatValue = (val, suffix) => {
+                    const rounded = Math.round(val * 10) / 10;
+                    const display = Number.isInteger(rounded) ? rounded : rounded.toFixed(1);
+                    return display + suffix;
+                };
+
+                if (deploySlider) deploySlider.value = course.deployment;
+                if (angleSlider) angleSlider.value = course.yawDeg;
+                if (pitchSlider) pitchSlider.value = course.pitchDeg;
+                if (deployValue) deployValue.textContent = formatValue(course.deployment, '%');
+                if (angleValue) angleValue.textContent = formatValue(course.yawDeg, '°');
+                if (pitchValue) pitchValue.textContent = formatValue(course.pitchDeg, '°');
+
+                // Update sail display (also updates mobile sliders)
                 updateSailDisplay();
                 // Visual feedback
                 applyBtn.textContent = 'APPLIED';
@@ -1378,12 +1406,17 @@ export function updateAutoPilot(deltaTime) {
     const angleValue = document.getElementById('sailAngleValue');
     const pitchValue = document.getElementById('sailPitchValue');
 
-    if (deploySlider) deploySlider.value = Math.round(newDeploy);
-    if (angleSlider) angleSlider.value = Math.round(newAngleDeg);
-    if (pitchSlider) pitchSlider.value = Math.round(newPitchDeg);
-    if (deployValue) deployValue.textContent = Math.round(newDeploy) + '%';
-    if (angleValue) angleValue.textContent = Math.round(newAngleDeg) + '°';
-    if (pitchValue) pitchValue.textContent = Math.round(newPitchDeg) + '°';
+    if (deploySlider) deploySlider.value = newDeploy;
+    if (angleSlider) angleSlider.value = newAngleDeg;
+    if (pitchSlider) pitchSlider.value = newPitchDeg;
+    // Helper to format values - show decimal only if not a whole number
+    const formatValue = (val, suffix) => {
+        const display = Number.isInteger(val) ? val : val.toFixed(1);
+        return display + suffix;
+    };
+    if (deployValue) deployValue.textContent = formatValue(newDeploy, '%');
+    if (angleValue) angleValue.textContent = formatValue(newAngleDeg, '°');
+    if (pitchValue) pitchValue.textContent = formatValue(newPitchDeg, '°');
 
     // Update status text
     updateAutoPilotStatusText();
