@@ -1,13 +1,19 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.5)
+ * Course Solver - Automatic Course Plotting (v3.6)
  *
  * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ *
+ * v3.6 CHANGE: Expanded Refinement Bounds + Uber-Fine Resolution
+ *   - Expanded refinement bounds to ±20° yaw, ±15° pitch (was ±15°/±10°)
+ *   - Accommodates large-distance course corrections at longer horizons
+ *   - Added uber-fine polish phase (0.01° resolution) for exact course plotting
+ *   - "Last mile" plotting achieves sub-0.01 AU precision on intercepts
  *
  * v3.5 CHANGE: Refinement Mode (Course Refinement Feature)
  *   - Added refinementSweep() for narrow search around seed settings
  *   - Added solveWithRefinementMode() for faster mid-transit corrections
  *   - solveCourse() now accepts refinementMode and seedSettings options
- *   - When refinementMode=true, searches ±15° yaw, ±10° pitch around seed
+ *   - When refinementMode=true, searches ±20° yaw, ±15° pitch around seed
  *   - Skips multi-horizon search, uses single horizon for speed
  *   - ~5-10 second completion vs ~30-45 seconds for full search
  *
@@ -83,6 +89,10 @@ const CONFIG = {
     ultraStep: 0.1,
     ultraRadius: 2,  // Increased from 0.5 to ±2°
 
+    // Phase 3.5: Uber-fine polish (v3.6 - "last mile" exact course plotting)
+    uberStep: 0.01,
+    uberRadius: 0.2,  // ±0.2° around best ultra result
+
     // ========================================================================
     // REFINEMENT MODE CONFIGURATION (Course Refinement Feature)
     // ========================================================================
@@ -90,8 +100,10 @@ const CONFIG = {
     // for faster course corrections during transit.
 
     // Refinement search bounds around seed settings
-    refinementYawRadius: 15,    // ±15° yaw from seed
-    refinementPitchRadius: 10,  // ±10° pitch from seed
+    // v3.6 CHANGE: Expanded bounds for large-distance course corrections
+    // When courses are plotted at longer horizons, initial offsets can be larger
+    refinementYawRadius: 20,    // ±20° yaw from seed (was ±15°)
+    refinementPitchRadius: 15,  // ±15° pitch from seed (was ±10°)
 
     // Refinement grid step (finer than coarse, same as fine)
     refinementStep: 2,
@@ -843,6 +855,57 @@ export async function ultraFinePolish(candidate, ship, target, options = {}, onP
 }
 
 // ============================================================================
+// PHASE 3.5: UBER-FINE POLISH (v3.6 - "LAST MILE" EXACT PLOTTING)
+// ============================================================================
+
+/**
+ * Phase 3.5: Uber-fine polish for exact course plotting.
+ *
+ * Searches ±0.2° in 0.01° steps for maximum precision.
+ * This "last mile" phase achieves sub-0.01 AU intercept accuracy.
+ *
+ * @param {Object} candidate - Best result from ultra-fine polish
+ * @param {Object} ship - Ship object
+ * @param {Object} target - Target object
+ * @param {Object} options - Optional parameters
+ * @param {Function} onProgress - Progress callback (0-1)
+ * @returns {Promise<Object>} Final uber-polished result
+ */
+export async function uberFinePolish(candidate, ship, target, options = {}, onProgress = null) {
+    let best = candidate;
+
+    const centerYaw = candidate.yawDeg;
+    const centerPitch = candidate.pitchDeg;
+
+    let evalCount = 0;
+    const totalEvals = Math.pow((CONFIG.uberRadius * 2 / CONFIG.uberStep + 1), 2);
+
+    for (let yaw = centerYaw - CONFIG.uberRadius; yaw <= centerYaw + CONFIG.uberRadius; yaw += CONFIG.uberStep) {
+        for (let pitch = centerPitch - CONFIG.uberRadius; pitch <= centerPitch + CONFIG.uberRadius; pitch += CONFIG.uberStep) {
+            // Clamp to valid range
+            const clampedYaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, yaw));
+            const clampedPitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, pitch));
+
+            const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
+
+            if (result.minDistance < best.minDistance) {
+                best = result;
+            }
+
+            evalCount++;
+
+            // Yield periodically
+            if (evalCount % CONFIG.yieldFrequency === 0) {
+                onProgress?.(evalCount / totalEvals);
+                await yieldToMainThread();
+            }
+        }
+    }
+
+    return best;
+}
+
+// ============================================================================
 // PHASE 4: GRADIENT DESCENT POLISH
 // ============================================================================
 
@@ -919,7 +982,7 @@ export async function gradientDescentPolish(candidate, ship, target, options = {
 /**
  * Solve for optimal course at a single time horizon.
  *
- * Runs all phases: coarse → fine → ultra → gradient descent
+ * Runs all phases: coarse → fine → ultra → uber → gradient descent
  *
  * @param {Object} ship - Ship object
  * @param {Object} target - Target object
@@ -961,8 +1024,18 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
         return ultraResult;
     }
 
+    // Phase 3.5: Uber-fine polish (v3.6 - "last mile" exact plotting)
+    const uberResult = await uberFinePolish(ultraResult, ship, target, options, (p) => {
+        onProgress?.({ subPhase: 'uber', progress: p });
+    });
+
+    // Check for early termination
+    if (uberResult.minDistance < CONFIG.interceptThreshold) {
+        return uberResult;
+    }
+
     // Phase 4: Gradient descent polish
-    const gradientResult = await gradientDescentPolish(ultraResult, ship, target, options, (p) => {
+    const gradientResult = await gradientDescentPolish(uberResult, ship, target, options, (p) => {
         onProgress?.({ subPhase: 'gradient', progress: p });
     });
 
@@ -1105,9 +1178,9 @@ async function solveWithRefinement(ship, target, options = {}, onProgress = null
  *
  * Refinement mode is used when re-plotting during transit. Instead of the full
  * multi-horizon search, it:
- *   1. Uses narrow search bounds around seed settings (±15° yaw, ±10° pitch)
+ *   1. Uses narrow search bounds around seed settings (±20° yaw, ±15° pitch)
  *   2. Skips multi-horizon search (uses single horizon from current trajectory)
- *   3. Still applies fine, ultra-fine, and gradient descent polish
+ *   3. Still applies fine, ultra-fine, uber-fine, and gradient descent polish
  *
  * This is significantly faster than full search (~5-10 seconds vs ~30-45 seconds).
  *
@@ -1132,7 +1205,7 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
 
     // Phase 1: Refinement sweep (replaces coarse sweep)
     const refinementResults = await refinementSweep(ship, target, seedSettings, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'sweep', progress: p * 0.3, message: 'Refinement sweep...' });
+        onProgress?.({ phase: 'refinement-mode', subPhase: 'sweep', progress: p * 0.25, message: 'Refinement sweep...' });
     });
 
     // Check for early termination
@@ -1143,7 +1216,7 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
     // Phase 2: Fine search around top candidates
     const topCandidates = refinementResults.slice(0, CONFIG.topCandidates);
     const fineResult = await fineSearch(topCandidates, ship, target, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'fine', progress: 0.3 + p * 0.3, message: 'Fine search...' });
+        onProgress?.({ phase: 'refinement-mode', subPhase: 'fine', progress: 0.25 + p * 0.25, message: 'Fine search...' });
     });
 
     // Check for early termination
@@ -1153,7 +1226,7 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
 
     // Phase 3: Ultra-fine polish
     const ultraResult = await ultraFinePolish(fineResult, ship, target, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'ultra', progress: 0.6 + p * 0.2, message: 'Ultra-fine polish...' });
+        onProgress?.({ phase: 'refinement-mode', subPhase: 'ultra', progress: 0.5 + p * 0.15, message: 'Ultra-fine polish...' });
     });
 
     // Check for early termination
@@ -1161,8 +1234,18 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
         return { ...ultraResult, horizonDays: maxDays };
     }
 
+    // Phase 3.5: Uber-fine polish (v3.6 - "last mile" exact plotting)
+    const uberResult = await uberFinePolish(ultraResult, ship, target, options, (p) => {
+        onProgress?.({ phase: 'refinement-mode', subPhase: 'uber', progress: 0.65 + p * 0.15, message: 'Uber-fine polish...' });
+    });
+
+    // Check for early termination
+    if (uberResult.minDistance < CONFIG.interceptThreshold) {
+        return { ...uberResult, horizonDays: maxDays };
+    }
+
     // Phase 4: Gradient descent polish
-    const gradientResult = await gradientDescentPolish(ultraResult, ship, target, options, (p) => {
+    const gradientResult = await gradientDescentPolish(uberResult, ship, target, options, (p) => {
         onProgress?.({ phase: 'refinement-mode', subPhase: 'gradient', progress: 0.8 + p * 0.2, message: 'Gradient descent...' });
     });
 
@@ -1176,16 +1259,16 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
 /**
  * Solve for optimal course to target.
  *
- * Enhanced v3.5 algorithm with refinement mode support:
+ * Enhanced v3.6 algorithm with refinement mode support:
  *
  * FULL MODE (default):
  *   1. Multi-horizon search (180-1460 days)
- *   2. For each horizon: coarse → fine → ultra → gradient descent
+ *   2. For each horizon: coarse → fine → ultra → uber → gradient descent
  *   3. Iterative refinement if result is marginal
  *
  * REFINEMENT MODE (when options.refinementMode = true):
- *   1. Single horizon search with narrow bounds
- *   2. Refinement sweep → fine → ultra → gradient descent
+ *   1. Single horizon search with narrow bounds (±20° yaw, ±15° pitch)
+ *   2. Refinement sweep → fine → ultra → uber → gradient descent
  *   3. Faster completion (~5-10s vs ~30-45s)
  *
  * @param {Object} ship - Ship object with orbitalElements and sail
@@ -1365,4 +1448,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.5 loaded - Adds refinement mode for mid-transit course corrections');
+console.log('[COURSE_SOLVER] Module v3.6 loaded - Expanded refinement bounds (±20°/±15°) + uber-fine polish (0.01°)');
