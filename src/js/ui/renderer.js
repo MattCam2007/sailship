@@ -353,10 +353,6 @@ function drawOrbit(body, centerX, centerY, scale) {
         if (!isTarget && !isTargetParent && !isParentOfTarget) return;
     }
 
-    // Hide orbits at extreme zoom - they're sun-centered and become visually confusing
-    // when zoomed close to a planet (planet appears centered but orbit doesn't)
-    if (camera.zoom > 50) return;
-
     const { a, e, i, Ω, ω } = body.elements;
 
     // ZOOM-ADAPTIVE SEGMENTS: At high zoom, increase segment count for smooth curves
@@ -621,9 +617,6 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
         }
         return;
     }
-
-    // Hide orbits at extreme zoom (same as planet orbits)
-    if (camera.zoom > 50) return;
 
     // Use visual elements for smooth rendering, fall back to actual if not available
     const elements = ship.visualOrbitalElements || ship.orbitalElements;
