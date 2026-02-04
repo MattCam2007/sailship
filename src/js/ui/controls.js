@@ -67,7 +67,8 @@ export const RESOLUTION_MODES = {
     COARSE: { name: 'COARSE', angleStep: 10, deployStep: 25 },
     NORMAL: { name: 'NORMAL', angleStep: 5, deployStep: 10 },
     FINE:   { name: 'FINE',   angleStep: 1, deployStep: 1 },
-    ULTRA:  { name: 'ULTRA',  angleStep: 0.1, deployStep: 0.1 }
+    ULTRA:  { name: 'ULTRA',  angleStep: 0.1, deployStep: 0.1 },
+    UBER:   { name: 'UBER',   angleStep: 0.01, deployStep: 0.01 }  // v3.6: "last mile" precision
 };
 
 /**
@@ -86,7 +87,7 @@ export const SAIL_CONTROLS = {
 export const fineTuneState = {
     selectedControl: SAIL_CONTROLS.YAW,  // Default to yaw (most commonly adjusted)
     resolutionMode: RESOLUTION_MODES.NORMAL,
-    resolutionOrder: ['COARSE', 'NORMAL', 'FINE', 'ULTRA']  // Cycle order
+    resolutionOrder: ['COARSE', 'NORMAL', 'FINE', 'ULTRA', 'UBER']  // Cycle order (v3.6: added UBER)
 };
 
 /**

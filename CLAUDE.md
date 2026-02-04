@@ -278,6 +278,7 @@ For precise orbital insertions and users who need fine motor control:
 | NORMAL | ±5° | ±10% |
 | FINE | ±1° | ±1% |
 | ULTRA | ±0.1° | ±0.1% |
+| UBER | ±0.01° | ±0.01% |
 
 The selected control is highlighted in the SAIL panel. Click control rows or the resolution indicator to change settings with mouse.
 
