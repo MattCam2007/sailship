@@ -518,9 +518,13 @@ function checkSOIEntryTrajectory(position, velocity, planets, deltaTime) {
         // First intersection: entry point on SOI boundary
         let tEntry = tca - thc;
 
-        // If tEntry < 0, the ship is already inside the SOI (shouldn't happen
-        // since we checked currentDist above, but handle gracefully)
+        // If tEntry < 0, the first intersection is behind the start point.
+        // Since currentDist >= soiRadius (checked above), this only happens due to
+        // floating-point imprecision near the SOI boundary (e.g., just after SOI exit).
+        // Check if the exit intersection (tca + thc) is ahead — if not, skip entirely.
         if (tEntry < 0) {
+            const tExit = tca + thc;
+            if (tExit <= 0 || tExit > lineLen) continue;
             tEntry = 0;
         }
 
@@ -541,23 +545,31 @@ function checkSOIEntryTrajectory(position, velocity, planets, deltaTime) {
             (entryPos.z - planet.z) ** 2
         );
 
-        // SOI DIAGNOSTIC: Log entry detection with position info
-        const entryDistKm = entryDist * 149597870.7;
-        const soiRadiusKm = soiRadius * 149597870.7;
-        const travelFraction = (tEntry / lineLen * 100).toFixed(1);
-        const velMag = Math.sqrt(velocity.vx**2 + velocity.vy**2 + velocity.vz**2) * 1731.46;
-        console.log(
-            `[SOI_DIAG] ENTRY DETECTED: ${planet.name} | ` +
-            `entry at ${entryDistKm.toFixed(0)}km from center (SOI: ${soiRadiusKm.toFixed(0)}km) | ` +
-            `${travelFraction}% through frame travel | ` +
-            `ship speed: ${velMag.toFixed(1)} km/s | ` +
-            `frame travel: ${(lineLen * 149597870.7).toFixed(0)} km`
-        );
-        console.log(
-            `[SOI_DIAG]   Ship pos: (${position.x.toFixed(6)}, ${position.y.toFixed(6)}, ${position.z.toFixed(6)}) | ` +
-            `Entry pos: (${entryPos.x.toFixed(6)}, ${entryPos.y.toFixed(6)}, ${entryPos.z.toFixed(6)}) | ` +
-            `Planet pos: (${planet.x.toFixed(6)}, ${planet.y.toFixed(6)}, ${planet.z.toFixed(6)})`
-        );
+        // Reject false positives: if the entry point is outside the SOI boundary
+        // (can happen from floating-point imprecision when ship is near SOI edge)
+        if (entryDist > soiRadius * 1.02) continue;
+
+        // SOI DIAGNOSTIC: Log entry detection (rate-limited to avoid spam)
+        const diagNow = Date.now();
+        if (diagNow - lastEntryDetectionLogTime > 2000) {
+            lastEntryDetectionLogTime = diagNow;
+            const entryDistKm = entryDist * 149597870.7;
+            const soiRadiusKm = soiRadius * 149597870.7;
+            const travelFraction = (tEntry / lineLen * 100).toFixed(1);
+            const velMag = Math.sqrt(velocity.vx**2 + velocity.vy**2 + velocity.vz**2) * 1731.46;
+            console.log(
+                `[SOI_DIAG] ENTRY DETECTED: ${planet.name} | ` +
+                `entry at ${entryDistKm.toFixed(0)}km from center (SOI: ${soiRadiusKm.toFixed(0)}km) | ` +
+                `${travelFraction}% through frame travel | ` +
+                `ship speed: ${velMag.toFixed(1)} km/s | ` +
+                `frame travel: ${(lineLen * 149597870.7).toFixed(0)} km`
+            );
+            console.log(
+                `[SOI_DIAG]   Ship pos: (${position.x.toFixed(6)}, ${position.y.toFixed(6)}, ${position.z.toFixed(6)}) | ` +
+                `Entry pos: (${entryPos.x.toFixed(6)}, ${entryPos.y.toFixed(6)}, ${entryPos.z.toFixed(6)}) | ` +
+                `Planet pos: (${planet.x.toFixed(6)}, ${planet.y.toFixed(6)}, ${planet.z.toFixed(6)})`
+            );
+        }
 
         return {
             body: planet.name,
@@ -680,6 +692,9 @@ function logSOIFrameDiagnostics(ship, position, julianDate) {
 let lastSOITransitionTime = 0;
 let lastSOITransitionBody = null;  // Track which body had the last transition
 
+// Rate limit for SOI entry detection diagnostic logs (wall-clock ms)
+let lastEntryDetectionLogTime = 0;
+
 // Throttle flyby messages
 let lastFlybyLogTime = 0;
 let lastFlybyBody = null;
@@ -783,6 +798,24 @@ function handleSOIEntry(ship, shipPosHelio, shipVelHelio, planetName, julianDate
     // Get planet's heliocentric position and velocity
     const planetPosHelio = getPosition(planet.elements, julianDate);
     const planetVelHelio = getVelocity(planet.elements, julianDate);
+
+    // Safety check: verify ship is actually within (or very near) the SOI boundary.
+    // Prevents invalid entries from numerical edge cases in trajectory detection.
+    const soiRadius = getSOIRadius(planetName);
+    const distFromPlanet = Math.sqrt(
+        (shipPosHelio.x - planetPosHelio.x) ** 2 +
+        (shipPosHelio.y - planetPosHelio.y) ** 2 +
+        (shipPosHelio.z - planetPosHelio.z) ** 2
+    );
+    if (distFromPlanet > soiRadius * 1.05) {
+        // Rate-limit this warning to avoid spam in edge cases
+        const rejectNow = Date.now();
+        if (rejectNow - lastEntryDetectionLogTime > 2000) {
+            lastEntryDetectionLogTime = rejectNow;
+            console.warn(`[SOI ENTRY] REJECTED: ${planetName} - ship at ${(distFromPlanet * 149597870.7).toFixed(0)}km but SOI is ${(soiRadius * 149597870.7).toFixed(0)}km`);
+        }
+        return false;
+    }
 
     // DEBUG: Log heliocentric states
     const shipVelMag = Math.sqrt(shipVelHelio.vx**2 + shipVelHelio.vy**2 + shipVelHelio.vz**2) * 1731.46;
