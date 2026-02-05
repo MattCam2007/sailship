@@ -372,6 +372,33 @@
         COCKPIT VIEW →
     </button>
 
+    <button class="save-load-btn" id="saveLoadBtn" title="Save or load game state">
+        SAVE/LOAD
+    </button>
+
+    <!-- Save/Load Modal -->
+    <div class="save-load-modal" id="saveLoadModal">
+        <div class="save-load-content">
+            <div class="save-load-header">
+                <span class="save-load-title">GAME STATE</span>
+                <button class="save-load-close" id="saveLoadClose" aria-label="Close">&times;</button>
+            </div>
+            <div class="save-load-body">
+                <div class="save-load-actions">
+                    <button class="save-btn" id="saveStateBtn">EXPORT STATE</button>
+                    <button class="load-btn" id="loadStateBtn">IMPORT STATE</button>
+                </div>
+                <label class="save-load-label" for="saveStateText">
+                    JSON State (copy to save, paste to load):
+                </label>
+                <textarea class="save-load-textarea" id="saveStateText"
+                    placeholder="Click EXPORT STATE to generate JSON, or paste saved JSON and click IMPORT STATE"
+                    spellcheck="false"></textarea>
+                <div class="save-load-status" id="saveLoadStatus"></div>
+            </div>
+        </div>
+    </div>
+
     <style>
         .flight-view-btn {
             position: fixed;
@@ -392,10 +419,155 @@
             background: rgba(232, 93, 76, 0.4);
             transform: translateX(-2px);
         }
+
+        .save-load-btn {
+            position: fixed;
+            bottom: 50px;
+            left: 20px;
+            background: rgba(76, 158, 232, 0.2);
+            border: 1px solid rgba(76, 158, 232, 0.5);
+            color: #4c9ee8;
+            padding: 10px 20px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            z-index: 100;
+            letter-spacing: 1px;
+        }
+        .save-load-btn:hover {
+            background: rgba(76, 158, 232, 0.4);
+            transform: translateX(2px);
+        }
+
+        .save-load-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .save-load-modal.active {
+            display: flex;
+        }
+        .save-load-content {
+            background: #0a1628;
+            border: 1px solid rgba(76, 158, 232, 0.5);
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .save-load-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(76, 158, 232, 0.3);
+        }
+        .save-load-title {
+            color: #4c9ee8;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 14px;
+            letter-spacing: 2px;
+        }
+        .save-load-close {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .save-load-close:hover {
+            color: #e85d4c;
+        }
+        .save-load-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex: 1;
+            overflow: hidden;
+        }
+        .save-load-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .save-btn, .load-btn {
+            flex: 1;
+            padding: 12px 20px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 12px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .save-btn {
+            background: rgba(76, 232, 141, 0.2);
+            border: 1px solid rgba(76, 232, 141, 0.5);
+            color: #4ce88d;
+        }
+        .save-btn:hover {
+            background: rgba(76, 232, 141, 0.4);
+        }
+        .load-btn {
+            background: rgba(232, 200, 76, 0.2);
+            border: 1px solid rgba(232, 200, 76, 0.5);
+            color: #e8c84c;
+        }
+        .load-btn:hover {
+            background: rgba(232, 200, 76, 0.4);
+        }
+        .save-load-label {
+            color: #888;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+        }
+        .save-load-textarea {
+            flex: 1;
+            min-height: 200px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(76, 158, 232, 0.3);
+            color: #ccc;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            padding: 10px;
+            resize: none;
+        }
+        .save-load-textarea:focus {
+            outline: none;
+            border-color: rgba(76, 158, 232, 0.6);
+        }
+        .save-load-status {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            min-height: 20px;
+        }
+        .save-load-status.success {
+            color: #4ce88d;
+        }
+        .save-load-status.error {
+            color: #e85d4c;
+        }
+
         @media (max-width: 768px) {
             .flight-view-btn {
                 bottom: 120px;
                 right: 10px;
+                padding: 8px 12px;
+                font-size: 10px;
+            }
+            .save-load-btn {
+                bottom: 120px;
+                left: 10px;
                 padding: 8px 12px;
                 font-size: 10px;
             }

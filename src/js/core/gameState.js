@@ -152,6 +152,22 @@ export function advanceTime() {
 }
 
 /**
+ * Set game time directly (for save/load)
+ * @param {number} newTime - Time in days since start
+ */
+export function setTime(newTime) {
+    time = newTime;
+}
+
+/**
+ * Set Julian date directly (for save/load)
+ * @param {number} newJulianDate - Julian date
+ */
+export function setJulianDate(newJulianDate) {
+    julianDate = newJulianDate;
+}
+
+/**
  * Get current time in days
  * @returns {number}
  */
