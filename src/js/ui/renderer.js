@@ -13,6 +13,7 @@ import {
     getTime,
     getJulianDate,
     getIntersectionCache,
+    getClosestApproachCache,
     getNodeCrossingsCache,
     bodyFilters
 } from '../core/gameState.js';
@@ -1008,25 +1009,56 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
     if (!displayOptions.showIntersectionMarkers) return;
     if (!displayOptions.showOrbits) return;
 
-    const cache = getIntersectionCache();
-    if (!cache.results || cache.results.length === 0) return;
-
     const player = getPlayerShip();
     if (!player) return;
 
-    // Filter to only show ghost planets for the currently targeted destination
-    // and respect body filters
-    const targetedIntersections = cache.results.filter(intersection => {
-        if (intersection.bodyName !== destination) return false;
+    // Use closest-approach data for ghost placement when available.
+    // Closest-approach answers "when is my minimum distance to this planet?"
+    // which is more accurate for navigation than radius-crossing detection
+    // (which only checks when the ship crosses the planet's semi-major axis distance).
+    // Radius-crossing can predict the wrong time because the predicted trajectory
+    // diverges from the actual trajectory over long prediction windows.
+    const approachCache = getClosestApproachCache();
+    const intersectionCache = getIntersectionCache();
 
-        // Check if body is visible based on category filter
-        const body = celestialBodies.find(b => b.name === intersection.bodyName);
-        if (body && body.category && !bodyFilters[body.category]) return false;
+    // Build the list of encounters to render, preferring closest-approach data
+    let encounters = [];
 
-        return true;
-    });
+    if (approachCache.results && approachCache.results.length > 0) {
+        // Use closest-approach data: more accurate planet positions
+        encounters = approachCache.results
+            .filter(approach => {
+                if (approach.bodyName !== destination) return false;
+                const body = celestialBodies.find(b => b.name === approach.bodyName);
+                if (body && body.category && !bodyFilters[body.category]) return false;
+                return true;
+            })
+            .map(approach => ({
+                bodyName: approach.bodyName,
+                bodyPosition: approach.bodyPos,
+                time: approach.time,
+                distance: approach.minDistance
+            }));
+    } else if (intersectionCache.results && intersectionCache.results.length > 0) {
+        // Fallback to radius-crossing data
+        encounters = intersectionCache.results
+            .filter(intersection => {
+                if (intersection.bodyName !== destination) return false;
+                const body = celestialBodies.find(b => b.name === intersection.bodyName);
+                if (body && body.category && !bodyFilters[body.category]) return false;
+                return true;
+            })
+            .map(intersection => ({
+                bodyName: intersection.bodyName,
+                bodyPosition: intersection.bodyPosition,
+                time: intersection.time,
+                distance: intersection.distance
+            }));
+    }
 
-    for (const intersection of targetedIntersections) {
+    if (encounters.length === 0) return;
+
+    for (const intersection of encounters) {
         const bodyPos = intersection.bodyPosition;
 
         // Handle coordinate transformation for body positions
