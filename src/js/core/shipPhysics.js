@@ -467,7 +467,8 @@ function checkSOIEntryTrajectory(position, velocity, planets, deltaTime) {
         }
 
         // Line-sphere intersection test for trajectory crossing
-        // Line from position to endPos, sphere at planet with radius soiRadius
+        // Ray from position toward endPos, sphere at planet with radius soiRadius
+        // Solve for the FIRST intersection point on the SOI boundary (not closest approach)
         const lineDir = {
             x: endPos.x - position.x,
             y: endPos.y - position.y,
@@ -490,42 +491,55 @@ function checkSOIEntryTrajectory(position, velocity, planets, deltaTime) {
             z: planet.z - position.z
         };
 
-        // Project toCenter onto line direction
-        const proj = toCenter.x * dir.x + toCenter.y * dir.y + toCenter.z * dir.z;
+        // Ray-sphere intersection using geometric method:
+        // tca = projection of toCenter onto ray direction
+        // d² = perpendicular distance² from sphere center to ray
+        // thc = half-chord length through sphere
+        // First intersection at t = tca - thc (entry point on sphere boundary)
+        const tca = toCenter.x * dir.x + toCenter.y * dir.y + toCenter.z * dir.z;
+        const toCenterDist2 = toCenter.x ** 2 + toCenter.y ** 2 + toCenter.z ** 2;
+        const d2 = toCenterDist2 - tca * tca;
 
-        // Closest point on line to sphere center
-        const closestOnLine = {
-            x: position.x + dir.x * Math.max(0, Math.min(lineLen, proj)),
-            y: position.y + dir.y * Math.max(0, Math.min(lineLen, proj)),
-            z: position.z + dir.z * Math.max(0, Math.min(lineLen, proj))
+        // No intersection if perpendicular distance exceeds sphere radius
+        if (d2 > soiRadius * soiRadius) continue;
+
+        // Half-chord length
+        const thc = Math.sqrt(soiRadius * soiRadius - d2);
+
+        // First intersection: entry point on SOI boundary
+        let tEntry = tca - thc;
+
+        // If tEntry < 0, the ship is already inside the SOI (shouldn't happen
+        // since we checked currentDist above, but handle gracefully)
+        if (tEntry < 0) {
+            tEntry = 0;
+        }
+
+        // Check that entry point is within the segment [0, lineLen]
+        if (tEntry > lineLen) continue;
+
+        // Compute entry position on the SOI boundary
+        const entryPos = {
+            x: position.x + dir.x * tEntry,
+            y: position.y + dir.y * tEntry,
+            z: position.z + dir.z * tEntry
         };
 
-        // Distance from closest point to sphere center
-        const distToCenter = Math.sqrt(
-            (closestOnLine.x - planet.x) ** 2 +
-            (closestOnLine.y - planet.y) ** 2 +
-            (closestOnLine.z - planet.z) ** 2
+        // Distance from entry point to planet center (should be ~soiRadius)
+        const entryDist = Math.sqrt(
+            (entryPos.x - planet.x) ** 2 +
+            (entryPos.y - planet.y) ** 2 +
+            (entryPos.z - planet.z) ** 2
         );
 
-        if (distToCenter < soiRadius) {
-            // Trajectory crosses SOI! Find entry point
-            // Use the closest approach point as the entry position
-            const entryFraction = Math.max(0, Math.min(1, proj / lineLen));
-            const entryPos = {
-                x: position.x + lineDir.x * entryFraction,
-                y: position.y + lineDir.y * entryFraction,
-                z: position.z + lineDir.z * entryFraction
-            };
+        console.log(`SOI boundary crossing detected: ${planet.name}, entry at ${entryDist.toFixed(6)} AU from center (SOI radius: ${soiRadius.toFixed(6)} AU)`);
 
-            console.log(`SOI trajectory crossing detected: ${planet.name}, closest approach: ${distToCenter.toFixed(6)} AU`);
-
-            return {
-                body: planet.name,
-                entryPos: entryPos,
-                entryVel: velocity,
-                distance: distToCenter
-            };
-        }
+        return {
+            body: planet.name,
+            entryPos: entryPos,
+            entryVel: velocity,
+            distance: entryDist
+        };
     }
 
     return null;
@@ -780,6 +794,8 @@ function handleSOIExit(ship, shipPosPlanet, shipVelPlanet, julianDate) {
     console.log(`[SOI EXIT] Ship helio vel: (${vel.vx.toFixed(6)}, ${vel.vy.toFixed(6)}, ${vel.vz.toFixed(6)}) AU/day = ${helioVelMag.toFixed(2)} km/s`);
 
     // Convert heliocentric state to orbital elements around Sun
+    // Save old elements so we can restore them if validation fails
+    const oldElements = { ...ship.orbitalElements };
     ship.orbitalElements = stateToElements(pos, vel, MU_SUN, julianDate);
 
     // Validate orbital elements - critical check for rendering
@@ -788,7 +804,9 @@ function handleSOIExit(ship, shipPosPlanet, shipVelPlanet, julianDate) {
         !isFinite(elements.Ω) || !isFinite(elements.ω) || !isFinite(elements.M0)) {
         console.error('[SOI EXIT] CRITICAL: Orbital elements contain NaN!', elements);
         console.error('[SOI EXIT] Input pos:', pos, 'vel:', vel);
-        // Don't return false - let it proceed but alert to the issue
+        // Restore old planetocentric elements and reject the exit
+        ship.orbitalElements = oldElements;
+        return false;
     }
 
     // Update SOI state
