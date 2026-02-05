@@ -154,6 +154,9 @@ export const SOI_RADII = {
     EARTH: 0.00620,     // ~928,000 km (about 2.4x Moon's distance)
     MARS: 0.00386,      // ~577,000 km
     JUPITER: 0.3219,    // ~48 million km
+    SATURN: 0.3647,     // ~54.6 million km
+    URANUS: 0.3462,     // ~51.8 million km
+    NEPTUNE: 0.5791,    // ~86.7 million km
 };
 
 /**
