@@ -40,6 +40,9 @@ export const SPEED_PRESETS = {
     '10000x': 10000 * REAL_TIME_RATE,
     '100000x': 100000 * REAL_TIME_RATE,
     '1000000x': 1000000 * REAL_TIME_RATE,
+    '10000000x': 10000000 * REAL_TIME_RATE,
+    '100000000x': 100000000 * REAL_TIME_RATE,
+    '500000000x': 500000000 * REAL_TIME_RATE,
 };
 
 // ============================================================================
