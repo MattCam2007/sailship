@@ -291,21 +291,54 @@ test('testSolveCourseHandlesMars', async () => {
 // Unit 7: Quality metrics tests
 test('testQualityRatingsMatchThresholds', async () => {
     const { solveCourse } = await import('./course-solver.js');
+    const { SOI_RADII } = await import('../config.js');
     const ship = createMockShip();
     const target = createMockTarget('VENUS');
 
     const solution = await solveCourse(ship, target);
 
-    // Verify quality rating matches distance
-    if (solution.minDistance < 0.01) {
-        assert(solution.quality === 'INTERCEPT', `Should be INTERCEPT at ${solution.minDistance} AU`);
-    } else if (solution.minDistance < 0.05) {
-        assert(solution.quality === 'NEAR_MISS', `Should be NEAR_MISS at ${solution.minDistance} AU`);
-    } else if (solution.minDistance < 0.2) {
-        assert(solution.quality === 'MARGINAL', `Should be MARGINAL at ${solution.minDistance} AU`);
+    // v3.7: INTERCEPT threshold is now SOI-based (Venus SOI = 0.00411 AU)
+    const interceptThreshold = SOI_RADII.VENUS || 0.01;
+    const nearMissThreshold = 0.05;
+    const marginalThreshold = 0.2;
+
+    // Verify quality rating matches distance using SOI-based threshold
+    if (solution.minDistance < interceptThreshold) {
+        assert(solution.quality === 'INTERCEPT',
+            `Should be INTERCEPT at ${solution.minDistance} AU (SOI threshold: ${interceptThreshold} AU)`);
+    } else if (solution.minDistance < nearMissThreshold) {
+        assert(solution.quality === 'NEAR_MISS',
+            `Should be NEAR_MISS at ${solution.minDistance} AU`);
+    } else if (solution.minDistance < marginalThreshold) {
+        assert(solution.quality === 'MARGINAL',
+            `Should be MARGINAL at ${solution.minDistance} AU`);
     } else {
-        assert(solution.quality === 'NO_SOLUTION', `Should be NO_SOLUTION at ${solution.minDistance} AU`);
+        // Could be NO_SOLUTION, PHASE_MISS, or NO_CROSSING
+        assert(['NO_SOLUTION', 'PHASE_MISS', 'NO_CROSSING'].includes(solution.quality),
+            `Should be NO_SOLUTION/PHASE_MISS/NO_CROSSING at ${solution.minDistance} AU, got ${solution.quality}`);
     }
+});
+
+// Unit 7b: SOI-based intercept threshold tests (v3.7)
+test('testInterceptThresholdUsesSOI', async () => {
+    const { solveCourse } = await import('./course-solver.js');
+    const { SOI_RADII } = await import('../config.js');
+
+    // Test that the solution includes the SOI-based threshold
+    const ship = createMockShip();
+    const venusTarget = createMockTarget('VENUS');
+
+    const solution = await solveCourse(ship, venusTarget);
+
+    // Solution should include the intercept threshold used
+    assert(solution.crossingInfo !== undefined, 'Solution should have crossingInfo');
+    assert(solution.crossingInfo.interceptThreshold !== undefined,
+        'Solution should include interceptThreshold');
+
+    // Threshold should match Venus SOI
+    const expectedThreshold = SOI_RADII.VENUS;
+    assertApprox(solution.crossingInfo.interceptThreshold, expectedThreshold, 0.0001,
+        `Intercept threshold should match Venus SOI (${expectedThreshold} AU)`);
 });
 
 test('testSolutionIncludesSearchMetrics', async () => {
