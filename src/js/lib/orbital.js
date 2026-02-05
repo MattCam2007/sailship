@@ -630,7 +630,9 @@ export function getVelocity(elements, julianDate) {
  */
 export function getPeriapsis(elements) {
     const { a, e } = elements;
-    return Math.abs(a) * (1 - e);
+    // For elliptic: a > 0, (1-e) > 0 → positive
+    // For hyperbolic: a < 0, (1-e) < 0 → negative × negative = positive
+    return a * (1 - e);
 }
 
 /**
