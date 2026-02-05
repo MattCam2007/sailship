@@ -14,6 +14,12 @@ import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
 import { SOI_RADII, PHYSICS_CONFIG } from '../config.js';
 import { getBodyByName } from '../data/celestialBodies.js';
 
+// SOI trajectory diagnostic - tracks one-shot logging per SOI stay
+let soiTrajDiag = {
+    lastLoggedSOIBody: null,   // Prevent repeated logging for same SOI stay
+    lastLoggedReason: null,    // Last truncation reason logged
+};
+
 // Configuration constants
 const DEFAULT_DURATION_DAYS = 60;
 const DEFAULT_STEPS = 200;
@@ -174,6 +180,28 @@ export function predictTrajectory(params) {
         simElements.e > EXTREME_ECCENTRICITY_THRESHOLD &&
         isInSOI;
 
+    // SOI DIAGNOSTIC: Log once per SOI stay when trajectory prediction starts in SOI
+    if (isInSOI && currentBody !== 'SUN' && soiTrajDiag.lastLoggedSOIBody !== currentBody) {
+        soiTrajDiag.lastLoggedSOIBody = currentBody;
+        soiTrajDiag.lastLoggedReason = null;
+        console.log(
+            `[TRAJ_DIAG] Starting trajectory prediction in ${currentBody} SOI | ` +
+            `e=${simElements.e.toFixed(4)} a=${simElements.a.toFixed(6)} | ` +
+            `SOI_radius=${soiRadius?.toFixed(6) || 'N/A'} AU | ` +
+            `linearInterp=${useLinearInterpolation} | ` +
+            `steps=${steps} duration=${duration}d`
+        );
+        if (useLinearInterpolation && extremeFlybyState) {
+            console.log(
+                `[TRAJ_DIAG] EXTREME FLYBY linear interp: entryPos=(${extremeFlybyState.entryPos.x.toFixed(6)},${extremeFlybyState.entryPos.y.toFixed(6)},${extremeFlybyState.entryPos.z.toFixed(6)}) ` +
+                `entryVel=(${extremeFlybyState.entryVel.vx.toFixed(6)},${extremeFlybyState.entryVel.vy.toFixed(6)},${extremeFlybyState.entryVel.vz.toFixed(6)})`
+            );
+        }
+    }
+    // Reset one-shot tracker when leaving SOI
+    if (!isInSOI) {
+        soiTrajDiag.lastLoggedSOIBody = null;
+    }
 
     for (let i = 0; i < steps; i++) {
         const simTime = startTime + i * timeStep;
@@ -214,6 +242,19 @@ export function predictTrajectory(params) {
                 // Mark previous point as truncated
                 if (trajectory.length > 0) {
                     trajectory[trajectory.length - 1].truncated = 'SOI_EXIT';
+                }
+                // SOI DIAGNOSTIC: Log truncation (one-shot per SOI stay)
+                if (soiTrajDiag.lastLoggedReason !== 'SOI_EXIT') {
+                    soiTrajDiag.lastLoggedReason = 'SOI_EXIT';
+                    const timeInSOI = (i * timeStep).toFixed(2);
+                    console.log(
+                        `[TRAJ_DIAG] TRUNCATED at step ${i}/${steps} (SOI_EXIT) | ` +
+                        `${trajectory.length} points rendered | ` +
+                        `dist=${distFromOrigin.toFixed(6)} > SOI*1.1=${(soiRadius*1.1).toFixed(6)} | ` +
+                        `${timeInSOI}d into prediction | ` +
+                        `linearInterp=${useLinearInterpolation} | ` +
+                        `e=${simElements.e.toFixed(4)}`
+                    );
                 }
                 break;
             }
@@ -350,6 +391,18 @@ export function predictTrajectory(params) {
                 simElements = newElements;
             }
         }
+    }
+
+    // SOI DIAGNOSTIC: Warn about very short trajectories in SOI (one-shot)
+    if (isInSOI && currentBody !== 'SUN' && trajectory.length < 10 && soiTrajDiag.lastLoggedReason !== 'LOW_POINTS') {
+        soiTrajDiag.lastLoggedReason = 'LOW_POINTS';
+        const lastTruncReason = trajectory.length > 0 ? (trajectory[trajectory.length - 1].truncated || 'NONE') : 'EMPTY';
+        console.warn(
+            `[TRAJ_DIAG] ⚠️ VERY SHORT TRAJECTORY in ${currentBody} SOI: only ${trajectory.length} points | ` +
+            `truncation=${lastTruncReason} | e=${simElements.e.toFixed(4)} | ` +
+            `linearInterp=${useLinearInterpolation} | ` +
+            `This will make the predicted path nearly invisible`
+        );
     }
 
     // Update cache with stability tracking

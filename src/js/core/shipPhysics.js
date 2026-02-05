@@ -408,6 +408,15 @@ export function updateShipPhysics(ship, deltaTime) {
         updateCachedState(ship, newPosition, newVelocity);
     }
 
+    // SOI diagnostic frame logging (rate-limited, always on for player)
+    if (ship.isPlayer && (soiDiag.active || soiDiag.exitPending)) {
+        if (soiDiag.active) soiDiag.framesSinceEntry++;
+        if (soiDiag.exitPending) soiDiag.framesSinceExit++;
+        if (shouldLogSOIFrame()) {
+            logSOIFrameDiagnostics(ship, newPosition, julianDate);
+        }
+    }
+
     // Periodic debug logging (requires toggle)
     if (debugLoggingEnabled && ship.isPlayer) {
         periodicDebugLog(ship, newPosition, newVelocity, thrust, julianDate);
@@ -532,7 +541,23 @@ function checkSOIEntryTrajectory(position, velocity, planets, deltaTime) {
             (entryPos.z - planet.z) ** 2
         );
 
-        console.log(`SOI boundary crossing detected: ${planet.name}, entry at ${entryDist.toFixed(6)} AU from center (SOI radius: ${soiRadius.toFixed(6)} AU)`);
+        // SOI DIAGNOSTIC: Log entry detection with position info
+        const entryDistKm = entryDist * 149597870.7;
+        const soiRadiusKm = soiRadius * 149597870.7;
+        const travelFraction = (tEntry / lineLen * 100).toFixed(1);
+        const velMag = Math.sqrt(velocity.vx**2 + velocity.vy**2 + velocity.vz**2) * 1731.46;
+        console.log(
+            `[SOI_DIAG] ENTRY DETECTED: ${planet.name} | ` +
+            `entry at ${entryDistKm.toFixed(0)}km from center (SOI: ${soiRadiusKm.toFixed(0)}km) | ` +
+            `${travelFraction}% through frame travel | ` +
+            `ship speed: ${velMag.toFixed(1)} km/s | ` +
+            `frame travel: ${(lineLen * 149597870.7).toFixed(0)} km`
+        );
+        console.log(
+            `[SOI_DIAG]   Ship pos: (${position.x.toFixed(6)}, ${position.y.toFixed(6)}, ${position.z.toFixed(6)}) | ` +
+            `Entry pos: (${entryPos.x.toFixed(6)}, ${entryPos.y.toFixed(6)}, ${entryPos.z.toFixed(6)}) | ` +
+            `Planet pos: (${planet.x.toFixed(6)}, ${planet.y.toFixed(6)}, ${planet.z.toFixed(6)})`
+        );
 
         return {
             body: planet.name,
@@ -543,6 +568,112 @@ function checkSOIEntryTrajectory(position, velocity, planets, deltaTime) {
     }
 
     return null;
+}
+
+// ============================================================================
+// SOI Diagnostic Logger
+// ============================================================================
+// Rate-limited logging focused on SOI transition bugs:
+// - Position snap on entry/exit
+// - Trajectory prediction disappearing
+// - Orbit rendering issues (blue dashed line)
+// - Ship flying off with no indicators
+//
+// Logs: one-shot on transitions, first 5 frames post-transition,
+//       then every 20 frames while in SOI. Won't spam at high time scales.
+
+const soiDiag = {
+    active: false,          // Whether we're in an SOI
+    bodyName: null,         // Which body
+    framesSinceEntry: 0,    // Frames since last SOI entry
+    framesSinceExit: 0,     // Frames since last SOI exit
+    entryShipHelioPos: null, // Ship heliocentric position at moment of entry
+    entryPlanetCachedPos: null, // Planet cached position at entry
+    entryPlanetComputedPos: null, // Planet computed position at entry
+    entryOrbitType: null,    // 'ELLIPTIC' or 'HYPERBOLIC'
+    entryEccentricity: 0,
+    exitPending: false,      // Just exited, need to log post-exit frames
+    loggedTrajectoryTruncation: false, // One-shot flag for trajectory truncation
+    prevShipPos: null,       // Previous frame ship position (for snap detection)
+};
+
+/**
+ * Should we log this frame for SOI diagnostics?
+ * Log first 5 frames after transition, then every 20 frames.
+ */
+function shouldLogSOIFrame() {
+    const f = soiDiag.active ? soiDiag.framesSinceEntry : soiDiag.framesSinceExit;
+    if (f < 5) return true;
+    if (f % 20 === 0 && f < 200) return true;
+    return false;
+}
+
+/**
+ * Log SOI frame diagnostics for the player ship.
+ * Called from updateShipPhysics after position caching.
+ */
+function logSOIFrameDiagnostics(ship, position, julianDate) {
+    const f = soiDiag.active ? soiDiag.framesSinceEntry : soiDiag.framesSinceExit;
+    const phase = soiDiag.active ? 'IN_SOI' : 'POST_EXIT';
+    const body = soiDiag.bodyName || 'SUN';
+
+    // Compute position delta from previous frame (snap detection)
+    let snapDist = 0;
+    let snapKm = 0;
+    if (soiDiag.prevShipPos) {
+        const dx = ship.x - soiDiag.prevShipPos.x;
+        const dy = ship.y - soiDiag.prevShipPos.y;
+        const dz = ship.z - soiDiag.prevShipPos.z;
+        snapDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        snapKm = snapDist * 149597870.7;
+    }
+
+    if (soiDiag.active) {
+        // In SOI: log planetocentric distance, SOI boundary proximity, orbit type
+        const parent = getBodyByName(body);
+        const distFromPlanet = Math.sqrt(position.x**2 + position.y**2 + position.z**2);
+        const soiRadius = getSOIRadius(body);
+        const soiPct = (distFromPlanet / soiRadius * 100).toFixed(1);
+
+        // Check planet cached vs computed position (the snap source)
+        let planetDelta = 0;
+        let planetDeltaKm = 0;
+        if (parent && parent.elements) {
+            const computedPos = getPosition(parent.elements, julianDate);
+            const pdx = parent.x - computedPos.x;
+            const pdy = parent.y - computedPos.y;
+            const pdz = parent.z - computedPos.z;
+            planetDelta = Math.sqrt(pdx*pdx + pdy*pdy + pdz*pdz);
+            planetDeltaKm = planetDelta * 149597870.7;
+        }
+
+        console.log(
+            `[SOI_DIAG] ${phase} f${f} | ${body} | ` +
+            `dist=${distFromPlanet.toFixed(6)}AU (${soiPct}% of SOI) | ` +
+            `ship=(${ship.x.toFixed(6)},${ship.y.toFixed(6)},${ship.z.toFixed(6)}) | ` +
+            `e=${ship.orbitalElements.e.toFixed(4)} ${ship.orbitalElements.e >= 1 ? 'HYPER' : 'ELLIP'} | ` +
+            `snap=${snapKm.toFixed(0)}km | ` +
+            `planetΔ=${planetDeltaKm.toFixed(0)}km` +
+            (ship.extremeFlybyState ? ' | EXTREME_FLYBY' : '')
+        );
+    } else if (soiDiag.exitPending) {
+        // Post-exit: log heliocentric state, check if position recovered
+        const helioR = Math.sqrt(ship.x**2 + ship.y**2 + ship.z**2);
+        console.log(
+            `[SOI_DIAG] ${phase} f${f} | back to SUN | ` +
+            `r=${helioR.toFixed(6)}AU | ` +
+            `ship=(${ship.x.toFixed(6)},${ship.y.toFixed(6)},${ship.z.toFixed(6)}) | ` +
+            `e=${ship.orbitalElements.e.toFixed(4)} | ` +
+            `snap=${snapKm.toFixed(0)}km`
+        );
+
+        // Stop post-exit logging after 5 frames
+        if (f >= 5) {
+            soiDiag.exitPending = false;
+        }
+    }
+
+    soiDiag.prevShipPos = { x: ship.x, y: ship.y, z: ship.z };
 }
 
 // Cooldown to prevent rapid SOI cycling (in Julian days)
@@ -739,6 +870,52 @@ function handleSOIEntry(ship, shipPosHelio, shipVelHelio, planetName, julianDate
     const verifyVelMag = Math.sqrt(verifyVel.vx**2 + verifyVel.vy**2 + verifyVel.vz**2) * 1731.46;
     console.log(`[SOI ENTRY] VERIFY pos from elements: (${verifyPos.x.toFixed(6)}, ${verifyPos.y.toFixed(6)}, ${verifyPos.z.toFixed(6)}) AU`);
     console.log(`[SOI ENTRY] VERIFY vel from elements: (${verifyVel.vx.toFixed(6)}, ${verifyVel.vy.toFixed(6)}, ${verifyVel.vz.toFixed(6)}) AU/day = ${verifyVelMag.toFixed(2)} km/s`);
+
+    // SOI DIAGNOSTIC: Roundtrip position error (stateToElements → getPosition)
+    const posRoundtripDelta = Math.sqrt(
+        (verifyPos.x - pos.x)**2 + (verifyPos.y - pos.y)**2 + (verifyPos.z - pos.z)**2
+    );
+    const posRoundtripDeltaKm = posRoundtripDelta * 149597870.7;
+
+    // Planet cached vs computed position delta (source of visual snap)
+    const planetCachedVsComputed = Math.sqrt(
+        (planet.x - planetPosHelio.x)**2 +
+        (planet.y - planetPosHelio.y)**2 +
+        (planet.z - planetPosHelio.z)**2
+    );
+    const planetDeltaKm = planetCachedVsComputed * 149597870.7;
+
+    // Expected ship helio position: verifyPos (planetocentric) + planet.x/y/z (cached)
+    const expectedHelioX = verifyPos.x + planet.x;
+    const expectedHelioY = verifyPos.y + planet.y;
+    const expectedHelioZ = verifyPos.z + planet.z;
+    const helioSnapDelta = Math.sqrt(
+        (expectedHelioX - shipPosHelio.x)**2 +
+        (expectedHelioY - shipPosHelio.y)**2 +
+        (expectedHelioZ - shipPosHelio.z)**2
+    );
+    const helioSnapKm = helioSnapDelta * 149597870.7;
+
+    console.log(`[SOI_DIAG] ENTRY ROUNDTRIP ERROR: planetocentric pos delta = ${posRoundtripDeltaKm.toFixed(1)} km`);
+    console.log(`[SOI_DIAG] ENTRY PLANET POS: cached vs computed delta = ${planetDeltaKm.toFixed(1)} km`);
+    console.log(`[SOI_DIAG] ENTRY HELIO SNAP: pre-entry vs post-entry ship pos delta = ${helioSnapKm.toFixed(1)} km`);
+    console.log(`[SOI_DIAG]   Pre-entry helio: (${shipPosHelio.x.toFixed(6)}, ${shipPosHelio.y.toFixed(6)}, ${shipPosHelio.z.toFixed(6)})`);
+    console.log(`[SOI_DIAG]   Post-entry helio: (${expectedHelioX.toFixed(6)}, ${expectedHelioY.toFixed(6)}, ${expectedHelioZ.toFixed(6)})`);
+
+    // Initialize SOI diagnostic tracker
+    soiDiag.active = true;
+    soiDiag.bodyName = planetName;
+    soiDiag.framesSinceEntry = 0;
+    soiDiag.entryShipHelioPos = { ...shipPosHelio };
+    soiDiag.entryPlanetCachedPos = { x: planet.x, y: planet.y, z: planet.z };
+    soiDiag.entryPlanetComputedPos = { ...planetPosHelio };
+    soiDiag.entryOrbitType = ship.orbitalElements.e >= 1 ? 'HYPERBOLIC' : 'ELLIPTIC';
+    soiDiag.entryEccentricity = ship.orbitalElements.e;
+    soiDiag.loggedTrajectoryTruncation = false;
+    soiDiag.exitPending = false;
+    // Record pre-entry helio position for snap measurement on next frame
+    soiDiag.prevShipPos = { ...shipPosHelio };
+
     console.log(`========== END SOI ENTRY ==========\n`);
 
     return true;
@@ -832,6 +1009,29 @@ function handleSOIExit(ship, shipPosPlanet, shipVelPlanet, julianDate) {
     const verifyVelMag = Math.sqrt(verifyVel.vx**2 + verifyVel.vy**2 + verifyVel.vz**2) * 1731.46;
     console.log(`[SOI EXIT] VERIFY pos from elements: (${verifyPos.x.toFixed(6)}, ${verifyPos.y.toFixed(6)}, ${verifyPos.z.toFixed(6)}) AU`);
     console.log(`[SOI EXIT] VERIFY vel from elements: (${verifyVel.vx.toFixed(6)}, ${verifyVel.vy.toFixed(6)}, ${verifyVel.vz.toFixed(6)}) AU/day = ${verifyVelMag.toFixed(2)} km/s`);
+
+    // SOI DIAGNOSTIC: Roundtrip position error
+    const posRoundtripDelta = Math.sqrt(
+        (verifyPos.x - pos.x)**2 + (verifyPos.y - pos.y)**2 + (verifyPos.z - pos.z)**2
+    );
+    console.log(`[SOI_DIAG] EXIT ROUNDTRIP ERROR: helio pos delta = ${(posRoundtripDelta * 149597870.7).toFixed(1)} km`);
+
+    // Compare exit helio position to entry helio position (overall flyby effect)
+    if (soiDiag.entryShipHelioPos) {
+        const flybyDelta = Math.sqrt(
+            (pos.x - soiDiag.entryShipHelioPos.x)**2 +
+            (pos.y - soiDiag.entryShipHelioPos.y)**2 +
+            (pos.z - soiDiag.entryShipHelioPos.z)**2
+        );
+        console.log(`[SOI_DIAG] EXIT FLYBY DISPLACEMENT: ${flybyDelta.toFixed(6)} AU (${(flybyDelta * 149597870.7).toFixed(0)} km)`);
+        console.log(`[SOI_DIAG] TOTAL FRAMES IN SOI: ${soiDiag.framesSinceEntry}`);
+    }
+
+    // Switch diagnostic tracker to post-exit mode
+    soiDiag.active = false;
+    soiDiag.framesSinceExit = 0;
+    soiDiag.exitPending = true;
+
     console.log(`========== END SOI EXIT ==========\n`);
 
     return true;
@@ -1303,6 +1503,14 @@ export function logOrbitalState(ship) {
     console.log(`[ORBIT] Specific energy = ${energy.toExponential(4)} → ${energy < 0 ? 'BOUND' : 'UNBOUND'}`);
     console.log(`[ORBIT] Periapsis: ${(a*(1-e)).toFixed(6)} AU, Apoapsis: ${(a*(1+e)).toFixed(6)} AU`);
     console.log(`========== END ORBITAL STATE ==========\n`);
+}
+
+/**
+ * Get SOI diagnostic state for cross-module logging coordination.
+ * Used by trajectory-predictor.js to log truncation only once per SOI stay.
+ */
+export function getSOIDiagnostics() {
+    return soiDiag;
 }
 
 // Make debug functions available globally

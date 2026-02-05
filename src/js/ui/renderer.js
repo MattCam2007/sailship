@@ -27,6 +27,10 @@ let canvas, ctx;
 let rendererDebugEnabled = false;
 let rendererFrameCount = 0;
 
+// SOI rendering diagnostics - tracks orbit type changes for player
+let lastRenderedOrbitType = null;
+let lastRenderedSOIState = false;
+
 // ============================================================================
 // Gradient Cache System
 // ============================================================================
@@ -662,6 +666,25 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
     // Use different color when in planetary SOI
     const isInSOI = ship.soiState?.isInSOI;
 
+    // SOI DIAGNOSTIC: Log orbit type changes for player (one-shot on change)
+    if (ship.isPlayer) {
+        const currentOrbitType = isHyperbolic ? 'HYPERBOLIC' : 'ELLIPTIC';
+        const soiChanged = isInSOI !== lastRenderedSOIState;
+        const orbitChanged = currentOrbitType !== lastRenderedOrbitType;
+
+        if (soiChanged || orbitChanged) {
+            const body = isInSOI ? ship.soiState.currentBody : 'SUN';
+            console.log(
+                `[RENDER_DIAG] Orbit render change: ${lastRenderedOrbitType || 'NONE'}→${currentOrbitType} | ` +
+                `SOI: ${lastRenderedSOIState ? 'YES' : 'NO'}→${isInSOI ? 'YES' : 'NO'} (${body}) | ` +
+                `visual e=${e.toFixed(4)} a=${a.toFixed(6)} | ` +
+                `actual e=${ship.orbitalElements.e.toFixed(4)} a=${ship.orbitalElements.a.toFixed(6)} | ` +
+                `color=${isHyperbolic ? 'CYAN_DASH' : (isInSOI ? 'BLUE_DASH' : 'GREEN_DASH')}`
+            );
+        }
+        lastRenderedOrbitType = currentOrbitType;
+        lastRenderedSOIState = isInSOI;
+    }
 
     // Set visual style based on orbit type
     if (isHyperbolic) {
@@ -856,14 +879,16 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
     });
 
     if (!trajectory || trajectory.length < 2) {
-        // Diagnostic logging for missing trajectory
-        if (ship.isPlayer && rendererFrameCount % 300 === 0) {
-            console.warn('[RENDER] Predicted trajectory too short or missing:', {
-                trajectoryLength: trajectory?.length || 0,
-                hasOrbitalElements: !!ship.orbitalElements,
-                hasSail: !!ship.sail,
-                soiState: ship.soiState
-            });
+        // SOI DIAGNOSTIC: Log missing/short trajectory (throttled)
+        if (ship.isPlayer && rendererFrameCount % 60 === 0) {
+            const inSOI = ship.soiState?.isInSOI;
+            const body = ship.soiState?.currentBody || 'SUN';
+            console.warn(
+                `[RENDER_DIAG] ⚠️ NO PREDICTED PATH: ${trajectory?.length || 0} points | ` +
+                `SOI=${inSOI ? body : 'NO'} | ` +
+                `e=${ship.orbitalElements?.e?.toFixed(4) || 'N/A'} | ` +
+                `extremeFlyby=${!!ship.extremeFlybyState}`
+            );
         }
         return;
     }
