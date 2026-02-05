@@ -53,15 +53,18 @@ const REFINEMENT_CONFIG = {
     /**
      * Number of bisection iterations for crossing refinement at HIGH zoom.
      * Each iteration halves the uncertainty interval.
-     * 10 iterations: 7.2 hours → ~25 seconds precision
+     * 12 iterations: 2 hours → ~1.8 seconds precision (~63 km for Venus)
      */
-    bisectionIterationsHigh: 10,
+    bisectionIterationsHigh: 12,
 
     /**
      * Number of bisection iterations at LOW zoom (system view).
-     * 4 iterations: 7.2 hours → ~27 minutes precision (adequate for visual)
+     * 8 iterations: 2 hours → ~28 seconds precision (~1000 km for Venus)
+     *
+     * Increased from 4 (27 min, 57000 km error) to prevent ghost planets
+     * from appearing on wrong side of encounter point.
      */
-    bisectionIterationsLow: 4,
+    bisectionIterationsLow: 8,
 
     /**
      * Zoom threshold for switching between low/high precision.
@@ -247,9 +250,9 @@ export function calculateClosestApproach(
  * 4. Recurse into that half
  * 5. Continue until reaching precision threshold or max iterations
  *
- * Precision improvement:
- * - Initial segment: ~7.2 hours (200 steps / 60 days)
- * - After 10 iterations: ~7.2 hours / 2^10 ≈ 25 seconds
+ * Precision improvement (at 12 steps/day = 2-hour segments):
+ * - Low zoom (8 iterations): 2 hours / 2^8 ≈ 28 seconds
+ * - High zoom (12 iterations): 2 hours / 2^12 ≈ 1.8 seconds
  *
  * @param {Object} p1 - Start point {x, y, z, time}
  * @param {Object} p2 - End point {x, y, z, time}
