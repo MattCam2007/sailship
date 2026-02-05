@@ -444,31 +444,46 @@ function darkenColor(hex, percent) {
 }
 
 /**
- * Draw SOI boundaries for planets
+ * Draw SOI boundary for the targeted (destination) planet only.
+ * Scales correctly with camera zoom.
  */
 function drawSOIBoundaries(centerX, centerY, scale) {
     if (!displayOptions.showOrbits) return;
+    if (!destination) return;
 
-    Object.entries(SOI_RADII).forEach(([bodyName, radius]) => {
-        const body = celestialBodies.find(b => b.name === bodyName);
-        if (!body) return;
+    const soiRadius = SOI_RADII[destination];
+    if (!soiRadius) return;
 
-        const projected = project3D(body.x, body.y, body.z, centerX, centerY, scale);
-        const pixelRadius = radius * scale;
+    const body = celestialBodies.find(b => b.name === destination);
+    if (!body) return;
 
-        // Only draw if radius is meaningful on screen
-        if (pixelRadius < 5 || pixelRadius > 2000) return;
+    const projected = project3D(body.x, body.y, body.z, centerX, centerY, scale);
+    const pixelRadius = soiRadius * scale * camera.zoom;
 
-        const display = getBodyDisplay(body);
+    // Only draw if radius is at least visible on screen
+    if (pixelRadius < 3) return;
 
-        ctx.strokeStyle = `${display.color}44`;  // 26% opacity
-        ctx.setLineDash([4, 8]);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(projected.x, projected.y, pixelRadius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-    });
+    const display = getBodyDisplay(body);
+
+    // Draw SOI circle
+    ctx.strokeStyle = `${display.color}66`;  // 40% opacity
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(projected.x, projected.y, pixelRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw SOI label at top of circle
+    if (pixelRadius > 20) {
+        ctx.font = '10px monospace';
+        ctx.fillStyle = `${display.color}88`;  // 53% opacity
+        ctx.textAlign = 'center';
+        const soiKm = (soiRadius * 149597870.7).toFixed(0);
+        const label = `SOI ${Number(soiKm).toLocaleString()} km`;
+        ctx.fillText(label, projected.x, projected.y - pixelRadius - 6);
+        ctx.textAlign = 'left';  // Reset
+    }
 }
 
 /**
