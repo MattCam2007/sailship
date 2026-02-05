@@ -695,11 +695,6 @@ let lastSOITransitionBody = null;  // Track which body had the last transition
 // Rate limit for SOI entry detection diagnostic logs (wall-clock ms)
 let lastEntryDetectionLogTime = 0;
 
-// Throttle flyby messages
-let lastFlybyLogTime = 0;
-let lastFlybyBody = null;
-const FLYBY_LOG_COOLDOWN = 1.0; // Only log once per day of game time
-
 // ============================================================================
 // Collision Detection
 // ============================================================================
@@ -840,9 +835,8 @@ function handleSOIEntry(ship, shipPosHelio, shipVelHelio, planetName, julianDate
     console.log(`[SOI ENTRY] Relative pos: (${pos.x.toFixed(6)}, ${pos.y.toFixed(6)}, ${pos.z.toFixed(6)}) AU, dist=${relPosMag.toFixed(6)} AU`);
     console.log(`[SOI ENTRY] Relative vel: (${vel.vx.toFixed(6)}, ${vel.vy.toFixed(6)}, ${vel.vz.toFixed(6)}) AU/day = ${relVelMag.toFixed(2)} km/s`);
 
-    // Get gravitational parameter and SOI radius
+    // Get gravitational parameter (soiRadius already obtained above)
     const mu = getGravitationalParam(planetName);
-    const soiRadius = getSOIRadius(planetName);
 
     // Calculate orbital energy: E = v²/2 - μ/r
     const r = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z);
