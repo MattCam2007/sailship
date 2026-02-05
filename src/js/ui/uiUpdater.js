@@ -7,6 +7,7 @@ import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPIL
 import { getBodyByName } from '../data/celestialBodies.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
+import { SOI_RADII } from '../config.js';
 
 // Cache DOM elements
 let elements = {};
@@ -136,12 +137,20 @@ function updateDestinationDisplay() {
         closestDistance = cachedApproach.minDistance;
         timeToClosest = cachedApproach.daysFromNow;
 
-        // Determine status based on distance
-        if (closestDistance < 0.01) {
+        // Determine status based on SOI-relative distance
+        // SOI/2 = intercept (within gravitational capture zone with margin)
+        // SOI = near miss (just outside capture, within influence region)
+        // SOI * 5 = wide miss (observable approach, could be course-corrected)
+        const soiRadius = SOI_RADII[destination] || 0.02;  // Default 0.02 AU for unknown bodies
+        const interceptThreshold = soiRadius / 2;  // SOI/2
+        const nearMissThreshold = soiRadius;       // SOI
+        const wideMissThreshold = soiRadius * 5;   // SOI * 5
+
+        if (closestDistance < interceptThreshold) {
             status = 'INTERCEPT';
-        } else if (closestDistance < 0.05) {
+        } else if (closestDistance < nearMissThreshold) {
             status = 'NEAR MISS';
-        } else if (closestDistance < 0.2) {
+        } else if (closestDistance < wideMissThreshold) {
             status = 'WIDE MISS';
         } else {
             status = 'NO INTERCEPT';

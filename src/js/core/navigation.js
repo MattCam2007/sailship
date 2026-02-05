@@ -14,6 +14,40 @@ import { getPosition, getVelocity } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
 import { getSOIRadius, getGravitationalParam } from '../lib/soi.js';
 import { solveCourse } from '../lib/course-solver.js';
+import { SOI_RADII } from '../config.js';
+
+/**
+ * Get SOI-based intercept thresholds for a given body.
+ * @param {string} bodyName - Name of the target body
+ * @returns {Object} Threshold values {intercept, nearMiss, wideMiss}
+ */
+function getInterceptThresholds(bodyName) {
+    const soiRadius = SOI_RADII[bodyName] || 0.02;  // Default 0.02 AU for unknown bodies
+    return {
+        intercept: soiRadius / 2,  // SOI/2
+        nearMiss: soiRadius,       // SOI
+        wideMiss: soiRadius * 5    // SOI * 5
+    };
+}
+
+/**
+ * Determine intercept status based on distance and SOI-based thresholds.
+ * @param {number} distance - Closest approach distance in AU
+ * @param {string} bodyName - Name of the target body
+ * @returns {string} Status: 'INTERCEPT', 'NEAR MISS', 'WIDE MISS', or 'NO INTERCEPT'
+ */
+function getInterceptStatus(distance, bodyName) {
+    const thresholds = getInterceptThresholds(bodyName);
+    if (distance < thresholds.intercept) {
+        return 'INTERCEPT';
+    } else if (distance < thresholds.nearMiss) {
+        return 'NEAR MISS';
+    } else if (distance < thresholds.wideMiss) {
+        return 'WIDE MISS';
+    } else {
+        return 'NO INTERCEPT';
+    }
+}
 
 // Current destination
 export let destination = 'MARS';
@@ -198,17 +232,8 @@ export function predictClosestApproach(maxDays = 365, steps = 500) {
         }
     }
 
-    // Determine intercept status
-    let status;
-    if (minDistance < 0.01) {
-        status = 'INTERCEPT';
-    } else if (minDistance < 0.05) {
-        status = 'NEAR MISS';
-    } else if (minDistance < 0.2) {
-        status = 'WIDE MISS';
-    } else {
-        status = 'NO INTERCEPT';
-    }
+    // Determine intercept status using SOI-based thresholds
+    const status = getInterceptStatus(minDistance, destination);
 
     const result = {
         closestDistance: minDistance,
@@ -345,17 +370,8 @@ function simulateWithStrategy(sailOverride, maxDays = 365, steps = 400) {
         }
     }
 
-    // Determine status
-    let status;
-    if (minDistance < 0.01) {
-        status = 'INTERCEPT';
-    } else if (minDistance < 0.05) {
-        status = 'NEAR MISS';
-    } else if (minDistance < 0.2) {
-        status = 'WIDE MISS';
-    } else {
-        status = 'NO INTERCEPT';
-    }
+    // Determine status using SOI-based thresholds
+    const status = getInterceptStatus(minDistance, destination);
 
     return {
         closestDistance: minDistance,
@@ -419,13 +435,14 @@ export function computeNavigationPlan() {
 
     // Test each strategy
     const results = [];
+    const thresholds = getInterceptThresholds(destination);
     for (const strategy of NAV_STRATEGIES) {
         const sim = simulateWithStrategy(strategy);
         if (sim) {
             results.push({
                 ...strategy,
                 ...sim,
-                achievesIntercept: sim.closestDistance < 0.01
+                achievesIntercept: sim.closestDistance < thresholds.intercept
             });
         }
     }
