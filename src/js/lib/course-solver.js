@@ -1,7 +1,14 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.6)
+ * Course Solver - Automatic Course Plotting (v3.7)
  *
  * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ *
+ * v3.7 CHANGE: SOI-Based Intercept Threshold
+ *   - INTERCEPT now means ship will enter target's Sphere of Influence (SOI)
+ *   - Uses actual SOI radii from config.js instead of fixed 0.01 AU threshold
+ *   - Venus SOI: 0.00411 AU, Earth: 0.00620 AU, Jupiter: 0.3219 AU, etc.
+ *   - Prevents false "INTERCEPT" status when closest approach is outside SOI
+ *   - Solution includes interceptThreshold for transparent classification
  *
  * v3.6 CHANGE: Expanded Refinement Bounds + Uber-Fine Resolution
  *   - Expanded refinement bounds to ±20° yaw, ±15° pitch (was ±15°/±10°)
@@ -62,7 +69,7 @@
 import { getPosition, getVelocity } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
 import { getJulianDate } from '../core/gameState.js';
-import { INTERSECTION_CONFIG } from '../config.js';
+import { INTERSECTION_CONFIG, SOI_RADII } from '../config.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -133,7 +140,10 @@ const CONFIG = {
     refinementBoundsExpansion: 1.2,  // 20% expansion per pass
 
     // Quality thresholds (AU)
-    interceptThreshold: 0.01,
+    // NOTE: interceptThreshold is a FALLBACK for bodies without defined SOI.
+    // For bodies with SOI_RADII defined, we use the actual SOI as the intercept threshold.
+    // A true intercept means entering the target's sphere of influence.
+    interceptThresholdFallback: 0.01,  // Used when target has no SOI defined
     nearMissThreshold: 0.05,
     marginalThreshold: 0.2,
 
@@ -338,6 +348,37 @@ function distance3D(pos1, pos2) {
 }
 
 // ============================================================================
+// SOI-BASED INTERCEPT THRESHOLD
+// ============================================================================
+
+/**
+ * Get the effective intercept threshold for a target body.
+ *
+ * A true "intercept" means the ship will enter the target's sphere of influence.
+ * For bodies with defined SOI, we use that as the threshold.
+ * For bodies without SOI (asteroids, etc.), we fall back to the default threshold.
+ *
+ * @param {Object} target - Target object with name property
+ * @returns {number} Intercept threshold in AU
+ */
+function getInterceptThreshold(target) {
+    if (!target?.name) {
+        return CONFIG.interceptThresholdFallback;
+    }
+
+    // Look up SOI by body name (SOI_RADII uses uppercase keys)
+    const bodyName = target.name.toUpperCase();
+    const soi = SOI_RADII[bodyName];
+
+    if (soi && soi > 0) {
+        return soi;
+    }
+
+    // No SOI defined for this body - use fallback
+    return CONFIG.interceptThresholdFallback;
+}
+
+// ============================================================================
 // CORE EVALUATION
 // ============================================================================
 
@@ -528,8 +569,11 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
 
         // If we found a valid crossing, use it
         if (bestCrossing) {
+            // Get SOI-based intercept threshold for this target
+            const interceptThreshold = getInterceptThreshold(target);
+
             let status;
-            if (bestDistance < CONFIG.interceptThreshold) {
+            if (bestDistance < interceptThreshold) {
                 status = 'INTERCEPT';
             } else if (bestDistance < CONFIG.nearMissThreshold) {
                 status = 'NEAR_MISS';
@@ -552,7 +596,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                 crossingDirection: bestCrossing.direction,
                 usedCrossingAware: true,
                 // Fix #4: Store crossing Julian date for UI display
-                crossingJulianDate: bestCrossing.time
+                crossingJulianDate: bestCrossing.time,
+                // Store threshold used for downstream comparisons
+                interceptThreshold
             };
         }
 
@@ -602,8 +648,11 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
     // This happens when trajectory doesn't cross target's orbital radius at all
     // (e.g., targeting outer planet from inner orbit without enough delta-v)
 
+    // Get SOI-based intercept threshold for this target
+    const interceptThreshold = getInterceptThreshold(target);
+
     let status;
-    if (globalMinDistance < CONFIG.interceptThreshold) {
+    if (globalMinDistance < interceptThreshold) {
         status = 'INTERCEPT';
     } else if (globalMinDistance < CONFIG.nearMissThreshold) {
         status = 'NEAR_MISS';
@@ -625,7 +674,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         crossingDirection: 'none',
         usedCrossingAware: false,  // Fell back to global minimum
         // Fix #4: No crossing found, so no crossing date
-        crossingJulianDate: null
+        crossingJulianDate: null,
+        // Store threshold used for downstream comparisons
+        interceptThreshold
     };
 }
 
@@ -760,8 +811,11 @@ export async function refinementSweep(ship, target, seedSettings, options = {}, 
 export async function fineSearch(topCandidates, ship, target, options = {}, onProgress = null) {
     let best = topCandidates[0];
 
+    // Get SOI-based intercept threshold for this target
+    const interceptThreshold = getInterceptThreshold(target);
+
     // Early termination if already have intercept
-    if (best.minDistance < CONFIG.interceptThreshold) {
+    if (best.minDistance < interceptThreshold) {
         return best;
     }
 
@@ -793,7 +847,7 @@ export async function fineSearch(topCandidates, ship, target, options = {}, onPr
                 }
 
                 // Early termination on intercept
-                if (best.minDistance < CONFIG.interceptThreshold) {
+                if (best.minDistance < interceptThreshold) {
                     return best;
                 }
             }
@@ -928,6 +982,9 @@ export async function gradientDescentPolish(candidate, ship, target, options = {
     let best = candidate;
     let learningRate = CONFIG.gradientInitialLR;
 
+    // Get SOI-based intercept threshold for this target
+    const interceptThreshold = getInterceptThreshold(target);
+
     const h = CONFIG.gradientH;
     const maxIter = CONFIG.gradientMaxIterations;
 
@@ -967,7 +1024,7 @@ export async function gradientDescentPolish(candidate, ship, target, options = {
         }
 
         // Early termination on intercept
-        if (best.minDistance < CONFIG.interceptThreshold) {
+        if (best.minDistance < interceptThreshold) {
             break;
         }
     }
@@ -993,13 +1050,16 @@ export async function gradientDescentPolish(candidate, ship, target, options = {
 async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     const horizonDays = options.maxDays || CONFIG.defaultMaxDays;
 
+    // Get SOI-based intercept threshold for this target
+    const interceptThreshold = getInterceptThreshold(target);
+
     // Phase 1: Coarse sweep
     const coarseResults = await coarseSweep(ship, target, options, (p) => {
         onProgress?.({ subPhase: 'coarse', progress: p });
     });
 
     // Check for early termination
-    if (coarseResults[0].minDistance < CONFIG.interceptThreshold) {
+    if (coarseResults[0].minDistance < interceptThreshold) {
         return coarseResults[0];
     }
 
@@ -1010,7 +1070,7 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     });
 
     // Check for early termination
-    if (fineResult.minDistance < CONFIG.interceptThreshold) {
+    if (fineResult.minDistance < interceptThreshold) {
         return fineResult;
     }
 
@@ -1020,7 +1080,7 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     });
 
     // Check for early termination
-    if (ultraResult.minDistance < CONFIG.interceptThreshold) {
+    if (ultraResult.minDistance < interceptThreshold) {
         return ultraResult;
     }
 
@@ -1030,7 +1090,7 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     });
 
     // Check for early termination
-    if (uberResult.minDistance < CONFIG.interceptThreshold) {
+    if (uberResult.minDistance < interceptThreshold) {
         return uberResult;
     }
 
@@ -1063,6 +1123,9 @@ export async function solveMultiHorizon(ship, target, options = {}, onProgress =
     let overallBest = { minDistance: Infinity };
     let bestHorizon = horizons[0];
 
+    // Get SOI-based intercept threshold for this target
+    const interceptThreshold = getInterceptThreshold(target);
+
     for (let i = 0; i < horizons.length; i++) {
         const maxDays = horizons[i];
 
@@ -1093,7 +1156,7 @@ export async function solveMultiHorizon(ship, target, options = {}, onProgress =
         }
 
         // Early termination if intercept found
-        if (result.minDistance < CONFIG.interceptThreshold) {
+        if (result.minDistance < interceptThreshold) {
             break;
         }
 
@@ -1194,6 +1257,9 @@ async function solveWithRefinement(ship, target, options = {}, onProgress = null
 async function solveWithRefinementMode(ship, target, seedSettings, options = {}, onProgress = null) {
     const maxDays = options.maxDays || CONFIG.defaultMaxDays;
 
+    // Get SOI-based intercept threshold for this target
+    const interceptThreshold = getInterceptThreshold(target);
+
     console.log(`[COURSE_SOLVER] Running refinement mode (seed: yaw=${seedSettings.yawDeg.toFixed(1)}°, ` +
                 `pitch=${seedSettings.pitchDeg.toFixed(1)}°, horizon=${maxDays}d)`);
 
@@ -1209,7 +1275,7 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
     });
 
     // Check for early termination
-    if (refinementResults[0].minDistance < CONFIG.interceptThreshold) {
+    if (refinementResults[0].minDistance < interceptThreshold) {
         return { ...refinementResults[0], horizonDays: maxDays };
     }
 
@@ -1220,7 +1286,7 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
     });
 
     // Check for early termination
-    if (fineResult.minDistance < CONFIG.interceptThreshold) {
+    if (fineResult.minDistance < interceptThreshold) {
         return { ...fineResult, horizonDays: maxDays };
     }
 
@@ -1230,7 +1296,7 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
     });
 
     // Check for early termination
-    if (ultraResult.minDistance < CONFIG.interceptThreshold) {
+    if (ultraResult.minDistance < interceptThreshold) {
         return { ...ultraResult, horizonDays: maxDays };
     }
 
@@ -1240,7 +1306,7 @@ async function solveWithRefinementMode(ship, target, seedSettings, options = {},
     });
 
     // Check for early termination
-    if (uberResult.minDistance < CONFIG.interceptThreshold) {
+    if (uberResult.minDistance < interceptThreshold) {
         return { ...uberResult, horizonDays: maxDays };
     }
 
@@ -1355,10 +1421,15 @@ export async function solveCourseSimple(ship, target, options = {}, onProgress =
  * Build complete solution object with quality metrics.
  */
 function buildSolution(result, metrics) {
+    // Use SOI-based intercept threshold from result (set by evaluateCandidate)
+    // Fall back to default if not available (backwards compatibility)
+    const interceptThreshold = result.interceptThreshold || CONFIG.interceptThresholdFallback;
+
     // Determine quality rating
     // v3.0: Account for new status types (PHASE_MISS, NO_CROSSING)
+    // v3.7: Use SOI-based intercept threshold for accurate intercept classification
     let quality;
-    if (result.minDistance < CONFIG.interceptThreshold) {
+    if (result.minDistance < interceptThreshold) {
         quality = 'INTERCEPT';
     } else if (result.minDistance < CONFIG.nearMissThreshold) {
         quality = 'NEAR_MISS';
@@ -1417,13 +1488,15 @@ function buildSolution(result, metrics) {
 
         // v3.0: Crossing-aware metadata
         // Fix #4: Added crossingJulianDate for UI display of solver's computed crossing time
+        // v3.7: Added interceptThreshold (SOI-based) for transparent intercept classification
         crossingInfo: {
             crossingIndex: result.crossingIndex ?? -1,
             totalCrossings: result.totalCrossings ?? 0,
             angularSeparationDeg: result.angularSeparationDeg ?? 180,
             crossingDirection: result.crossingDirection ?? 'unknown',
             usedCrossingAware: result.usedCrossingAware ?? false,
-            crossingJulianDate: result.crossingJulianDate ?? null
+            crossingJulianDate: result.crossingJulianDate ?? null,
+            interceptThreshold: interceptThreshold  // SOI radius for this target
         },
 
         // Search metrics
@@ -1448,4 +1521,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.6 loaded - Expanded refinement bounds (±20°/±15°) + uber-fine polish (0.01°)');
+console.log('[COURSE_SOLVER] Module v3.7 loaded - SOI-based intercept threshold (true intercept = enter SOI)');
