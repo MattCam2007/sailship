@@ -226,6 +226,13 @@ export function deserializeGameState(state) {
 
     // Update speed buttons
     updateSpeedButtons(state.time?.currentSpeed);
+
+    // Center camera on navigation destination after load
+    const dest = state.navigation?.destination;
+    if (dest) {
+        setCameraFollow(dest);
+        setFocusTarget(dest);
+    }
 }
 
 /**
@@ -241,6 +248,31 @@ export function importGameState(jsonString) {
         throw new Error(`Invalid JSON: ${e.message}`);
     }
 
+    deserializeGameState(state);
+}
+
+/**
+ * Fetch the list of available save files from saves/index.json.
+ * @returns {Promise<string[]>} Array of save file names
+ */
+export async function fetchSaveIndex() {
+    const response = await fetch('saves/index.json');
+    if (!response.ok) {
+        throw new Error(`Failed to load save index: ${response.status}`);
+    }
+    return response.json();
+}
+
+/**
+ * Load a save file by filename from the saves/ directory.
+ * @param {string} filename - Name of the save file (e.g. "my-save.json")
+ */
+export async function loadSaveFile(filename) {
+    const response = await fetch(`saves/${filename}`);
+    if (!response.ok) {
+        throw new Error(`Failed to load save file: ${response.status}`);
+    }
+    const state = await response.json();
     deserializeGameState(state);
 }
 
