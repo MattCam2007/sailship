@@ -4,6 +4,7 @@
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
 import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
+import { exportGameState, importGameState } from '../core/saveState.js';
 import { resizeCanvas } from './renderer.js';
 import {
     setDestination,
@@ -193,6 +194,7 @@ export function initControls(canvas) {
     initFineTuneControls();
     initAutoPilotControls();
     initCoursePlotter();
+    initSaveLoadControls();
     initKeyboardShortcuts();
     initMouseControls(canvas);
     initTouchControls(canvas);
@@ -1303,6 +1305,100 @@ function displayCourseResult(course, container) {
             <div class="course-quality ${qualityClass}">${course.quality.replace('_', ' ')}</div>
         </div>
     `;
+}
+
+/**
+ * Set up save/load game state controls
+ */
+function initSaveLoadControls() {
+    const saveLoadBtn = document.getElementById('saveLoadBtn');
+    const saveLoadModal = document.getElementById('saveLoadModal');
+    const saveLoadClose = document.getElementById('saveLoadClose');
+    const saveStateBtn = document.getElementById('saveStateBtn');
+    const loadStateBtn = document.getElementById('loadStateBtn');
+    const saveStateText = document.getElementById('saveStateText');
+    const saveLoadStatus = document.getElementById('saveLoadStatus');
+
+    // Open modal
+    if (saveLoadBtn) {
+        saveLoadBtn.addEventListener('click', () => {
+            saveLoadModal?.classList.add('active');
+            saveLoadStatus.textContent = '';
+            saveLoadStatus.className = 'save-load-status';
+        });
+    }
+
+    // Close modal
+    if (saveLoadClose) {
+        saveLoadClose.addEventListener('click', () => {
+            saveLoadModal?.classList.remove('active');
+        });
+    }
+
+    // Close on backdrop click
+    if (saveLoadModal) {
+        saveLoadModal.addEventListener('click', (e) => {
+            if (e.target === saveLoadModal) {
+                saveLoadModal.classList.remove('active');
+            }
+        });
+    }
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && saveLoadModal?.classList.contains('active')) {
+            saveLoadModal.classList.remove('active');
+        }
+    });
+
+    // Export state button
+    if (saveStateBtn) {
+        saveStateBtn.addEventListener('click', () => {
+            try {
+                const json = exportGameState();
+                if (saveStateText) {
+                    saveStateText.value = json;
+                    saveStateText.select();
+                }
+                saveLoadStatus.textContent = 'State exported. Copy the JSON above to save.';
+                saveLoadStatus.className = 'save-load-status success';
+            } catch (error) {
+                console.error('Export error:', error);
+                saveLoadStatus.textContent = `Export failed: ${error.message}`;
+                saveLoadStatus.className = 'save-load-status error';
+            }
+        });
+    }
+
+    // Import state button
+    if (loadStateBtn) {
+        loadStateBtn.addEventListener('click', () => {
+            const json = saveStateText?.value?.trim();
+            if (!json) {
+                saveLoadStatus.textContent = 'Please paste a saved game state JSON first.';
+                saveLoadStatus.className = 'save-load-status error';
+                return;
+            }
+
+            try {
+                importGameState(json);
+                saveLoadStatus.textContent = 'State loaded successfully!';
+                saveLoadStatus.className = 'save-load-status success';
+
+                // Refresh the object list to update selections
+                populateObjectList();
+
+                // Close modal after brief delay
+                setTimeout(() => {
+                    saveLoadModal?.classList.remove('active');
+                }, 1000);
+            } catch (error) {
+                console.error('Import error:', error);
+                saveLoadStatus.textContent = `Import failed: ${error.message}`;
+                saveLoadStatus.className = 'save-load-status error';
+            }
+        });
+    }
 }
 
 /**
