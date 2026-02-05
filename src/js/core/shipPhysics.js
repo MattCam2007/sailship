@@ -11,7 +11,7 @@
  * - Physics updates use the appropriate gravitational parameter
  */
 
-import { getPosition, getVelocity, MU_SUN, getPeriapsis } from '../lib/orbital.js';
+import { getPosition, getVelocity, MU_SUN } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
 import { getJulianDate, clearTransitState, getTransitState } from './gameState.js';
 import { celestialBodies, getBodyByName } from '../data/celestialBodies.js';
@@ -24,7 +24,7 @@ import {
     getGravitationalParam,
     getSOIRadius
 } from '../lib/soi.js';
-import { PHYSICS_CONFIG, BODY_DISPLAY } from '../config.js';
+import { PHYSICS_CONFIG } from '../config.js';
 
 // ============================================================================
 // Visual Orbital Elements (for smooth orbit visualization)
@@ -281,9 +281,11 @@ export function updateShipPhysics(ship, deltaTime) {
                 updateCachedState(ship, newPos, newVel);
                 // Snap visual elements to new orbit on SOI transition
                 initVisualOrbitalElements(ship);
+                // Reset anomaly detector - reference frame changed
+                lastKnownState = null;
                 return;
             }
-            // If exit blocked by cooldown, continue with current SOI physics
+            // Exit failed (planet not found or NaN elements), continue with current SOI physics
         }
     } else {
         // In heliocentric space - check for SOI entry
@@ -298,6 +300,8 @@ export function updateShipPhysics(ship, deltaTime) {
                 updateCachedStateInSOI(ship, newPos, newVel, julianDate);
                 // Snap visual elements to new orbit on SOI transition
                 initVisualOrbitalElements(ship);
+                // Reset anomaly detector - reference frame changed
+                lastKnownState = null;
                 return;
             }
             // If entry blocked by cooldown, skip physics this frame to avoid wrong trajectory
@@ -308,18 +312,6 @@ export function updateShipPhysics(ship, deltaTime) {
         }
     }
 
-    // Check for collision if in SOI
-    if (ship.soiState.isInSOI) {
-        const collisionPrevented = checkAndPreventCollision(ship, ship.soiState.currentBody, julianDate);
-        if (collisionPrevented) {
-            // Orbit was modified, update position/velocity
-            const newPos = getPosition(ship.orbitalElements, julianDate);
-            const newVel = getVelocity(ship.orbitalElements, julianDate);
-            updateCachedStateInSOI(ship, newPos, newVel, julianDate);
-            initVisualOrbitalElements(ship);
-            return;
-        }
-    }
 
     // Calculate absolute position and velocity (relative to Sun) for sail thrust
     // When in SOI, position and velocity from orbital elements are planetocentric,
@@ -696,76 +688,8 @@ let lastSOITransitionBody = null;  // Track which body had the last transition
 let lastEntryDetectionLogTime = 0;
 
 // ============================================================================
-// Collision Detection
+// SOI Transition Handlers
 // ============================================================================
-
-/**
- * Check if ship's periapsis is below planet's surface.
- * If collision detected, auto-circularize at safe altitude.
- *
- * @param {Object} ship - Ship object with orbital elements
- * @param {string} planetName - Name of planet in SOI
- * @param {number} julianDate - Current Julian date
- * @returns {boolean} True if collision was prevented
- */
-function checkAndPreventCollision(ship, planetName, julianDate) {
-    if (!ship.orbitalElements) return false;
-
-    // Get planet data
-    const bodyDisplay = BODY_DISPLAY[planetName];
-    if (!bodyDisplay || !bodyDisplay.physicalRadiusKm) {
-        return false; // No radius data for this body
-    }
-
-    const { a, e } = ship.orbitalElements;
-    const isHyperbolic = e >= 1;
-
-    // Calculate periapsis
-    const periapsisAU = getPeriapsis(ship.orbitalElements);
-    const periapsisKm = periapsisAU * 149597870.7;
-
-    // Safe altitude = planet radius × safety factor
-    const safeAltitudeKm = bodyDisplay.physicalRadiusKm * PHYSICS_CONFIG.minPeriapsisMultiplier;
-
-    // Check for collision
-    if (periapsisKm < safeAltitudeKm) {
-        const safeRadiusAU = safeAltitudeKm / 149597870.7;
-
-        console.warn(`\n⚠️ COLLISION PREVENTED: ${planetName}`);
-        console.warn(`   Periapsis: ${periapsisKm.toFixed(0)} km (${(periapsisKm - bodyDisplay.physicalRadiusKm).toFixed(0)} km altitude)`);
-        console.warn(`   Safe altitude: ${(safeAltitudeKm - bodyDisplay.physicalRadiusKm).toFixed(0)} km`);
-
-        if (isHyperbolic) {
-            // For hyperbolic orbits: raise periapsis while preserving flyby
-            // Periapsis = -a(e-1) for hyperbolic (a is negative)
-            // To get new periapsis = safeRadius: a_new = -safeRadius / (e - 1)
-            const newA = -safeRadiusAU / (e - 1);
-            ship.orbitalElements.a = newA;
-            // Keep e, i, Ω, ω, M0 unchanged - flyby continues with safe periapsis
-
-            const newPeriapsisKm = safeAltitudeKm;
-            console.warn(`   Hyperbolic flyby - raising periapsis only`);
-            console.warn(`   New orbit: hyperbolic with periapsis ${newPeriapsisKm.toFixed(0)} km, e=${e.toFixed(2)}`);
-            console.warn(`   Ship will continue flyby and exit SOI\n`);
-        } else {
-            // For elliptic orbits: circularize at safe altitude (emergency capture)
-            console.warn(`   Elliptic orbit - auto-circularizing at safe altitude...`);
-
-            // For circular orbit: e = 0, a = r
-            ship.orbitalElements.a = safeRadiusAU;
-            ship.orbitalElements.e = 0;
-            ship.orbitalElements.M0 = 0; // Reset mean anomaly
-            // Preserve orientation (i, Ω, ω unchanged)
-
-            console.warn(`   New orbit: circular at ${safeRadiusAU.toFixed(6)} AU (${safeAltitudeKm.toFixed(0)} km)`);
-            console.warn(`   Ship is now in stable orbit around ${planetName}\n`);
-        }
-
-        return true;
-    }
-
-    return false;
-}
 
 /**
  * Handle transition from heliocentric to planetocentric reference frame.
@@ -960,11 +884,8 @@ function handleSOIEntry(ship, shipPosHelio, shipVelHelio, planetName, julianDate
 function handleSOIExit(ship, shipPosPlanet, shipVelPlanet, julianDate) {
     const planetName = ship.soiState.currentBody;
 
-    // Check cooldown to prevent rapid cycling - only applies to the SAME body
-    if (lastSOITransitionBody === planetName &&
-        julianDate - lastSOITransitionTime < PHYSICS_CONFIG.soiTransitionCooldown) {
-        return false;
-    }
+    // No cooldown on exit - the 1.01× hysteresis in checkSOIExit() prevents oscillation.
+    // The entry cooldown (in handleSOIEntry) prevents re-entering the same body after exit.
     const planet = getBodyByName(planetName);
     if (!planet || !planet.elements) {
         console.warn(`SOI Exit: Planet ${planetName} not found`);

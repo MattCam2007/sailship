@@ -184,13 +184,6 @@ export const PHYSICS_CONFIG = {
      * 0.25 means visual elements move 25% toward actual elements per frame.
      */
     visualElementLerpRate: 0.25,
-
-    /**
-     * Minimum periapsis multiplier for collision detection.
-     * Periapsis must be at least planet radius × this value.
-     * 1.1 = 10% safety margin above surface.
-     */
-    minPeriapsisMultiplier: 1.1,
 };
 
 // ============================================================================

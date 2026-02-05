@@ -17,8 +17,7 @@ import { getBodyByName } from '../data/celestialBodies.js';
 // SOI trajectory diagnostic - tracks one-shot logging per SOI stay
 let soiTrajDiag = {
     lastLoggedSOIBody: null,   // Prevent repeated logging for same SOI stay
-    lastLoggedReason: null,    // Last truncation reason logged
-    lastLogTime: 0,            // Wall-clock rate limit for truncation logs (ms)
+    lastLoggedReason: null,    // Last truncation reason logged (once per SOI stay)
 };
 
 // Configuration constants
@@ -244,12 +243,9 @@ export function predictTrajectory(params) {
                 if (trajectory.length > 0) {
                     trajectory[trajectory.length - 1].truncated = 'SOI_EXIT';
                 }
-                // SOI DIAGNOSTIC: Log truncation (rate-limited: once per SOI stay + 2s wall-clock cooldown)
-                const now = Date.now();
-                if (soiTrajDiag.lastLoggedReason !== 'SOI_EXIT' ||
-                    now - soiTrajDiag.lastLogTime > 2000) {
+                // SOI DIAGNOSTIC: Log truncation once per SOI stay (no repeats)
+                if (soiTrajDiag.lastLoggedReason !== 'SOI_EXIT') {
                     soiTrajDiag.lastLoggedReason = 'SOI_EXIT';
-                    soiTrajDiag.lastLogTime = now;
                     const timeInSOI = (i * timeStep).toFixed(2);
                     console.log(
                         `[TRAJ_DIAG] TRUNCATED at step ${i}/${steps} (SOI_EXIT) | ` +
@@ -397,12 +393,10 @@ export function predictTrajectory(params) {
         }
     }
 
-    // SOI DIAGNOSTIC: Warn about very short trajectories in SOI (rate-limited)
-    const lowPointsNow = Date.now();
+    // SOI DIAGNOSTIC: Warn about very short trajectories in SOI (once per SOI stay)
     if (isInSOI && currentBody !== 'SUN' && trajectory.length < 10 &&
-        (soiTrajDiag.lastLoggedReason !== 'LOW_POINTS' || lowPointsNow - soiTrajDiag.lastLogTime > 2000)) {
+        soiTrajDiag.lastLoggedReason !== 'LOW_POINTS') {
         soiTrajDiag.lastLoggedReason = 'LOW_POINTS';
-        soiTrajDiag.lastLogTime = lowPointsNow;
         const lastTruncReason = trajectory.length > 0 ? (trajectory[trajectory.length - 1].truncated || 'NONE') : 'EMPTY';
         console.warn(
             `[TRAJ_DIAG] ⚠️ VERY SHORT TRAJECTORY in ${currentBody} SOI: only ${trajectory.length} points | ` +
