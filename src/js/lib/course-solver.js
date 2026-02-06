@@ -1,22 +1,20 @@
 /**
- * Course Solver - Automatic Course Plotting (v4.1)
+ * Course Solver - Automatic Course Plotting (v4.2)
  *
  * GRID-BRACKET-CONVERGENCE algorithm for optimal sail settings to intercept targets.
  * Combines grid-based reconnaissance with Nelder-Mead refinement for reliable
  * course finding at ~500 evaluations (~3-5 seconds).
  *
- * v4.1 FIX: Reliable course finding
- *   - Reconnaissance now uses 10° grid (91 probes) instead of 9 fixed probes.
- *     The crossing-aware evaluation function is highly discontinuous (small yaw
- *     changes shift orbital crossing time → planet position jumps), so sparse
- *     probing missed the narrow "valleys" where timing works out.
- *   - Fixed Nelder-Mead degenerate simplex: when top 3 recon points were
- *     collinear (e.g., all at pitch=0), the simplex was a line and could never
- *     explore the pitch dimension. Now detects and corrects this.
- *   - Horizon scouting increased to 5 diverse probes (was 2), top 3 horizons
- *     searched (was 2).
- *   - ~500 evaluations total, ~3-5 seconds
+ * v4.2 FIX: Accuracy improvements
+ *   - Intercept threshold now uses SOI/2 (matching gameplay definition in navigation.js)
+ *   - Early termination tightened to SOI/4 — optimizer finds tighter solutions
+ *   - Adaptive step resolution: coarse (3000 steps) during search, full (6000) for final eval
+ *   - Post-solve verification at 2× resolution with drift reporting
+ *   - Eccentric orbit handling: crossings at perihelion, a, and aphelion for e>0.05
+ *   - Phase angle penalty replaces hard 45° cutoff — no crossing data discarded
+ *   - Post-apply verification in navigation.js confirms course from current state
  *
+ * v4.1: Reliable course finding (91-probe grid, degenerate simplex fix)
  * v4.0: Artillery Bracket Search (Nelder-Mead + adaptive precision + deployment sweep)
  *
  * Previous versions (preserved features):
@@ -1598,4 +1596,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v4.1 loaded - Grid-Bracket Search (91-probe recon + Nelder-Mead convergence)');
+console.log('[COURSE_SOLVER] Module v4.2 loaded - Accuracy fixes: SOI/2 threshold, adaptive resolution, eccentric orbits, phase penalty');
