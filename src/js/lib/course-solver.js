@@ -1,22 +1,20 @@
 /**
- * Course Solver - Automatic Course Plotting (v4.1)
+ * Course Solver - Automatic Course Plotting (v4.2)
  *
  * GRID-BRACKET-CONVERGENCE algorithm for optimal sail settings to intercept targets.
  * Combines grid-based reconnaissance with Nelder-Mead refinement for reliable
  * course finding at ~500 evaluations (~3-5 seconds).
  *
- * v4.1 FIX: Reliable course finding
- *   - Reconnaissance now uses 10° grid (91 probes) instead of 9 fixed probes.
- *     The crossing-aware evaluation function is highly discontinuous (small yaw
- *     changes shift orbital crossing time → planet position jumps), so sparse
- *     probing missed the narrow "valleys" where timing works out.
- *   - Fixed Nelder-Mead degenerate simplex: when top 3 recon points were
- *     collinear (e.g., all at pitch=0), the simplex was a line and could never
- *     explore the pitch dimension. Now detects and corrects this.
- *   - Horizon scouting increased to 5 diverse probes (was 2), top 3 horizons
- *     searched (was 2).
- *   - ~500 evaluations total, ~3-5 seconds
+ * v4.2 FIX: Accuracy improvements
+ *   - Intercept threshold now uses SOI/2 (matching gameplay definition in navigation.js)
+ *   - Early termination tightened to SOI/4 — optimizer finds tighter solutions
+ *   - Adaptive step resolution: coarse (3000 steps) during search, full (6000) for final eval
+ *   - Post-solve verification at 2× resolution with drift reporting
+ *   - Eccentric orbit handling: crossings at perihelion, a, and aphelion for e>0.05
+ *   - Phase angle penalty replaces hard 45° cutoff — no crossing data discarded
+ *   - Post-apply verification in navigation.js confirms course from current state
  *
+ * v4.1: Reliable course finding (91-probe grid, degenerate simplex fix)
  * v4.0: Artillery Bracket Search (Nelder-Mead + adaptive precision + deployment sweep)
  *
  * Previous versions (preserved features):
@@ -105,6 +103,11 @@ const CONFIG = {
     maxSteps: INTERSECTION_CONFIG.maxSteps,
     minSteps: INTERSECTION_CONFIG.minSteps,
 
+    // Adaptive resolution: use fewer steps during search for speed,
+    // then re-evaluate final result at full resolution for accuracy.
+    // Search uses searchMaxSteps cap; verification uses full maxSteps.
+    searchMaxSteps: 3000,
+
     // Multi-horizon search durations (days)
     horizons: [180, 365, 540, 730, 1095, 1460],
 
@@ -119,10 +122,26 @@ const CONFIG = {
     // Timeout for entire solve operation (ms)
     maxSolveTimeMs: 30000,  // 30 seconds (down from 90s - solver is much faster now)
 
+    // Early termination: stop optimizing when distance < interceptThreshold * earlyTerminationFactor.
+    // Using 0.5 means we terminate at SOI/4 (half of the SOI/2 intercept threshold).
+    // This forces the optimizer to find tighter solutions instead of stopping at
+    // the first course that barely crosses the intercept boundary.
+    earlyTerminationFactor: 0.5,
+
     // ========================================================================
-    // CROSSING-AWARE SOLVER CONFIGURATION (v3.0)
+    // CROSSING-AWARE SOLVER CONFIGURATION (v3.0, v4.2 phase penalty)
     // ========================================================================
-    maxPhaseAngle: 0.79,  // ~45 degrees
+
+    // Phase angle threshold: crossings within this angle are unpenalized.
+    // Crossings beyond this angle are penalized but NOT discarded (v4.2).
+    phaseAnglePenaltyThreshold: 0.79,  // ~45 degrees — unpenalized zone
+
+    // Phase angle penalty weight (heuristic, not physics-derived).
+    // Crossings beyond the threshold have their effective distance multiplied by:
+    //   (1 + phaseAnglePenaltyWeight * excessAngle / π)
+    // This preserves crossing data while deprioritizing poor timing.
+    phaseAnglePenaltyWeight: 2.0,
+
     minCrossingGap: 5,
     useCrossingAware: true
 };
@@ -261,11 +280,15 @@ function distance3D(pos1, pos2) {
 }
 
 // ============================================================================
-// SOI-BASED INTERCEPT THRESHOLD - UNCHANGED
+// SOI-BASED INTERCEPT THRESHOLD
 // ============================================================================
 
 /**
  * Get the effective intercept threshold for a target body.
+ *
+ * Returns SOI/2 to match the gameplay definition in navigation.js:getInterceptThresholds().
+ * The gameplay system classifies distance < SOI/2 as "INTERCEPT", < SOI as "NEAR MISS".
+ * Using SOI/2 here ensures the solver's "INTERCEPT" label matches what the player sees.
  */
 function getInterceptThreshold(target) {
     if (!target?.name) {
@@ -276,7 +299,7 @@ function getInterceptThreshold(target) {
     const soi = SOI_RADII[bodyName];
 
     if (soi && soi > 0) {
-        return soi;
+        return soi / 2;
     }
 
     return CONFIG.interceptThresholdFallback;
@@ -316,7 +339,21 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
 
     const startTime = getJulianDate();
     const timeStep = maxDays / steps;
-    const targetRadius = target.elements.a;
+
+    // For eccentric targets, compute crossing radii at perihelion, semi-major axis, and aphelion.
+    // This captures crossings that the single-radius approach misses for Mercury (e=0.206) and Mars (e=0.093).
+    // Guard against hyperbolic orbits (e >= 0.95) where aphelion is undefined.
+    const targetA = target.elements.a;
+    const targetE = target.elements.e || 0;
+    let targetRadii;
+    if (targetE > 0.05 && targetE < 0.95) {
+        const perihelion = targetA * (1 - targetE);
+        const aphelion = targetA * (1 + targetE);
+        targetRadii = [perihelion, targetA, aphelion];
+    } else {
+        targetRadii = [targetA];
+    }
+    const targetRadius = targetA;  // Keep for fallback path
 
     let simElements = { ...ship.orbitalElements };
 
@@ -395,31 +432,47 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         }
     }
 
-    // CROSSING-AWARE EVALUATION (v3.0)
+    // CROSSING-AWARE EVALUATION (v3.0, enhanced for eccentric orbits)
     if (CONFIG.useCrossingAware && trajectory.length > 1) {
-        const crossings = findRadiusCrossingsInTrajectory(trajectory, targetRadius);
+        // Detect crossings at all target radii (perihelion, a, aphelion for eccentric orbits)
+        let allCrossings = [];
+        for (const radius of targetRadii) {
+            const crossings = findRadiusCrossingsInTrajectory(trajectory, radius);
+            allCrossings = allCrossings.concat(crossings);
+        }
 
         let bestCrossing = null;
         let bestDistance = Infinity;
+        let bestRawDistance = Infinity;
         let bestAngularSep = Math.PI;
         let bestCrossingIndex = -1;
 
-        for (let ci = 0; ci < crossings.length; ci++) {
-            const crossing = crossings[ci];
+        for (let ci = 0; ci < allCrossings.length; ci++) {
+            const crossing = allCrossings[ci];
 
             const planetPos = getPosition(target.elements, crossing.time);
 
             if (!isFinite(planetPos.x)) continue;
 
             const crossingDistance = distance3D(crossing.position, planetPos);
-            const angularSep = calculateAngularSeparation(crossing.position, planetPos);
+            let angularSep = calculateAngularSeparation(crossing.position, planetPos);
 
-            if (angularSep > CONFIG.maxPhaseAngle) {
-                continue;
+            // NaN guard: treat invalid angular separation as worst case
+            if (!isFinite(angularSep)) {
+                angularSep = Math.PI;
             }
 
-            if (crossingDistance < bestDistance) {
-                bestDistance = crossingDistance;
+            // Phase angle penalty (v4.2): penalize but don't discard crossings beyond threshold.
+            // Within threshold: use raw distance. Beyond: multiply by penalty factor.
+            let effectiveDistance = crossingDistance;
+            if (angularSep > CONFIG.phaseAnglePenaltyThreshold) {
+                const excessAngle = angularSep - CONFIG.phaseAnglePenaltyThreshold;
+                effectiveDistance = crossingDistance * (1 + CONFIG.phaseAnglePenaltyWeight * excessAngle / Math.PI);
+            }
+
+            if (effectiveDistance < bestDistance) {
+                bestDistance = effectiveDistance;
+                bestRawDistance = crossingDistance;
                 bestAngularSep = angularSep;
                 bestCrossingIndex = ci;
                 bestCrossing = crossing;
@@ -429,12 +482,14 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         if (bestCrossing) {
             const interceptThreshold = getInterceptThreshold(target);
 
+            // Use raw (unpenalized) distance for status classification and reporting.
+            // The penalized distance was only used for ranking which crossing is best.
             let status;
-            if (bestDistance < interceptThreshold) {
+            if (bestRawDistance < interceptThreshold) {
                 status = 'INTERCEPT';
-            } else if (bestDistance < CONFIG.nearMissThreshold) {
+            } else if (bestRawDistance < CONFIG.nearMissThreshold) {
                 status = 'NEAR_MISS';
-            } else if (bestDistance < CONFIG.marginalThreshold) {
+            } else if (bestRawDistance < CONFIG.marginalThreshold) {
                 status = 'MARGINAL';
             } else {
                 status = 'NO_INTERCEPT';
@@ -443,11 +498,11 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             return {
                 yawDeg,
                 pitchDeg,
-                minDistance: bestDistance,
+                minDistance: bestRawDistance,
                 timeToClosest: bestCrossing.time - startTime,
                 status,
                 crossingIndex: bestCrossingIndex,
-                totalCrossings: crossings.length,
+                totalCrossings: allCrossings.length,
                 angularSeparationDeg: bestAngularSep * (180 / Math.PI),
                 crossingDirection: bestCrossing.direction,
                 usedCrossingAware: true,
@@ -456,12 +511,12 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             };
         }
 
-        if (crossings.length > 0) {
+        if (allCrossings.length > 0) {
             let bestFailedCrossing = null;
             let bestFailedDistance = Infinity;
             let bestFailedAngularSep = Math.PI;
 
-            for (const crossing of crossings) {
+            for (const crossing of allCrossings) {
                 const planetPos = getPosition(target.elements, crossing.time);
                 if (!isFinite(planetPos.x)) continue;
                 const crossingDistance = distance3D(crossing.position, planetPos);
@@ -482,7 +537,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                     timeToClosest: bestFailedCrossing.time - startTime,
                     status: 'PHASE_MISS',
                     crossingIndex: 0,
-                    totalCrossings: crossings.length,
+                    totalCrossings: allCrossings.length,
                     angularSeparationDeg: bestFailedAngularSep * (180 / Math.PI),
                     crossingDirection: bestFailedCrossing.direction,
                     usedCrossingAware: true,
@@ -640,6 +695,7 @@ export async function strategicReconnaissance(ship, target, options = {}, bounds
 export async function nelderMeadSearch(ship, target, initialPoints, options = {}, onProgress = null) {
     const tolerance = getConvergenceTolerance(options.maxDays || CONFIG.defaultMaxDays);
     const interceptThreshold = getInterceptThreshold(target);
+    const earlyTermThreshold = interceptThreshold * CONFIG.earlyTerminationFactor;
     const maxIter = CONFIG.nmMaxIterations;
 
     // Initialize simplex from best 3 reconnaissance points
@@ -720,8 +776,9 @@ export async function nelderMeadSearch(ship, target, initialPoints, options = {}
             break;
         }
 
-        // Early termination on intercept
-        if (simplex[0].value < interceptThreshold) {
+        // Early termination: only stop when well inside intercept threshold
+        // This forces the optimizer to continue refining past "barely intercept"
+        if (simplex[0].value < earlyTermThreshold) {
             break;
         }
 
@@ -988,33 +1045,41 @@ export async function deploymentSweep(ship, target, bestResult, options = {}) {
  */
 async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     const interceptThreshold = getInterceptThreshold(target);
+    const earlyTermThreshold = interceptThreshold * CONFIG.earlyTerminationFactor;
     let totalEvals = 0;
+
+    // Adaptive resolution: use reduced steps during search for speed
+    const searchOptions = { ...options };
+    const maxDays = options.maxDays || CONFIG.defaultMaxDays;
+    const rawSearchSteps = Math.round(maxDays * CONFIG.stepsPerDay);
+    const searchStepsCapped = Math.min(CONFIG.searchMaxSteps, Math.max(CONFIG.minSteps, rawSearchSteps));
+    searchOptions.steps = searchStepsCapped;
 
     // Phase 1: Strategic Reconnaissance
     onProgress?.({ subPhase: 'recon', progress: 0 });
-    const reconResults = await strategicReconnaissance(ship, target, options, options.reconBounds || null);
+    const reconResults = await strategicReconnaissance(ship, target, searchOptions, searchOptions.reconBounds || null);
     totalEvals += reconResults.length;
 
-    // Check for early termination
-    if (reconResults[0].minDistance < interceptThreshold) {
+    // Check for early termination (only if well inside threshold)
+    if (reconResults[0].minDistance < earlyTermThreshold) {
         return { result: reconResults[0], totalEvals };
     }
 
-    // Phase 2: Nelder-Mead Convergence
+    // Phase 2: Nelder-Mead Convergence (at search resolution)
     onProgress?.({ subPhase: 'converge', progress: 0.3 });
-    const nmResult = await nelderMeadSearch(ship, target, reconResults, options, (p) => {
+    const nmResult = await nelderMeadSearch(ship, target, reconResults, searchOptions, (p) => {
         onProgress?.({ subPhase: 'converge', progress: 0.3 + p * 0.5 });
     });
     totalEvals += nmResult.evalCount;
 
     let best = nmResult.best;
 
-    // Check for early termination
-    if (best.minDistance < interceptThreshold) {
+    // Check for early termination (only if well inside threshold)
+    if (best.minDistance < earlyTermThreshold) {
         return { result: best, totalEvals };
     }
 
-    // Phase 2b: Multi-start if result is poor
+    // Phase 2b: Multi-start if result is poor (at search resolution)
     if (best.minDistance > CONFIG.multiStartThreshold) {
         onProgress?.({ subPhase: 'multistart', progress: 0.8 });
 
@@ -1027,7 +1092,7 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
             if (dist < 15) continue;  // Already explored this region
 
             // Quick recon from this quadrant
-            const altRecon = await strategicReconnaissance(ship, target, options, {
+            const altRecon = await strategicReconnaissance(ship, target, searchOptions, {
                 yawCenter: quadrant.yaw,
                 pitchCenter: quadrant.pitch,
                 yawRadius: 20,
@@ -1037,15 +1102,15 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
 
             // If recon found something better, run Nelder-Mead from there
             if (altRecon[0].minDistance < best.minDistance) {
-                const altNm = await nelderMeadSearch(ship, target, altRecon, options);
+                const altNm = await nelderMeadSearch(ship, target, altRecon, searchOptions);
                 totalEvals += altNm.evalCount;
 
                 if (altNm.best.minDistance < best.minDistance) {
                     best = altNm.best;
                 }
 
-                // Early termination
-                if (best.minDistance < interceptThreshold) {
+                // Early termination (only if well inside threshold)
+                if (best.minDistance < earlyTermThreshold) {
                     break;
                 }
             }
@@ -1054,11 +1119,27 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
         }
     }
 
-    // Phase 3: Deployment Sweep
+    // Phase 3: Deployment Sweep (at search resolution)
     onProgress?.({ subPhase: 'deployment', progress: 0.9 });
-    const deployResult = await deploymentSweep(ship, target, best, options);
+    const deployResult = await deploymentSweep(ship, target, best, searchOptions);
     totalEvals += deployResult.evalCount;
     best = deployResult.best;
+
+    // Phase 4: Re-evaluate best result at full resolution
+    // Search used reduced steps for speed; now verify with full accuracy
+    const fullResResult = evaluateCandidate(
+        best.yawDeg, best.pitchDeg, ship, target,
+        { ...options, maxDays, deployment: best._deploymentOverride || options.deployment }
+    );
+    totalEvals++;
+
+    if (isFinite(fullResResult.minDistance)) {
+        best = fullResResult;
+        // Preserve deployment override if it came from the sweep
+        if (deployResult.best._deploymentOverride) {
+            best._deploymentOverride = deployResult.best._deploymentOverride;
+        }
+    }
 
     return { result: best, totalEvals };
 }
@@ -1155,6 +1236,7 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
                 `${h.maxDays}d (${h.bestDistance.toFixed(4)} AU)`).join(', ')}`);
 
             const interceptThreshold = getInterceptThreshold(target);
+            const earlyTermThreshold = interceptThreshold * CONFIG.earlyTerminationFactor;
 
             // Deep search on top horizons
             for (let i = 0; i < topHorizons.length; i++) {
@@ -1189,9 +1271,9 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
                     bestHorizon = horizon.maxDays;
                 }
 
-                // Early termination if intercept found
-                if (result.minDistance < interceptThreshold) {
-                    console.log(`[COURSE_SOLVER] Intercept found at ${horizon.maxDays}d horizon, stopping`);
+                // Early termination only if well inside intercept threshold
+                if (result.minDistance < earlyTermThreshold) {
+                    console.log(`[COURSE_SOLVER] Strong intercept found at ${horizon.maxDays}d horizon, stopping`);
                     break;
                 }
 
@@ -1199,13 +1281,44 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
             }
         }
 
+        if (!bestResult) {
+            onProgress?.({ phase: 'complete', progress: 1, message: 'No solution found' });
+            return null;
+        }
+
+        // ============================================================
+        // POST-SOLVE VERIFICATION: Re-evaluate at 2× step resolution
+        // ============================================================
+        onProgress?.({ phase: 'verifying', progress: 0.95, message: 'Verifying course accuracy...' });
+
+        const verifyMaxDays = bestHorizon;
+        const verifyRawSteps = Math.round(verifyMaxDays * CONFIG.stepsPerDay * 2);
+        const verifySteps = Math.min(CONFIG.maxSteps * 2, Math.max(CONFIG.minSteps, verifyRawSteps));
+        const verifyDeployment = bestResult._deploymentOverride || options.deployment || CONFIG.defaultDeployment;
+
+        const verifiedResult = evaluateCandidate(
+            bestResult.yawDeg, bestResult.pitchDeg, ship, target,
+            { maxDays: verifyMaxDays, steps: verifySteps, deployment: verifyDeployment }
+        );
+        totalEvaluations++;
+
+        // Use verified result if valid; keep search result as fallback
+        const searchDistance = bestResult.minDistance;
+        let verifiedDistance = searchDistance;
+
+        if (isFinite(verifiedResult.minDistance)) {
+            verifiedDistance = verifiedResult.minDistance;
+            // Use verified result for quality assessment
+            bestResult = verifiedResult;
+            // Preserve deployment override
+            if (verifyDeployment !== CONFIG.defaultDeployment) {
+                bestResult._deploymentOverride = verifyDeployment;
+            }
+        }
+
         const computeTimeMs = Date.now() - startTimeMs;
 
         onProgress?.({ phase: 'complete', progress: 1, message: 'Course computation complete' });
-
-        if (!bestResult) {
-            return null;
-        }
 
         const solution = buildSolution(bestResult, {
             computeTimeMs,
@@ -1213,11 +1326,24 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
             totalEvaluations
         });
 
+        // Attach verification data to solution
+        solution.verification = {
+            searchDistance,
+            verifiedDistance,
+            verificationSteps: verifySteps,
+            driftAU: Math.abs(verifiedDistance - searchDistance),
+            driftPct: searchDistance > 0 ? Math.abs(verifiedDistance - searchDistance) / searchDistance * 100 : 0
+        };
+
         solution.usedRefinementMode = options.refinementMode || false;
 
+        const driftLabel = solution.verification.driftAU > 0.001
+            ? ` (drift: ${solution.verification.driftAU.toFixed(4)} AU)`
+            : '';
         console.log(`[COURSE_SOLVER] Complete: ${totalEvaluations} evals in ${computeTimeMs}ms ` +
                     `(yaw=${bestResult.yawDeg.toFixed(1)}°, pitch=${bestResult.pitchDeg.toFixed(1)}°, ` +
-                    `dist=${bestResult.minDistance.toFixed(4)} AU, quality=${solution.quality})`);
+                    `search=${searchDistance.toFixed(4)} AU, verified=${verifiedDistance.toFixed(4)} AU${driftLabel}, ` +
+                    `quality=${solution.quality})`);
 
         return solution;
     } catch (error) {
@@ -1470,4 +1596,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v4.1 loaded - Grid-Bracket Search (91-probe recon + Nelder-Mead convergence)');
+console.log('[COURSE_SOLVER] Module v4.2 loaded - Accuracy fixes: SOI/2 threshold, adaptive resolution, eccentric orbits, phase penalty');
