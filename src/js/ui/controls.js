@@ -1256,23 +1256,21 @@ function initCoursePlotter() {
 
             try {
                 const course = await computeOptimalCourse((progress) => {
-                    // Update progress display with multi-horizon or refinement mode feedback
+                    // Update progress display (v4.0 bracket search + legacy phases)
                     let statusText;
                     if (progress.phase === 'starting') {
                         statusText = progress.message || 'Initializing...';
-                    } else if (progress.phase === 'refinement-mode') {
-                        // Refinement mode progress (narrower search)
-                        const pct = Math.round((progress.progress || 0) * 100);
-                        const subPhase = progress.subPhase || '';
-                        statusText = `Refining: ${subPhase} (${pct}%)`;
-                    } else if (progress.phase === 'multi-horizon') {
+                    } else if (progress.phase === 'scouting') {
+                        statusText = 'Scouting horizons...';
+                    } else if (progress.phase === 'deep-search') {
                         const horizonNum = (progress.horizonIndex || 0) + 1;
-                        const horizonTotal = progress.horizonCount || 6;
+                        const horizonTotal = progress.horizonCount || 2;
                         const horizonDays = progress.currentHorizon || 365;
-                        const subPhase = progress.subPhase || '';
+                        const subPhase = progress.subPhase || 'searching';
                         statusText = `Horizon ${horizonNum}/${horizonTotal} (${horizonDays}d): ${subPhase}`;
-                    } else if (progress.phase === 'refinement') {
-                        statusText = progress.message || 'Refining solution...';
+                    } else if (progress.phase === 'refinement-mode') {
+                        const subPhase = progress.subPhase || 'searching';
+                        statusText = `Refining: ${subPhase}`;
                     } else if (progress.phase === 'complete') {
                         statusText = 'Complete';
                     } else {

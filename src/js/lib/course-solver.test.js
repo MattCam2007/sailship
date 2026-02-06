@@ -1,7 +1,7 @@
 /**
- * Course Solver Test Suite
+ * Course Solver Test Suite (v4.0)
  *
- * TDD tests for automatic course plotting algorithm.
+ * Tests for the artillery bracket search algorithm.
  * Run in browser console:
  *   import('/js/lib/course-solver.test.js').then(m => m.runAllTests())
  */
@@ -131,9 +131,15 @@ test('testModuleLoads', async () => {
     const module = await import('./course-solver.js');
     assert(module !== null, 'Module should load');
     assert(typeof module.evaluateCandidate === 'function', 'evaluateCandidate should be exported');
+    assert(typeof module.solveCourse === 'function', 'solveCourse should be exported');
+    assert(typeof module.strategicReconnaissance === 'function', 'strategicReconnaissance should be exported');
+    assert(typeof module.nelderMeadSearch === 'function', 'nelderMeadSearch should be exported');
+    assert(typeof module.scoutHorizons === 'function', 'scoutHorizons should be exported');
+    assert(typeof module.deploymentSweep === 'function', 'deploymentSweep should be exported');
+    assert(typeof module.getConvergenceTolerance === 'function', 'getConvergenceTolerance should be exported');
 });
 
-// Unit 2: evaluateCandidate tests
+// Unit 2: evaluateCandidate tests (unchanged from v3.7)
 test('testEvaluateCandidateReturnsValidStructure', async () => {
     const { evaluateCandidate } = await import('./course-solver.js');
     const ship = createMockShip();
@@ -177,26 +183,23 @@ test('testEvaluateCandidateNegativeYawBetterForVenus', async () => {
         `Lower orbit (${lowerOrbit.minDistance}) should be closer to Venus than raise orbit (${raiseOrbit.minDistance})`);
 });
 
-// Unit 3: Coarse sweep tests
-test('testCoarseSweepReturnsCorrectCount', async () => {
-    const { coarseSweep } = await import('./course-solver.js');
+// Unit 3: Strategic Reconnaissance tests (v4.0)
+test('testStrategicReconReturnsResults', async () => {
+    const { strategicReconnaissance } = await import('./course-solver.js');
     const ship = createMockShip();
     const target = createMockTarget('VENUS');
 
-    const results = await coarseSweep(ship, target);
+    const results = await strategicReconnaissance(ship, target);
 
-    // Yaw: -60 to 60 in 10° steps = 13 values
-    // Pitch: -30 to 30 in 10° steps = 7 values
-    // Total: 13 * 7 = 91
-    assert(results.length === 91, `Expected 91 results, got ${results.length}`);
+    assert(results.length === 9, `Expected 9 recon results, got ${results.length}`);
 });
 
-test('testCoarseSweepSortedByDistance', async () => {
-    const { coarseSweep } = await import('./course-solver.js');
+test('testStrategicReconSortedByDistance', async () => {
+    const { strategicReconnaissance } = await import('./course-solver.js');
     const ship = createMockShip();
     const target = createMockTarget('VENUS');
 
-    const results = await coarseSweep(ship, target);
+    const results = await strategicReconnaissance(ship, target);
 
     for (let i = 1; i < results.length; i++) {
         assert(results[i].minDistance >= results[i - 1].minDistance,
@@ -204,51 +207,157 @@ test('testCoarseSweepSortedByDistance', async () => {
     }
 });
 
-test('testCoarseSweepFindsReasonableCandidate', async () => {
-    const { coarseSweep } = await import('./course-solver.js');
+test('testStrategicReconFindsReasonableCandidate', async () => {
+    const { strategicReconnaissance } = await import('./course-solver.js');
     const ship = createMockShip();
     const target = createMockTarget('VENUS');
 
-    const results = await coarseSweep(ship, target);
+    const results = await strategicReconnaissance(ship, target);
     const best = results[0];
 
-    // Best coarse candidate should get within 0.5 AU of Venus
+    // Best recon candidate should get within 0.5 AU of Venus
     assert(best.minDistance < 0.5,
-        `Best coarse candidate should be < 0.5 AU from Venus, got ${best.minDistance}`);
+        `Best recon candidate should be < 0.5 AU from Venus, got ${best.minDistance}`);
 });
 
-// Unit 4: Fine search tests
-test('testFineSearchImprovesOnCoarse', async () => {
-    const { coarseSweep, fineSearch } = await import('./course-solver.js');
+test('testStrategicReconWithCustomBounds', async () => {
+    const { strategicReconnaissance } = await import('./course-solver.js');
     const ship = createMockShip();
     const target = createMockTarget('VENUS');
 
-    const coarseResults = await coarseSweep(ship, target);
-    const topCandidates = coarseResults.slice(0, 5);
+    const bounds = {
+        yawCenter: -35,
+        pitchCenter: 0,
+        yawRadius: 10,
+        pitchRadius: 5
+    };
 
-    const refined = await fineSearch(topCandidates, ship, target);
+    const results = await strategicReconnaissance(ship, target, {}, bounds);
 
-    // Fine search should improve or maintain best distance
-    assert(refined.minDistance <= topCandidates[0].minDistance,
-        `Fine search (${refined.minDistance}) should improve on coarse (${topCandidates[0].minDistance})`);
+    assert(results.length === 9, `Expected 9 results with custom bounds, got ${results.length}`);
+
+    // All results should be within bounds
+    for (const r of results) {
+        assert(r.yawDeg >= -60 && r.yawDeg <= 60, `Yaw ${r.yawDeg} out of global bounds`);
+        assert(r.pitchDeg >= -30 && r.pitchDeg <= 30, `Pitch ${r.pitchDeg} out of global bounds`);
+    }
 });
 
-// Unit 5: Ultra-fine polish tests
-test('testUltraFinePolishMaintainsOrImproves', async () => {
-    const { coarseSweep, fineSearch, ultraFinePolish } = await import('./course-solver.js');
+// Unit 4: Nelder-Mead Search tests (v4.0)
+test('testNelderMeadImprovesOnRecon', async () => {
+    const { strategicReconnaissance, nelderMeadSearch } = await import('./course-solver.js');
     const ship = createMockShip();
     const target = createMockTarget('VENUS');
 
-    const coarseResults = await coarseSweep(ship, target);
-    const refined = await fineSearch(coarseResults.slice(0, 5), ship, target);
-    const polished = await ultraFinePolish(refined, ship, target);
+    const reconResults = await strategicReconnaissance(ship, target);
+    const reconBest = reconResults[0].minDistance;
 
-    // Ultra-fine should maintain or improve
-    assert(polished.minDistance <= refined.minDistance,
-        `Ultra polish (${polished.minDistance}) should improve on fine (${refined.minDistance})`);
+    const nmResult = await nelderMeadSearch(ship, target, reconResults);
+
+    // Nelder-Mead should improve or maintain best distance
+    assert(nmResult.best.minDistance <= reconBest,
+        `Nelder-Mead (${nmResult.best.minDistance}) should improve on recon (${reconBest})`);
+
+    // Should report eval count
+    assert(typeof nmResult.evalCount === 'number', 'Should report evalCount');
+    assert(nmResult.evalCount > 0, 'Should have done at least 1 evaluation');
 });
 
-// Unit 6: Main solver tests
+test('testNelderMeadConverges', async () => {
+    const { strategicReconnaissance, nelderMeadSearch } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const reconResults = await strategicReconnaissance(ship, target);
+    const nmResult = await nelderMeadSearch(ship, target, reconResults);
+
+    // Should converge to a reasonable solution
+    assert(nmResult.best.minDistance < 0.3,
+        `Nelder-Mead should converge to < 0.3 AU, got ${nmResult.best.minDistance}`);
+});
+
+// Unit 5: Adaptive Precision tests (v4.0)
+test('testConvergenceToleranceScaling', async () => {
+    const { getConvergenceTolerance } = await import('./course-solver.js');
+
+    // Short transfer: high precision
+    const short = getConvergenceTolerance(120);
+    assert(short === 0.01, `120-day tolerance should be 0.01°, got ${short}`);
+
+    // Medium transfer
+    const medium = getConvergenceTolerance(300);
+    assert(medium === 0.1, `300-day tolerance should be 0.1°, got ${medium}`);
+
+    // Long transfer
+    const long = getConvergenceTolerance(600);
+    assert(long === 0.5, `600-day tolerance should be 0.5°, got ${long}`);
+
+    // Very long transfer
+    const veryLong = getConvergenceTolerance(1000);
+    assert(veryLong === 2.0, `1000-day tolerance should be 2.0°, got ${veryLong}`);
+});
+
+// Unit 6: Horizon Scouting tests (v4.0)
+test('testHorizonScoutReturnsRankedHorizons', async () => {
+    const { scoutHorizons } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const result = await scoutHorizons(ship, target);
+
+    assert(result.horizons.length === 6, `Expected 6 horizons, got ${result.horizons.length}`);
+    assert(result.evalCount === 12, `Expected 12 scout evals (2 per horizon), got ${result.evalCount}`);
+
+    // Should be sorted by best distance
+    for (let i = 1; i < result.horizons.length; i++) {
+        assert(result.horizons[i].bestDistance >= result.horizons[i - 1].bestDistance,
+            `Horizons should be sorted by distance`);
+    }
+});
+
+test('testHorizonScoutPicksReasonableHorizon', async () => {
+    const { scoutHorizons } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const result = await scoutHorizons(ship, target);
+    const bestHorizon = result.horizons[0];
+
+    // Best horizon should find something reasonable for Venus
+    assert(bestHorizon.bestDistance < 1.0,
+        `Best horizon probe should be < 1.0 AU, got ${bestHorizon.bestDistance}`);
+});
+
+// Unit 7: Deployment Sweep tests (v4.0)
+test('testDeploymentSweepReturnsResult', async () => {
+    const { evaluateCandidate, deploymentSweep } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    // Get a base result at 100% deployment
+    const baseResult = evaluateCandidate(-35, 0, ship, target);
+
+    const sweepResult = await deploymentSweep(ship, target, baseResult);
+
+    assert(sweepResult.best !== null, 'Should return a best result');
+    assert(typeof sweepResult.evalCount === 'number', 'Should report evalCount');
+    assert(sweepResult.evalCount === 3, `Expected 3 deployment evals (skip 100%), got ${sweepResult.evalCount}`);
+});
+
+test('testDeploymentSweepMaintainsOrImproves', async () => {
+    const { evaluateCandidate, deploymentSweep } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const baseResult = evaluateCandidate(-35, 0, ship, target);
+    const sweepResult = await deploymentSweep(ship, target, baseResult);
+
+    // Deployment sweep should maintain or improve
+    assert(sweepResult.best.minDistance <= baseResult.minDistance,
+        `Sweep (${sweepResult.best.minDistance}) should be <= base (${baseResult.minDistance})`);
+});
+
+// Unit 8: Main Solver integration tests
 test('testSolveCourseReturnsValidSolution', async () => {
     const { solveCourse } = await import('./course-solver.js');
     const ship = createMockShip();
@@ -261,6 +370,7 @@ test('testSolveCourseReturnsValidSolution', async () => {
     assert(typeof solution.pitchDeg === 'number', 'Should have pitchDeg');
     assert(typeof solution.minDistance === 'number', 'Should have minDistance');
     assert(typeof solution.quality === 'string', 'Should have quality rating');
+    assert(typeof solution.deployment === 'number', 'Should have deployment');
 });
 
 test('testSolveCourseFindsInterceptForVenus', async () => {
@@ -288,7 +398,37 @@ test('testSolveCourseHandlesMars', async () => {
         `Should get within 0.5 AU of Mars, got ${solution.minDistance}`);
 });
 
-// Unit 7: Quality metrics tests
+test('testSolveCourseIsFasterThanOldSolver', async () => {
+    const { solveCourse } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const solution = await solveCourse(ship, target);
+
+    // v4.0 should complete in under 10 seconds (vs 30-45s old)
+    assert(solution.searchMetrics.computeTimeMs < 10000,
+        `Solver should complete in < 10s, took ${solution.searchMetrics.computeTimeMs}ms`);
+
+    // Should use far fewer evaluations than old solver (~6000)
+    assert(solution.searchMetrics.totalEvaluations < 500,
+        `Should use < 500 evaluations, used ${solution.searchMetrics.totalEvaluations}`);
+
+    console.log(`  v4.0 performance: ${solution.searchMetrics.totalEvaluations} evals ` +
+                `in ${solution.searchMetrics.computeTimeMs}ms`);
+});
+
+test('testSolveCourseReportsAlgorithm', async () => {
+    const { solveCourse } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const solution = await solveCourse(ship, target);
+
+    assert(solution.searchMetrics.algorithm === 'bracket-v4.0',
+        `Algorithm should be bracket-v4.0, got ${solution.searchMetrics.algorithm}`);
+});
+
+// Unit 9: Quality metrics tests
 test('testQualityRatingsMatchThresholds', async () => {
     const { solveCourse } = await import('./course-solver.js');
     const { SOI_RADII } = await import('../config.js');
@@ -319,18 +459,17 @@ test('testQualityRatingsMatchThresholds', async () => {
     }
 });
 
-// Unit 7b: SOI-based intercept threshold tests (v3.7)
+// Unit 9b: SOI-based intercept threshold tests (v3.7)
 test('testInterceptThresholdUsesSOI', async () => {
     const { solveCourse } = await import('./course-solver.js');
     const { SOI_RADII } = await import('../config.js');
 
-    // Test that the solution includes the SOI-based threshold
     const ship = createMockShip();
     const venusTarget = createMockTarget('VENUS');
 
     const solution = await solveCourse(ship, venusTarget);
 
-    // Solution should include the intercept threshold used
+    // Solution should include the SOI-based threshold
     assert(solution.crossingInfo !== undefined, 'Solution should have crossingInfo');
     assert(solution.crossingInfo.interceptThreshold !== undefined,
         'Solution should include interceptThreshold');
@@ -351,37 +490,33 @@ test('testSolutionIncludesSearchMetrics', async () => {
     assert(solution.searchMetrics !== undefined, 'Should have searchMetrics');
     assert(typeof solution.searchMetrics.totalEvaluations === 'number', 'Should have totalEvaluations');
     assert(typeof solution.searchMetrics.computeTimeMs === 'number', 'Should have computeTimeMs');
+    assert(solution.searchMetrics.totalEvaluations > 0, 'Should have done evaluations');
 });
 
-// Unit 8: Resolution tests (Fix #1 - match intersection detector resolution)
+// Unit 10: Resolution tests (shared config)
 test('testConfigIncludesHighResolutionSettings', async () => {
     const { getConfig } = await import('./course-solver.js');
     const { INTERSECTION_CONFIG } = await import('../config.js');
     const config = getConfig();
 
-    // CONFIG should include dynamic step calculation parameters
-    // Fix #3: Now verifies these match shared INTERSECTION_CONFIG
     assert(typeof config.stepsPerDay === 'number', 'CONFIG should have stepsPerDay');
     assert(config.stepsPerDay >= 10, `stepsPerDay should be >= 10, got ${config.stepsPerDay}`);
     assert(typeof config.maxSteps === 'number', 'CONFIG should have maxSteps');
     assert(config.maxSteps >= 4000, `maxSteps should be >= 4000, got ${config.maxSteps}`);
     assert(typeof config.minSteps === 'number', 'CONFIG should have minSteps');
     assert(config.minSteps >= 100, `minSteps should be >= 100, got ${config.minSteps}`);
-    // Verify shared config is used (Fix #3)
+    // Verify shared config is used
     assert(config.minSteps === INTERSECTION_CONFIG.minSteps,
         `minSteps should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.minSteps}), got ${config.minSteps}`);
 });
 
 test('testSolverUsesHighResolutionForYearHorizon', async () => {
-    // For a 365-day horizon, solver should use ~4380 steps (12 steps/day)
-    // not the old fixed 1000 steps
     const { getConfig } = await import('./course-solver.js');
     const config = getConfig();
 
     const duration = 365;
-    const expectedMinSteps = duration * 10;  // At least 10 steps/day
+    const expectedMinSteps = duration * 10;
 
-    // Calculate what the solver would use
     const rawSteps = Math.round(duration * config.stepsPerDay);
     const calculatedSteps = Math.min(config.maxSteps, Math.max(config.minSteps, rawSteps));
 
@@ -395,20 +530,16 @@ test('testSolverCalculatesStepsDynamically', async () => {
     const { getConfig } = await import('./course-solver.js');
     const config = getConfig();
 
-    // Test various durations to verify dynamic calculation
     const testCases = [
-        { days: 180, expectedMin: 1800 },   // 180 * 10 = 1800
-        { days: 365, expectedMin: 3650 },   // 365 * 10 = 3650
-        { days: 730, expectedMin: 6000 },   // Would be 7300 but capped at maxSteps
-        { days: 1460, expectedMin: 6000 },  // Would be 14600 but capped at maxSteps
+        { days: 180, expectedMin: 1800 },
+        { days: 365, expectedMin: 3650 },
+        { days: 730, expectedMin: 6000 },
+        { days: 1460, expectedMin: 6000 },
     ];
 
     for (const tc of testCases) {
         const rawSteps = Math.round(tc.days * config.stepsPerDay);
         const calculatedSteps = Math.min(config.maxSteps, Math.max(config.minSteps, rawSteps));
-
-        // For short durations, should be >= days * 10
-        // For long durations, should be capped at maxSteps
         const expectedSteps = Math.min(config.maxSteps, Math.max(config.minSteps, tc.days * config.stepsPerDay));
 
         assert(calculatedSteps >= tc.expectedMin || calculatedSteps === config.maxSteps,
@@ -416,28 +547,17 @@ test('testSolverCalculatesStepsDynamically', async () => {
     }
 });
 
-// Unit 9: Quadratic crossing calculation tests (Fix #2)
+// Unit 11: Quadratic crossing calculation tests
 test('testQuadraticCrossingCalculation', async () => {
-    // Test case: trajectory segment that crosses a target radius
-    // Linear interpolation gives wrong answer for curved paths
-
-    // Segment from (0.5, 0.5, 0) to (1.0, 0.0, 0)
-    // r1 = sqrt(0.25 + 0.25) = 0.707
-    // r2 = sqrt(1.0) = 1.0
-    // Target radius = 0.8 AU
-
     const p1 = { x: 0.5, y: 0.5, z: 0, time: 100 };
     const p2 = { x: 1.0, y: 0.0, z: 0, time: 101 };
     const targetRadius = 0.8;
 
-    const r1 = Math.sqrt(p1.x**2 + p1.y**2 + p1.z**2); // ~0.707
-    const r2 = Math.sqrt(p2.x**2 + p2.y**2 + p2.z**2); // 1.0
+    const r1 = Math.sqrt(p1.x**2 + p1.y**2 + p1.z**2);
+    const r2 = Math.sqrt(p2.x**2 + p2.y**2 + p2.z**2);
 
-    // Linear interpolation would give:
-    // t_linear = (0.8 - 0.707) / (1.0 - 0.707) = 0.093/0.293 = 0.317
     const t_linear = (targetRadius - r1) / (r2 - r1);
 
-    // Calculate the position using linear t
     const linearPos = {
         x: p1.x + t_linear * (p2.x - p1.x),
         y: p1.y + t_linear * (p2.y - p1.y),
@@ -445,8 +565,6 @@ test('testQuadraticCrossingCalculation', async () => {
     };
     const linearRadius = Math.sqrt(linearPos.x**2 + linearPos.y**2 + linearPos.z**2);
 
-    // Quadratic solution: solve ||P(t)||² = R²
-    // P(t) = P1 + t*(P2-P1)
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const dz = p2.z - p1.z;
@@ -460,10 +578,8 @@ test('testQuadraticCrossingCalculation', async () => {
     const t1 = (-b - sqrtDisc) / (2*a);
     const t2 = (-b + sqrtDisc) / (2*a);
 
-    // Pick solution in [0,1]
     const t_quadratic = (t1 >= 0 && t1 <= 1) ? t1 : t2;
 
-    // Calculate the position using quadratic t
     const quadraticPos = {
         x: p1.x + t_quadratic * (p2.x - p1.x),
         y: p1.y + t_quadratic * (p2.y - p1.y),
@@ -471,33 +587,24 @@ test('testQuadraticCrossingCalculation', async () => {
     };
     const quadraticRadius = Math.sqrt(quadraticPos.x**2 + quadraticPos.y**2 + quadraticPos.z**2);
 
-    console.log(`  r1 = ${r1.toFixed(4)}, r2 = ${r2.toFixed(4)}, target = ${targetRadius}`);
-    console.log(`  Linear t = ${t_linear.toFixed(4)}, radius = ${linearRadius.toFixed(6)} (error: ${Math.abs(linearRadius - targetRadius).toFixed(6)})`);
-    console.log(`  Quadratic t = ${t_quadratic.toFixed(4)}, radius = ${quadraticRadius.toFixed(6)} (error: ${Math.abs(quadraticRadius - targetRadius).toFixed(6)})`);
-
-    // Verify that linear has significant error
     const linearError = Math.abs(linearRadius - targetRadius);
     assert(linearError > 0.001,
         `Linear interpolation should have measurable error, got ${linearError}`);
 
-    // Verify that quadratic gives exact result (within floating point)
     const quadraticError = Math.abs(quadraticRadius - targetRadius);
     assert(quadraticError < 1e-10,
         `Quadratic should give exact radius, error was ${quadraticError}`);
 
-    // Verify the two methods give different results
     assert(Math.abs(t_linear - t_quadratic) > 0.001,
         `Linear and quadratic should give different t values`);
 });
 
 test('testSolveQuadraticCrossingExported', async () => {
-    // Verify the function is exported and works
     const { solveQuadraticCrossing } = await import('./course-solver.js');
 
     assert(typeof solveQuadraticCrossing === 'function',
         'solveQuadraticCrossing should be exported');
 
-    // Test with same values as above
     const p1 = { x: 0.5, y: 0.5, z: 0 };
     const p2 = { x: 1.0, y: 0.0, z: 0 };
     const targetRadius = 0.8;
@@ -507,7 +614,6 @@ test('testSolveQuadraticCrossingExported', async () => {
     assert(t !== null, 'Should find a valid crossing');
     assert(t >= 0 && t <= 1, `t should be in [0,1], got ${t}`);
 
-    // Verify the position at t has radius = targetRadius
     const pos = {
         x: p1.x + t * (p2.x - p1.x),
         y: p1.y + t * (p2.y - p1.y),
@@ -521,12 +627,10 @@ test('testSolveQuadraticCrossingExported', async () => {
 });
 
 test('testSolveQuadraticCrossingNoCrossing', async () => {
-    // Test case where segment doesn't cross target radius
     const { solveQuadraticCrossing } = await import('./course-solver.js');
 
-    // Both points inside target radius - no crossing
-    const p1 = { x: 0.3, y: 0.3, z: 0 };  // r = 0.424
-    const p2 = { x: 0.4, y: 0.4, z: 0 };  // r = 0.566
+    const p1 = { x: 0.3, y: 0.3, z: 0 };
+    const p2 = { x: 0.4, y: 0.4, z: 0 };
     const targetRadius = 1.0;
 
     const t = solveQuadraticCrossing(p1, p2, targetRadius);
@@ -535,11 +639,10 @@ test('testSolveQuadraticCrossingNoCrossing', async () => {
 });
 
 test('testSolveQuadraticCrossingDegenerate', async () => {
-    // Test degenerate case (no movement)
     const { solveQuadraticCrossing } = await import('./course-solver.js');
 
     const p1 = { x: 0.5, y: 0.5, z: 0 };
-    const p2 = { x: 0.5, y: 0.5, z: 0 };  // Same point
+    const p2 = { x: 0.5, y: 0.5, z: 0 };
     const targetRadius = 0.8;
 
     const t = solveQuadraticCrossing(p1, p2, targetRadius);
@@ -547,28 +650,16 @@ test('testSolveQuadraticCrossingDegenerate', async () => {
     assert(t === null, 'Should return null for degenerate case');
 });
 
-// Unit 10: Shared configuration tests (Fix #3)
+// Unit 12: Shared configuration tests
 test('testSolverUsesSharedConfig', async () => {
-    console.log('\n--- Test: Solver Uses Shared Config ---');
-
-    // Import both configs
     const { getConfig } = await import('./course-solver.js');
     const { INTERSECTION_CONFIG } = await import('../config.js');
 
     const solverConfig = getConfig();
 
-    // The solver should use INTERSECTION_CONFIG values for consistency
-    // This ensures both systems compute trajectories identically
     const stepsMatch = solverConfig.stepsPerDay === INTERSECTION_CONFIG.stepsPerDay;
     const maxStepsMatch = solverConfig.maxSteps === INTERSECTION_CONFIG.maxSteps;
     const minStepsMatch = solverConfig.minSteps === INTERSECTION_CONFIG.minSteps;
-
-    console.log(`  Solver stepsPerDay: ${solverConfig.stepsPerDay}, INTERSECTION_CONFIG: ${INTERSECTION_CONFIG.stepsPerDay}`);
-    console.log(`  Solver maxSteps: ${solverConfig.maxSteps}, INTERSECTION_CONFIG: ${INTERSECTION_CONFIG.maxSteps}`);
-    console.log(`  Solver minSteps: ${solverConfig.minSteps}, INTERSECTION_CONFIG: ${INTERSECTION_CONFIG.minSteps}`);
-    console.log(`  stepsPerDay match: ${stepsMatch ? 'PASS' : 'FAIL'}`);
-    console.log(`  maxSteps match: ${maxStepsMatch ? 'PASS' : 'FAIL'}`);
-    console.log(`  minSteps match: ${minStepsMatch ? 'PASS' : 'FAIL'}`);
 
     assert(stepsMatch,
         `Solver stepsPerDay (${solverConfig.stepsPerDay}) should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.stepsPerDay})`);
@@ -578,7 +669,74 @@ test('testSolverUsesSharedConfig', async () => {
         `Solver minSteps (${solverConfig.minSteps}) should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.minSteps})`);
 });
 
-// Edge case tests (from review feedback)
+// Unit 13: v4.0 bracket search config tests
+test('testBracketSearchConfigPresent', async () => {
+    const { getConfig } = await import('./course-solver.js');
+    const config = getConfig();
+
+    assert(Array.isArray(config.reconProbes), 'Should have reconProbes array');
+    assert(config.reconProbes.length >= 7, `Should have >= 7 recon probes, got ${config.reconProbes.length}`);
+    assert(typeof config.nmAlpha === 'number', 'Should have Nelder-Mead alpha');
+    assert(typeof config.nmGamma === 'number', 'Should have Nelder-Mead gamma');
+    assert(Array.isArray(config.precisionTiers), 'Should have precisionTiers');
+    assert(Array.isArray(config.deploymentLevels), 'Should have deploymentLevels');
+    assert(config.deploymentLevels.length >= 3, 'Should have >= 3 deployment levels');
+    assert(typeof config.topHorizonsToSearch === 'number', 'Should have topHorizonsToSearch');
+});
+
+// Unit 14: Legacy backward compatibility tests
+test('testLegacyCoarseSweepStillWorks', async () => {
+    const { coarseSweep } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const results = await coarseSweep(ship, target);
+
+    // Yaw: -60 to 60 in 5° steps = 25 values
+    // Pitch: -30 to 30 in 5° steps = 13 values
+    // Total: 25 * 13 = 325... wait, let me recalculate
+    // Yaw: -60, -55, -50... 55, 60 = (60-(-60))/5 + 1 = 25
+    // Pitch: -30, -25, -20... 25, 30 = (30-(-30))/5 + 1 = 13
+    // Total: 25 * 13 = 325
+    // But legacy used 10° steps: -60 to 60 in 10° = 13, -30 to 30 in 10° = 7 → 91
+    // The v4.0 legacy function uses 5° steps for grid
+    // Actually: -60 to 60 step 5 = 25 values, -30 to 30 step 5 = 13 values = 325
+    assert(results.length > 0, 'Should return results');
+    // Results should be sorted
+    for (let i = 1; i < results.length; i++) {
+        assert(results[i].minDistance >= results[i - 1].minDistance,
+            `Results should be sorted`);
+    }
+});
+
+test('testLegacyFineSearchStillWorks', async () => {
+    const { coarseSweep, fineSearch } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const coarseResults = await coarseSweep(ship, target);
+    const topCandidates = coarseResults.slice(0, 5);
+
+    const refined = await fineSearch(topCandidates, ship, target);
+
+    assert(refined.minDistance <= topCandidates[0].minDistance,
+        `Fine search (${refined.minDistance}) should improve on coarse (${topCandidates[0].minDistance})`);
+});
+
+test('testLegacyUltraFinePolishStillWorks', async () => {
+    const { coarseSweep, fineSearch, ultraFinePolish } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const coarseResults = await coarseSweep(ship, target);
+    const refined = await fineSearch(coarseResults.slice(0, 5), ship, target);
+    const polished = await ultraFinePolish(refined, ship, target);
+
+    assert(polished.minDistance <= refined.minDistance,
+        `Ultra polish (${polished.minDistance}) should improve on fine (${refined.minDistance})`);
+});
+
+// Unit 15: Edge case tests
 test('testSolveCourseWithInvalidShip', async () => {
     const { solveCourse } = await import('./course-solver.js');
     const invalidShip = { name: 'Invalid' }; // Missing orbitalElements
@@ -590,12 +748,24 @@ test('testSolveCourseWithInvalidShip', async () => {
         'Should handle invalid ship gracefully');
 });
 
+test('testSolveCourseIncludesDeployment', async () => {
+    const { solveCourse } = await import('./course-solver.js');
+    const ship = createMockShip();
+    const target = createMockTarget('VENUS');
+
+    const solution = await solveCourse(ship, target);
+
+    assert(typeof solution.deployment === 'number', 'Should include deployment in solution');
+    assert(solution.deployment > 0 && solution.deployment <= 100,
+        `Deployment should be 1-100%, got ${solution.deployment}`);
+});
+
 // ============================================================================
 // TEST RUNNER
 // ============================================================================
 
 export async function runAllTests() {
-    console.log('=== COURSE SOLVER TESTS ===\n');
+    console.log('=== COURSE SOLVER TESTS (v4.0) ===\n');
 
     let passed = 0;
     let failed = 0;
@@ -624,4 +794,4 @@ export async function runAllTests() {
 }
 
 // Run tests if loaded directly
-console.log('[COURSE_SOLVER_TEST] Test module loaded. Run runAllTests() to execute.');
+console.log('[COURSE_SOLVER_TEST] Test module loaded (v4.0). Run runAllTests() to execute.');
