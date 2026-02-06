@@ -1,20 +1,23 @@
 /**
- * Course Solver - Automatic Course Plotting (v4.0)
+ * Course Solver - Automatic Course Plotting (v4.1)
  *
- * BRACKET-CONVERGENCE algorithm for optimal sail settings to intercept targets.
- * Replaces brute-force grid search with intelligent artillery-style bracketing.
+ * GRID-BRACKET-CONVERGENCE algorithm for optimal sail settings to intercept targets.
+ * Combines grid-based reconnaissance with Nelder-Mead refinement for reliable
+ * course finding at ~500 evaluations (~3-5 seconds).
  *
- * v4.0 MAJOR CHANGE: Artillery Bracket Search
- *   - Replaced grid search (coarse→fine→ultra→uber→gradient) with:
- *     1. Horizon Scout: quick 1-2 evals per horizon, pick top 2
- *     2. Strategic Reconnaissance: 7-9 probes to map the landscape
- *     3. Nelder-Mead Simplex: converge from best recon points
- *     4. Deployment Sweep: test deployment levels (multi-sail aware)
- *   - ~100-150 evaluations total vs ~6000 (40-75x fewer)
- *   - ~1-3 seconds vs 30-45 seconds
- *   - Adaptive precision: 2+ year transfers use coarse tolerance,
- *     <6 month transfers use fine tolerance
- *   - Deployment now varied (was always 100%)
+ * v4.1 FIX: Reliable course finding
+ *   - Reconnaissance now uses 10° grid (91 probes) instead of 9 fixed probes.
+ *     The crossing-aware evaluation function is highly discontinuous (small yaw
+ *     changes shift orbital crossing time → planet position jumps), so sparse
+ *     probing missed the narrow "valleys" where timing works out.
+ *   - Fixed Nelder-Mead degenerate simplex: when top 3 recon points were
+ *     collinear (e.g., all at pitch=0), the simplex was a line and could never
+ *     explore the pitch dimension. Now detects and corrects this.
+ *   - Horizon scouting increased to 5 diverse probes (was 2), top 3 horizons
+ *     searched (was 2).
+ *   - ~500 evaluations total, ~3-5 seconds
+ *
+ * v4.0: Artillery Bracket Search (Nelder-Mead + adaptive precision + deployment sweep)
  *
  * Previous versions (preserved features):
  *   v3.7: SOI-based intercept threshold
@@ -43,22 +46,16 @@ const CONFIG = {
     pitchMax: 30,
 
     // ========================================================================
-    // BRACKET SEARCH CONFIGURATION (v4.0)
+    // BRACKET SEARCH CONFIGURATION (v4.1)
     // ========================================================================
 
-    // Strategic reconnaissance probes
-    // These are the "first shots" to map the landscape
-    reconProbes: [
-        { yaw: 0, pitch: 0 },        // Center (radial)
-        { yaw: 35, pitch: 0 },       // Raise orbit (near optimal angle)
-        { yaw: -35, pitch: 0 },      // Lower orbit
-        { yaw: 55, pitch: 0 },       // Steep raise
-        { yaw: -55, pitch: 0 },      // Steep lower
-        { yaw: 0, pitch: 15 },       // North
-        { yaw: 0, pitch: -15 },      // South
-        { yaw: 35, pitch: 15 },      // Raise + north diagonal
-        { yaw: -35, pitch: -15 },    // Lower + south diagonal
-    ],
+    // Reconnaissance grid step (degrees)
+    // 10° grid over ±60° yaw × ±30° pitch = 13 × 7 = 91 probes
+    // Crossing-aware evaluation has a discontinuous landscape (small yaw changes
+    // shift WHEN trajectory crosses target orbit → large jumps in distance).
+    // Need sufficient sampling density to find the narrow "valley" where
+    // planetary timing works out. 9 fixed probes (v4.0) was too sparse.
+    reconGridStep: 10,
 
     // Nelder-Mead simplex parameters
     nmAlpha: 1.0,     // Reflection coefficient
@@ -80,9 +77,9 @@ const CONFIG = {
     deploymentLevels: [100, 75, 50, 25],
 
     // Horizon scouting
-    // Quick probes per horizon to determine which are worth deep search
-    scoutProbesPerHorizon: 2,
-    topHorizonsToSearch: 2,
+    // 5 diverse probes per horizon (varied yaw + pitch) to better rank horizons
+    scoutProbesPerHorizon: 5,
+    topHorizonsToSearch: 3,
 
     // Multi-start: if first Nelder-Mead result is poor, try from different quadrant
     multiStartThreshold: 0.2,  // AU - trigger multi-start if worse than this
@@ -552,17 +549,17 @@ export function getConvergenceTolerance(maxDays) {
 // ============================================================================
 
 /**
- * Phase 1: Strategic reconnaissance - the "first shots" to map the landscape.
+ * Phase 1: Strategic reconnaissance - systematic sampling of the parameter space.
  *
- * Instead of a blind 91-point grid, fires 7-9 strategic probes at key
- * angles that cover the physically meaningful directions:
- *   - Center (radial from sun)
- *   - ±35° yaw (optimal orbit raising/lowering)
- *   - ±55° yaw (steep orbit changes)
- *   - ±15° pitch (inclination changes)
- *   - Diagonal combinations
+ * v4.1 CHANGE: Uses a grid sweep instead of 9 fixed probes.
  *
- * Like artillery: "Where did the round land relative to target?"
+ * The crossing-aware evaluation function is highly discontinuous: small changes
+ * in sail angle shift WHEN the trajectory crosses the target's orbit, which
+ * changes WHERE the planet is at crossing time, creating large jumps in distance.
+ * This means optimal solutions live in narrow "valleys" that sparse probing misses.
+ *
+ * Full mode: 10° grid over ±60° yaw × ±30° pitch = 91 probes per horizon.
+ * Refinement mode: 5° grid around seed point within custom bounds.
  *
  * @param {Object} ship - Ship object
  * @param {Object} target - Target object
@@ -572,24 +569,30 @@ export function getConvergenceTolerance(maxDays) {
  */
 export async function strategicReconnaissance(ship, target, options = {}, bounds = null) {
     const results = [];
-    let probes;
+    const probes = [];
 
     if (bounds) {
-        // Refinement mode: generate probes around seed point
+        // Refinement mode: grid around seed point with 5° steps
         const { yawCenter, pitchCenter, yawRadius, pitchRadius } = bounds;
-        probes = [
-            { yaw: yawCenter, pitch: pitchCenter },
-            { yaw: yawCenter + yawRadius * 0.5, pitch: pitchCenter },
-            { yaw: yawCenter - yawRadius * 0.5, pitch: pitchCenter },
-            { yaw: yawCenter + yawRadius, pitch: pitchCenter },
-            { yaw: yawCenter - yawRadius, pitch: pitchCenter },
-            { yaw: yawCenter, pitch: pitchCenter + pitchRadius * 0.5 },
-            { yaw: yawCenter, pitch: pitchCenter - pitchRadius * 0.5 },
-            { yaw: yawCenter + yawRadius * 0.5, pitch: pitchCenter + pitchRadius * 0.5 },
-            { yaw: yawCenter - yawRadius * 0.5, pitch: pitchCenter - pitchRadius * 0.5 },
-        ];
+        const yawMin = Math.max(CONFIG.yawMin, yawCenter - yawRadius);
+        const yawMax = Math.min(CONFIG.yawMax, yawCenter + yawRadius);
+        const pitchMin = Math.max(CONFIG.pitchMin, pitchCenter - pitchRadius);
+        const pitchMax = Math.min(CONFIG.pitchMax, pitchCenter + pitchRadius);
+        const step = 5;
+
+        for (let yaw = yawMin; yaw <= yawMax; yaw += step) {
+            for (let pitch = pitchMin; pitch <= pitchMax; pitch += step) {
+                probes.push({ yaw, pitch });
+            }
+        }
     } else {
-        probes = CONFIG.reconProbes;
+        // Full mode: grid over entire parameter space
+        const step = CONFIG.reconGridStep;
+        for (let yaw = CONFIG.yawMin; yaw <= CONFIG.yawMax; yaw += step) {
+            for (let pitch = CONFIG.pitchMin; pitch <= CONFIG.pitchMax; pitch += step) {
+                probes.push({ yaw, pitch });
+            }
+        }
     }
 
     for (let i = 0; i < probes.length; i++) {
@@ -640,7 +643,7 @@ export async function nelderMeadSearch(ship, target, initialPoints, options = {}
     const maxIter = CONFIG.nmMaxIterations;
 
     // Initialize simplex from best 3 reconnaissance points
-    // Ensure they form a proper triangle (not collinear)
+    // Must form a proper triangle (not collinear) for 2D Nelder-Mead to work
     let simplex = [];
     for (let i = 0; i < Math.min(3, initialPoints.length); i++) {
         simplex.push({
@@ -660,6 +663,37 @@ export async function nelderMeadSearch(ship, target, initialPoints, options = {}
             value: Infinity,
             result: null
         });
+    }
+
+    // v4.1 FIX: Check for degenerate (collinear) simplex
+    // If top 3 recon points are all at the same pitch (common for in-plane
+    // transfers where pitch=0 dominates), the simplex is a line and Nelder-Mead
+    // can never explore the pitch dimension. Perturb the worst vertex off the line.
+    const crossProduct2D =
+        (simplex[1].yaw - simplex[0].yaw) * (simplex[2].pitch - simplex[0].pitch) -
+        (simplex[1].pitch - simplex[0].pitch) * (simplex[2].yaw - simplex[0].yaw);
+    const simplexArea = Math.abs(crossProduct2D) / 2;
+
+    if (simplexArea < 1.0) {
+        // Simplex is nearly degenerate - perturb worst vertex to create 2D spread
+        // Use ±10° pitch offset from best point to ensure pitch exploration
+        const bestYaw = simplex[0].yaw;
+        const bestPitch = simplex[0].pitch;
+        simplex[2] = {
+            yaw: bestYaw,
+            pitch: clampPitch(bestPitch + 10),
+            value: Infinity,
+            result: null
+        };
+        // Also ensure second vertex differs in yaw
+        if (Math.abs(simplex[1].yaw - simplex[0].yaw) < 2) {
+            simplex[1] = {
+                yaw: clampYaw(bestYaw + 10),
+                pitch: bestPitch,
+                value: Infinity,
+                result: null
+            };
+        }
     }
 
     // Ensure initial simplex points are evaluated
@@ -825,16 +859,13 @@ function clampPitch(pitch) {
 // ============================================================================
 
 /**
- * Quick horizon scout: evaluate 1-2 candidates per horizon to rank them.
+ * Quick horizon scout: evaluate several candidates per horizon to rank them.
  *
- * Instead of doing a full search on all 6 horizons (~6000 evals),
- * this does 2 quick probes per horizon (~12 evals total) and picks
- * the top 2 most promising horizons for deep search.
+ * v4.1 CHANGE: Increased from 2 to 5 probes per horizon with pitch diversity.
  *
- * The scout probes use the best angle from target geometry:
- * - Inner planet (target.a < ship.a): try -35° yaw (lower orbit)
- * - Outer planet (target.a > ship.a): try +35° yaw (raise orbit)
- * - Plus a second probe at a different angle for diversity
+ * Uses diverse probe angles to better identify which horizons have favorable
+ * planetary alignment. The old 2-probe approach (both at pitch=0, same yaw
+ * direction) could miss good horizons where the optimal angle was different.
  *
  * @param {Object} ship - Ship object
  * @param {Object} target - Target object
@@ -851,23 +882,31 @@ export async function scoutHorizons(ship, target, baseOptions = {}) {
     const shipA = ship.orbitalElements?.a || 1;
     const goingInward = targetA < shipA;
 
-    // Primary probe: direction toward target
+    // 5 diverse probes: primary direction, steep, opposite, center, and with pitch
     const primaryYaw = goingInward ? -35 : 35;
-    // Secondary probe: steep version
-    const secondaryYaw = goingInward ? -55 : 55;
+    const steepYaw = goingInward ? -55 : 55;
+    const oppositeYaw = goingInward ? 20 : -20;
+
+    const scoutProbes = [
+        { yaw: primaryYaw, pitch: 0 },     // Primary direction
+        { yaw: steepYaw, pitch: 0 },       // Steep version
+        { yaw: 0, pitch: 0 },              // Center/radial
+        { yaw: oppositeYaw, pitch: 0 },    // Opposite direction (covers edge cases)
+        { yaw: primaryYaw, pitch: 15 },    // Primary with inclination
+    ];
 
     for (const maxDays of horizons) {
         const horizonOptions = { ...baseOptions, maxDays };
+        let bestProbe = null;
 
-        // Probe 1: primary direction
-        const r1 = evaluateCandidate(primaryYaw, 0, ship, target, horizonOptions);
-        evalCount++;
+        for (const probe of scoutProbes) {
+            const result = evaluateCandidate(probe.yaw, probe.pitch, ship, target, horizonOptions);
+            evalCount++;
 
-        // Probe 2: secondary direction
-        const r2 = evaluateCandidate(secondaryYaw, 0, ship, target, horizonOptions);
-        evalCount++;
-
-        const bestProbe = r1.minDistance < r2.minDistance ? r1 : r2;
+            if (!bestProbe || result.minDistance < bestProbe.minDistance) {
+                bestProbe = result;
+            }
+        }
 
         results.push({
             maxDays,
@@ -1057,7 +1096,7 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
         return null;
     }
 
-    onProgress?.({ phase: 'starting', progress: 0, message: 'Initializing bracket search...' });
+    onProgress?.({ phase: 'starting', progress: 0, message: 'Initializing grid-bracket search...' });
 
     try {
         let bestResult = null;
@@ -1104,7 +1143,7 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
             // ============================================================
             onProgress?.({ phase: 'scouting', progress: 0, message: 'Scouting horizons...' });
 
-            console.log('[COURSE_SOLVER] Full mode: bracket search with horizon scouting');
+            console.log('[COURSE_SOLVER] Full mode: grid-bracket search with horizon scouting');
 
             // Phase 0: Scout horizons
             const scoutResult = await scoutHorizons(ship, target, options);
@@ -1412,7 +1451,7 @@ function buildSolution(result, metrics) {
             computeTimeMs: metrics.computeTimeMs,
             horizonDays: metrics.horizonDays,
             totalEvaluations: metrics.totalEvaluations || 0,
-            algorithm: 'bracket-v4.0'
+            algorithm: 'grid-bracket-v4.1'
         }
     };
 }
@@ -1431,4 +1470,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v4.0 loaded - Artillery Bracket Search (Nelder-Mead + adaptive precision)');
+console.log('[COURSE_SOLVER] Module v4.1 loaded - Grid-Bracket Search (91-probe recon + Nelder-Mead convergence)');
