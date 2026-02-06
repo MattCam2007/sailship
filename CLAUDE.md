@@ -17,13 +17,16 @@ When asked to "make a report" or "generate a report", always:
 - Include a timestamp in the file
 
 ### Reviews
-When asked for a review, review the implementation plan using four separate perspectives:
+When asked for a review, review the implementation plan using five separate perspectives:
 
 1. PHYSICS/REALISM: Validate orbital mechanics, solar radiation pressure model,
    delta-v calculations, astronomical accuracy, and any other math/physics
-2. FUNCTIONALITY: Test code paths, verify game logic works as intended
-3. ARCHITECTURE: Evaluate code structure, separation of concerns, extensibility
-4. FAILURE MODES: Identify edge cases, numerical instability risks, performance
+2. SOLAR SAILING EXPERT: Catch errors from treating the solar sail like a conventional
+   spacecraft — thrust is continuous from sunlight (not impulsive burns), transfer
+   windows differ from chemical rockets, trajectories are spirals not ballistic arcs
+3. FUNCTIONALITY: Test code paths, verify game logic works as intended
+4. ARCHITECTURE: Evaluate code structure, separation of concerns, extensibility
+5. FAILURE MODES: Identify edge cases, numerical instability risks, performance
    bottlenecks, and potential player-facing bugs
 
 Write a detailed report to reports/implementation-review-[DATE].md
@@ -45,7 +48,7 @@ Located in `.claude/skills/[name]/SKILL.md`:
 |-------|---------|
 | `/discovery [feature]` | Analyze existing systems, map architecture, identify gaps → Feature Spec |
 | `/planning [feature]` | Design solution, break into atomic units, assess risks → Implementation Plan |
-| `/review [feature]` | Orchestrate four-perspective review → Review Report |
+| `/review [feature]` | Orchestrate five-perspective review → Review Report |
 | `/implement [feature] [unit]` | Execute a single atomic unit of work |
 | `/verify [feature]` | Integration testing, edge case validation → Verification Report |
 
@@ -57,6 +60,7 @@ Located in `.claude/agents/[name].md`:
 | Agent | Focus |
 |-------|-------|
 | `physicist` | Physics/realism validation (formulas, units, accuracy) |
+| `solar-sailing-expert` | Solar sail propulsion assumptions (continuous thrust, not chemical rocket heuristics) |
 | `architect` | Architecture evaluation (patterns, separation, extensibility) |
 | `functional-tester` | Functionality verification (code paths, test coverage) |
 | `failure-analyst` | Failure modes (edge cases, instability, performance) |
