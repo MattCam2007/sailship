@@ -1114,35 +1114,27 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
     const player = getPlayerShip();
     if (!player) return;
 
-    // Use closest-approach data for ghost placement when available.
-    // Closest-approach answers "when is my minimum distance to this planet?"
-    // which is more accurate for navigation than radius-crossing detection
-    // (which only checks when the ship crosses the planet's semi-major axis distance).
-    // Radius-crossing can predict the wrong time because the predicted trajectory
-    // diverges from the actual trajectory over long prediction windows.
-    const approachCache = getClosestApproachCache();
+    // Use radius-crossing (intersection) data for ghost placement.
+    // Radius-crossing shows where the planet will be each time your trajectory
+    // crosses its orbital radius, sorted chronologically. This is the information
+    // needed for navigation: "where is the planet when I get to its orbit?"
+    //
+    // Previously this preferred closest-approach data, which finds the single
+    // minimum-distance point across the entire prediction window. The problem:
+    // the "best" encounter might be weeks in the future while the player is
+    // approaching a nearer radius crossing NOW. The ghost would show the planet
+    // at its far-future position, causing the player to navigate toward a point
+    // where the planet won't be when they arrive at the orbital radius.
     const intersectionCache = getIntersectionCache();
+    const approachCache = getClosestApproachCache();
 
-    // Build the list of encounters to render, preferring closest-approach data
+    // Build the list of encounters from radius-crossing data (primary)
+    // or closest-approach data (fallback when no crossings detected)
     let encounters = [];
 
-    if (approachCache.results && approachCache.results.length > 0) {
-        // Use closest-approach data: more accurate planet positions
-        encounters = approachCache.results
-            .filter(approach => {
-                if (approach.bodyName !== destination) return false;
-                const body = celestialBodies.find(b => b.name === approach.bodyName);
-                if (body && body.category && !bodyFilters[body.category]) return false;
-                return true;
-            })
-            .map(approach => ({
-                bodyName: approach.bodyName,
-                bodyPosition: approach.bodyPos,
-                time: approach.time,
-                distance: approach.minDistance
-            }));
-    } else if (intersectionCache.results && intersectionCache.results.length > 0) {
-        // Fallback to radius-crossing data
+    if (intersectionCache.results && intersectionCache.results.length > 0) {
+        // Radius-crossing data: shows planet position at each orbital crossing
+        // Already sorted by time (chronological), so first match is the next encounter
         encounters = intersectionCache.results
             .filter(intersection => {
                 if (intersection.bodyName !== destination) return false;
@@ -1155,6 +1147,22 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
                 bodyPosition: intersection.bodyPosition,
                 time: intersection.time,
                 distance: intersection.distance
+            }));
+    } else if (approachCache.results && approachCache.results.length > 0) {
+        // Fallback to closest-approach data when no radius crossings found
+        // (e.g., trajectory doesn't reach the planet's orbital radius)
+        encounters = approachCache.results
+            .filter(approach => {
+                if (approach.bodyName !== destination) return false;
+                const body = celestialBodies.find(b => b.name === approach.bodyName);
+                if (body && body.category && !bodyFilters[body.category]) return false;
+                return true;
+            })
+            .map(approach => ({
+                bodyName: approach.bodyName,
+                bodyPosition: approach.bodyPos,
+                time: approach.time,
+                distance: approach.minDistance
             }));
     }
 
