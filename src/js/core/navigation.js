@@ -631,7 +631,7 @@ export function getCourseComputationState() {
  * @param {number} [sailCount] - Number of sails to use for computation (overrides current ship sail count)
  * @returns {Promise<Object|null>} Course solution or null
  */
-export async function computeOptimalCourse(onProgress = null, sailCount = null) {
+export async function computeOptimalCourse(onProgress = null, sailCount = null, workerCount = 1) {
     // Prevent concurrent computations
     if (optimalCourseCache.computing) {
         console.log('[NAVIGATION] Course computation already in progress');
@@ -663,7 +663,7 @@ export async function computeOptimalCourse(onProgress = null, sailCount = null) 
         const seedSettings = useRefinementMode ? getRefinementSeedSettings() : null;
 
         // Build solver options
-        const solverOptions = {};
+        const solverOptions = { workerCount };
 
         if (useRefinementMode && seedSettings) {
             // Refinement mode: narrow search around current settings
@@ -674,7 +674,7 @@ export async function computeOptimalCourse(onProgress = null, sailCount = null) 
             console.log(`[NAVIGATION] Using REFINEMENT mode (seed: yaw=${seedSettings.yawDeg.toFixed(1)}°, ` +
                         `pitch=${seedSettings.pitchDeg.toFixed(1)}°, horizon=${solverOptions.maxDays}d)`);
         } else {
-            console.log('[NAVIGATION] Using FULL mode (multi-horizon search)');
+            console.log(`[NAVIGATION] Using FULL mode (multi-horizon search, ${workerCount} workers)`);
         }
 
         const result = await solveCourse(player, target, solverOptions, (progress) => {
@@ -855,7 +855,7 @@ export function applyComputedCourse(course) {
         const horizonDays = course.horizonDays || 365;
         const verifyResult = evaluateCandidate(
             course.yawDeg, course.pitchDeg, player, target,
-            { maxDays: horizonDays, deployment: course.deployment }
+            { maxDays: horizonDays, deployment: course.deployment, startJulianDate: getJulianDate() }
         );
 
         if (isFinite(verifyResult.minDistance)) {
@@ -915,7 +915,7 @@ export function getLaunchWindowState() {
  * @param {Function} onProgress - Progress callback ({phase, progress, message})
  * @returns {Promise<Object|null>} Launch window results or null
  */
-export async function computeLaunchWindows(onProgress = null) {
+export async function computeLaunchWindows(onProgress = null, workerCount = 1) {
     // Prevent concurrent computations
     if (launchWindowCache.computing) {
         console.log('[NAVIGATION] Launch window computation already in progress');
@@ -945,7 +945,8 @@ export async function computeLaunchWindows(onProgress = null) {
     const snapshotJD = getJulianDate();
 
     try {
-        const result = await findLaunchWindows(player, target, snapshotJD, {}, (progress) => {
+        console.log(`[NAVIGATION] Launch window scan (${workerCount} workers)`);
+        const result = await findLaunchWindows(player, target, snapshotJD, { workerCount }, (progress) => {
             launchWindowCache.progress = progress;
             onProgress?.(progress);
         });

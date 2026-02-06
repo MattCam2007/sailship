@@ -1798,6 +1798,55 @@ body::after {
 }
 
 /* ============================================================================
+   WORKER CONTROL STYLES
+   ============================================================================ */
+
+.worker-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    padding: 4px 0;
+}
+
+.worker-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+}
+
+.worker-btn {
+    width: 22px;
+    height: 22px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.worker-btn:hover {
+    border-color: var(--cyan);
+    color: var(--cyan);
+}
+
+.worker-count {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    color: var(--cyan);
+    min-width: 16px;
+    text-align: center;
+}
+
+/* ============================================================================
    COURSE PLOTTER STYLES
    ============================================================================ */
 
