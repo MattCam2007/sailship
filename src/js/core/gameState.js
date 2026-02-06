@@ -9,7 +9,6 @@ import {
     ZOOM_LEVELS,
     DEFAULT_DISPLAY_OPTIONS,
     DEFAULT_TRAJECTORY_CONFIG,
-    AUTOPILOT_CONFIG,
 } from '../config.js';
 
 // ============================================================================
@@ -110,8 +109,6 @@ export const autoPilotState = {
     enabled: false,
     phase: AUTOPILOT_PHASES.CRUISE,
     mode: AUTOPILOT_MODES.ORBITAL_INSERTION,
-    adjustmentRateDegPerSec: AUTOPILOT_CONFIG.adjustmentRateDegPerSec,
-    adjustmentRatePctPerSec: AUTOPILOT_CONFIG.adjustmentRatePctPerSec,
 };
 
 // ============================================================================
