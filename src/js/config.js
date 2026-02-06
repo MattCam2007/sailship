@@ -437,14 +437,15 @@ export const BODY_DISPLAY = {
  * for orbital insertion and gravity assist maneuvers. Unlike the solar
  * sail (continuous, low thrust), thrusters deliver instantaneous delta-V.
  *
- * Budget: 5 km/s total delta-V is reasonable for a small ship with
- * auxiliary chemical propulsion (comparable to spacecraft like Dawn or
- * New Horizons adjustment motors, but scaled up).
+ * Budget: 50 km/s total delta-V provides enough propellant for
+ * planetary capture from high-energy transfer orbits. Approach velocities
+ * at Venus can reach 30-40 km/s on aggressive solar sail trajectories,
+ * so the ship needs substantial reserves for retrograde capture burns.
  */
 export const DEFAULT_THRUSTER = {
-    deltaVRemaining: 5.0,   // km/s of delta-V fuel remaining
-    deltaVMax: 5.0,          // km/s total capacity (for fuel gauge)
-    burnSize: 0.5,           // km/s per button press
+    deltaVRemaining: 50.0,   // km/s of delta-V fuel remaining
+    deltaVMax: 50.0,          // km/s total capacity (for fuel gauge)
+    burnSize: 2.0,           // km/s per button press
 };
 
 // ============================================================================

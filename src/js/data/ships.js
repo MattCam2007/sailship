@@ -182,11 +182,11 @@ export function setSailDeployment(ship, percent) {
  * Set thruster burn size.
  *
  * @param {Object} ship - Ship object with thruster state
- * @param {number} burnSize - Burn size in km/s (0.1 to 2.0)
+ * @param {number} burnSize - Burn size in km/s (0.1 to 10.0)
  */
 export function setThrusterBurnSize(ship, burnSize) {
     if (ship.thruster) {
-        ship.thruster.burnSize = Math.max(0.1, Math.min(2.0, burnSize));
+        ship.thruster.burnSize = Math.max(0.1, Math.min(10.0, burnSize));
     }
 }
 
