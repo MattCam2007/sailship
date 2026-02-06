@@ -1764,19 +1764,8 @@ body::after {
    AUTOPILOT STYLES
    ============================================================================ */
 
-.autopilot-section {
-    transition: all 0.3s ease;
-}
-
-.autopilot-section.engaged {
-    background: rgba(76, 232, 141, 0.1);
-    border-color: var(--green);
-    box-shadow:
-        0 0 15px rgba(76, 232, 141, 0.3),
-        inset 0 0 20px rgba(76, 232, 141, 0.05);
-}
-
 .autopilot-btn {
+    margin-top: 10px;
     width: 100%;
     background: transparent;
     border: 2px solid var(--coral-dim);
@@ -1899,32 +1888,21 @@ body::after {
     display: block;
 }
 
-/* Sail controls disabled state when autopilot engaged */
-.sail-controls.autopilot-active .sail-slider {
-    pointer-events: none;
-    opacity: 0.5;
-}
-
-.sail-controls.autopilot-active::after {
-    content: 'AUTOPILOT CONTROL';
-    display: block;
-    text-align: center;
-    font-size: 9px;
-    color: var(--green);
-    letter-spacing: 1px;
-    margin-top: 8px;
-    padding: 4px;
-    border: 1px dashed var(--green);
-    animation: blink 1.5s infinite;
-    box-shadow: 0 0 6px rgba(76, 232, 141, 0.3);
-}
-
 /* ============================================================================
    ENCOUNTER MODE STYLES
    ============================================================================ */
 
 .encounter-mode-section {
     margin-bottom: 12px;
+    transition: all 0.3s ease;
+}
+
+.encounter-mode-section.engaged {
+    background: rgba(76, 232, 141, 0.1);
+    border-color: var(--green);
+    box-shadow:
+        0 0 15px rgba(76, 232, 141, 0.3),
+        inset 0 0 20px rgba(76, 232, 141, 0.05);
 }
 
 .encounter-mode-selector {

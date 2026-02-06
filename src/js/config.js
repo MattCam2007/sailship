@@ -97,19 +97,6 @@ export const DEFAULT_SAIL = {
 };
 
 // ============================================================================
-// Autopilot Configuration
-// ============================================================================
-
-/**
- * Autopilot adjustment rates.
- * Controls how quickly the autopilot can change sail settings.
- */
-export const AUTOPILOT_CONFIG = {
-    adjustmentRateDegPerSec: 5,     // degrees per second for angle
-    adjustmentRatePctPerSec: 10,    // percent per second for deployment
-};
-
-// ============================================================================
 // Physics Constants
 // ============================================================================
 

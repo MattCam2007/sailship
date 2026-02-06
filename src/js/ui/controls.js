@@ -3,17 +3,14 @@
  */
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
-import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, AUTOPILOT_MODES, setAutoPilotPhase, getAutoPilotPhase, setAutoPilotMode, getAutoPilotMode, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
+import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, AUTOPILOT_MODES, setAutoPilotPhase, getAutoPilotPhase, setAutoPilotMode, getAutoPilotMode, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
 import { exportGameState, importGameState, fetchSaveIndex, loadSaveFile } from '../core/saveState.js';
 import { resizeCanvas } from './renderer.js';
 import {
     setDestination,
     destination,
     generateFlightPath,
-    computeNavigationPlan,
-    computeApproachPlan,
     computeCapturePlan,
-    computeEscapePlan,
     computeSlingshotPlan,
     getDestinationInfo,
     computeOptimalCourse,
@@ -650,9 +647,6 @@ function initKeyboardShortcuts() {
             return;
         }
 
-        // Skip manual sail controls if autopilot is engaged
-        if (isAutoPilotEnabled()) return;
-
         // Fine-tune control selection with 1, 2, 3
         if (e.key === '1') {
             selectSailControl(SAIL_CONTROLS.DEPLOYMENT);
@@ -1069,9 +1063,6 @@ export function populateObjectList() {
  */
 function initAutoPilotControls() {
     const toggleBtn = document.getElementById('autoPilotToggle');
-    const statusDisplay = document.getElementById('autoPilotStatusDisplay');
-    const autopilotSection = document.querySelector('.autopilot-section');
-    const sailControls = document.querySelector('.sail-controls');
 
     if (toggleBtn) {
         toggleBtn.addEventListener('click', () => {
@@ -1582,21 +1573,18 @@ function initSaveLoadControls() {
 function updateAutoPilotUI(enabled) {
     const toggleBtn = document.getElementById('autoPilotToggle');
     const statusDisplay = document.getElementById('autoPilotStatusDisplay');
-    const autopilotSection = document.querySelector('.autopilot-section');
-    const sailControls = document.querySelector('.sail-controls');
+    const encounterSection = document.querySelector('.encounter-mode-section');
     const label = toggleBtn?.querySelector('.autopilot-label');
 
     if (enabled) {
         toggleBtn?.classList.add('engaged');
         statusDisplay?.classList.add('engaged');
-        autopilotSection?.classList.add('engaged');
-        sailControls?.classList.add('autopilot-active');
+        encounterSection?.classList.add('engaged');
         if (label) label.textContent = 'DISENGAGE';
     } else {
         toggleBtn?.classList.remove('engaged');
         statusDisplay?.classList.remove('engaged');
-        autopilotSection?.classList.remove('engaged');
-        sailControls?.classList.remove('autopilot-active');
+        encounterSection?.classList.remove('engaged');
         if (label) label.textContent = 'ENGAGE';
     }
 
@@ -1604,7 +1592,8 @@ function updateAutoPilotUI(enabled) {
 }
 
 /**
- * Update the autopilot status text display
+ * Update the autopilot status text display.
+ * Autopilot only fires thrusters - shows thruster-related status.
  */
 function updateAutoPilotStatusText() {
     const statusDisplay = document.getElementById('autoPilotStatusDisplay');
@@ -1613,55 +1602,37 @@ function updateAutoPilotStatusText() {
     if (!statusText) return;
 
     if (!isAutoPilotEnabled()) {
-        statusText.textContent = 'MANUAL CONTROL';
+        statusText.textContent = 'THRUSTERS: MANUAL';
         return;
     }
 
     const player = getPlayerShip();
-    if (!player?.sail) {
-        statusText.textContent = 'NO SAIL';
+    if (!player) {
+        statusText.textContent = 'NO SHIP';
         return;
     }
 
-    // Get current phase and appropriate plan
     const phase = getAutoPilotPhase();
-    let plan;
-    switch (phase) {
-        case AUTOPILOT_PHASES.APPROACH:
-            plan = computeApproachPlan();
-            break;
-        case AUTOPILOT_PHASES.CAPTURE:
-            plan = computeCapturePlan();
-            break;
-        case AUTOPILOT_PHASES.SLINGSHOT:
-            plan = computeSlingshotPlan();
-            break;
-        case AUTOPILOT_PHASES.ESCAPE:
-            plan = computeEscapePlan();
-            break;
-        case AUTOPILOT_PHASES.CRUISE:
-        default:
-            plan = computeNavigationPlan();
-            break;
-    }
 
-    if (!plan) {
-        statusText.textContent = 'NO NAV DATA';
-        return;
-    }
+    // Only CAPTURE and SLINGSHOT phases fire thrusters
+    if (phase === AUTOPILOT_PHASES.CAPTURE || phase === AUTOPILOT_PHASES.SLINGSHOT) {
+        const plan = phase === AUTOPILOT_PHASES.CAPTURE
+            ? computeCapturePlan()
+            : computeSlingshotPlan();
 
-    // Show phase, strategy, and thruster info
-    const strategy = plan.strategyName || 'CALCULATING';
-    let statusMsg = `${phase}: ${strategy}`;
-    if (plan.thrusterAction) {
-        const dir = plan.thrusterAction.direction.toUpperCase();
-        if (plan.thrusterAction.when === 'NOW') {
-            statusMsg += ` [${dir} BURN]`;
+        if (plan?.thrusterAction) {
+            const dir = plan.thrusterAction.direction.toUpperCase();
+            if (plan.thrusterAction.when === 'NOW') {
+                statusText.textContent = `${phase}: ${dir} BURN`;
+            } else {
+                statusText.textContent = `${phase}: ${dir} @ PERIAPSIS`;
+            }
         } else {
-            statusMsg += ` [${dir} @ PERI]`;
+            statusText.textContent = `${phase}: STANDBY`;
         }
+    } else {
+        statusText.textContent = 'THRUSTERS: ARMED';
     }
-    statusText.textContent = statusMsg;
 }
 
 /**
@@ -1716,14 +1687,13 @@ const AUTOPILOT_THRUSTER_COOLDOWN = 500;       // ms between auto-fires (normal 
 const AUTOPILOT_THRUSTER_COOLDOWN_FAST = 100;   // ms between auto-fires (extreme flybys)
 
 /**
- * Update autopilot - call this each frame to adjust sail toward nav computer recommendations.
+ * Update autopilot - call this each frame to auto-fire thrusters for orbital insertion
+ * and gravity assist maneuvers.
  *
- * Handles multiple phases:
- * - CRUISE: Use nav computer plan to intercept destination
- * - APPROACH: Use approach plan to match velocity before SOI entry
- * - CAPTURE: Use capture plan to circularize orbit inside SOI (auto-fires retrograde thruster)
- * - SLINGSHOT: Use slingshot plan to maximize flyby assist (auto-fires prograde thruster)
- * - ESCAPE: Use escape plan to leave SOI
+ * The autopilot does NOT adjust sail settings - that is the course plotter's job.
+ * Autopilot only fires thrusters when inside a body's SOI:
+ * - CAPTURE: Auto-fires retrograde thruster at periapsis to circularize orbit
+ * - SLINGSHOT: Auto-fires prograde thruster at periapsis to boost exit velocity
  *
  * @param {number} deltaTime - Time since last frame in days
  */
@@ -1737,28 +1707,25 @@ export function updateAutoPilot(deltaTime) {
     const phase = determineAutopilotPhase();
     setAutoPilotPhase(phase);
 
-    // Get plan based on phase
+    // Only get thruster-relevant plans (CAPTURE and SLINGSHOT phases)
     let plan;
     switch (phase) {
-        case AUTOPILOT_PHASES.APPROACH:
-            plan = computeApproachPlan();
-            break;
         case AUTOPILOT_PHASES.CAPTURE:
             plan = computeCapturePlan();
             break;
         case AUTOPILOT_PHASES.SLINGSHOT:
             plan = computeSlingshotPlan();
             break;
-        case AUTOPILOT_PHASES.ESCAPE:
-            plan = computeEscapePlan();
-            break;
-        case AUTOPILOT_PHASES.CRUISE:
         default:
-            plan = computeNavigationPlan();
-            break;
+            // No thruster action needed outside SOI
+            updateAutoPilotStatusText();
+            return;
     }
 
-    if (!plan) return;
+    if (!plan) {
+        updateAutoPilotStatusText();
+        return;
+    }
 
     // Auto-fire thruster if plan recommends it
     if (plan.thrusterAction && plan.thrusterAction.when === 'NOW') {
@@ -1786,70 +1753,6 @@ export function updateAutoPilot(deltaTime) {
             }
         }
     }
-
-    // Convert deltaTime from days to seconds for rate calculations
-    const deltaSeconds = deltaTime * 86400;
-
-    const currentAngleDeg = player.sail.angle * 180 / Math.PI;
-    const currentDeploy = player.sail.deploymentPercent;
-    const targetAngleDeg = plan.recommendedAngle;
-    const targetDeploy = plan.recommendedDeployment;
-
-    // Calculate how much we can adjust this frame
-    const maxAngleChange = autoPilotState.adjustmentRateDegPerSec * deltaSeconds;
-    const maxDeployChange = autoPilotState.adjustmentRatePctPerSec * deltaSeconds;
-
-    // Smoothly adjust angle toward target
-    let newAngleDeg = currentAngleDeg;
-    const angleDiff = targetAngleDeg - currentAngleDeg;
-    if (Math.abs(angleDiff) > 0.5) {
-        const angleChange = Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), maxAngleChange);
-        newAngleDeg = currentAngleDeg + angleChange;
-        newAngleDeg = Math.max(-90, Math.min(90, newAngleDeg));
-        setSailAngle(player, newAngleDeg * Math.PI / 180);
-    }
-
-    // Smoothly adjust deployment toward target
-    let newDeploy = currentDeploy;
-    const deployDiff = targetDeploy - currentDeploy;
-    if (Math.abs(deployDiff) > 1) {
-        const deployChange = Math.sign(deployDiff) * Math.min(Math.abs(deployDiff), maxDeployChange);
-        newDeploy = currentDeploy + deployChange;
-        newDeploy = Math.max(0, Math.min(100, newDeploy));
-        setSailDeployment(player, newDeploy);
-    }
-
-    // Smoothly adjust pitch toward target (for 3D maneuvers)
-    const currentPitchDeg = (player.sail.pitchAngle || 0) * 180 / Math.PI;
-    const targetPitchDeg = plan.recommendedPitch || 0;
-    let newPitchDeg = currentPitchDeg;
-    const pitchDiff = targetPitchDeg - currentPitchDeg;
-    if (Math.abs(pitchDiff) > 0.5) {
-        const pitchChange = Math.sign(pitchDiff) * Math.min(Math.abs(pitchDiff), maxAngleChange);
-        newPitchDeg = currentPitchDeg + pitchChange;
-        newPitchDeg = Math.max(-90, Math.min(90, newPitchDeg));
-        setSailPitch(player, newPitchDeg * Math.PI / 180);
-    }
-
-    // Update UI sliders to reflect autopilot changes
-    const deploySlider = document.getElementById('sailDeployment');
-    const angleSlider = document.getElementById('sailAngle');
-    const pitchSlider = document.getElementById('sailPitch');
-    const deployValue = document.getElementById('sailDeployValue');
-    const angleValue = document.getElementById('sailAngleValue');
-    const pitchValue = document.getElementById('sailPitchValue');
-
-    if (deploySlider) deploySlider.value = newDeploy;
-    if (angleSlider) angleSlider.value = newAngleDeg;
-    if (pitchSlider) pitchSlider.value = newPitchDeg;
-    // Helper to format values - show decimal only if not a whole number
-    const formatValue = (val, suffix) => {
-        const display = Number.isInteger(val) ? val : val.toFixed(1);
-        return display + suffix;
-    };
-    if (deployValue) deployValue.textContent = formatValue(newDeploy, '%');
-    if (angleValue) angleValue.textContent = formatValue(newAngleDeg, '°');
-    if (pitchValue) pitchValue.textContent = formatValue(newPitchDeg, '°');
 
     // Update status text
     updateAutoPilotStatusText();
