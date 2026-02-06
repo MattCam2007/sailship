@@ -28,7 +28,7 @@ import {
     setJulianDate,
 } from './gameState.js';
 
-import { destination, setDestination, clearInterceptCache, clearNavPlanCache } from './navigation.js';
+import { destination, setDestination, clearInterceptCache } from './navigation.js';
 import { getPlayerShip } from '../data/ships.js';
 import { camera, setCameraFollow } from './camera.js';
 import { ASSET_BASE_URL } from '../config.js';
@@ -177,7 +177,6 @@ export function deserializeGameState(state) {
     if (state.navigation && state.navigation.destination) {
         setDestination(state.navigation.destination);
         clearInterceptCache();
-        clearNavPlanCache();
     }
 
     // Restore autopilot
