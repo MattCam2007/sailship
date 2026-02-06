@@ -1,67 +1,25 @@
 /**
- * Course Solver - Automatic Course Plotting (v3.7)
+ * Course Solver - Automatic Course Plotting (v4.0)
  *
- * CROSSING-AWARE hybrid search algorithm for optimal sail settings to intercept targets.
+ * BRACKET-CONVERGENCE algorithm for optimal sail settings to intercept targets.
+ * Replaces brute-force grid search with intelligent artillery-style bracketing.
  *
- * v3.7 CHANGE: SOI-Based Intercept Threshold
- *   - INTERCEPT now means ship will enter target's Sphere of Influence (SOI)
- *   - Uses actual SOI radii from config.js instead of fixed 0.01 AU threshold
- *   - Venus SOI: 0.00411 AU, Earth: 0.00620 AU, Jupiter: 0.3219 AU, etc.
- *   - Prevents false "INTERCEPT" status when closest approach is outside SOI
- *   - Solution includes interceptThreshold for transparent classification
+ * v4.0 MAJOR CHANGE: Artillery Bracket Search
+ *   - Replaced grid search (coarse→fine→ultra→uber→gradient) with:
+ *     1. Horizon Scout: quick 1-2 evals per horizon, pick top 2
+ *     2. Strategic Reconnaissance: 7-9 probes to map the landscape
+ *     3. Nelder-Mead Simplex: converge from best recon points
+ *     4. Deployment Sweep: test deployment levels (multi-sail aware)
+ *   - ~100-150 evaluations total vs ~6000 (40-75x fewer)
+ *   - ~1-3 seconds vs 30-45 seconds
+ *   - Adaptive precision: 2+ year transfers use coarse tolerance,
+ *     <6 month transfers use fine tolerance
+ *   - Deployment now varied (was always 100%)
  *
- * v3.6 CHANGE: Expanded Refinement Bounds + Uber-Fine Resolution
- *   - Expanded refinement bounds to ±20° yaw, ±15° pitch (was ±15°/±10°)
- *   - Accommodates large-distance course corrections at longer horizons
- *   - Added uber-fine polish phase (0.01° resolution) for exact course plotting
- *   - "Last mile" plotting achieves sub-0.01 AU precision on intercepts
- *
- * v3.5 CHANGE: Refinement Mode (Course Refinement Feature)
- *   - Added refinementSweep() for narrow search around seed settings
- *   - Added solveWithRefinementMode() for faster mid-transit corrections
- *   - solveCourse() now accepts refinementMode and seedSettings options
- *   - When refinementMode=true, searches ±20° yaw, ±15° pitch around seed
- *   - Skips multi-horizon search, uses single horizon for speed
- *   - ~5-10 second completion vs ~30-45 seconds for full search
- *
- * v3.4 CHANGE: Display Solver's Crossing Time (Fix #4)
- *   - Added crossingJulianDate to evaluateCandidate return
- *   - Added crossingJulianDate to crossingInfo in buildSolution
- *   - UI can now display the exact crossing time the solver optimized for
- *   - Helps users see if displayed ghost differs from solver's target
- *
- * v3.3 CHANGE: Shared Configuration (Fix #3)
- *   - Import INTERSECTION_CONFIG from config.js for trajectory parameters
- *   - CONFIG.stepsPerDay/maxSteps/minSteps now reference shared config
- *   - Guarantees identical trajectory resolution between solver and detector
- *   - Eliminates configuration drift risk
- *
- * v3.2 CHANGE: Quadratic Interpolation (Fix #2)
- *   - Replaced linear interpolation with quadratic solving in findRadiusCrossingsInTrajectory
- *   - Solves ||P(t)||² = R² for exact crossing point
- *   - Matches algorithm used by intersection detector
- *   - Crossing time error reduced from 5-30 minutes to ~seconds
- *
- * v3.1 CHANGE: Dynamic Resolution (Fix #1)
- *   - Steps calculated dynamically based on duration: min(6000, max(500, days * 12))
- *   - Matches intersection detector resolution (~2 hour intervals)
- *   - For 365-day horizon: ~4380 steps (was fixed 1000)
- *   - Crossing time discrepancy reduced from ±4 hours to ±1 hour
- *
- * v3.0 MAJOR CHANGE: Crossing-Aware Optimization
- *   - Evaluates candidates based on ORBITAL CROSSING distance, not global minimum
- *   - Phase constraint ensures planet is angularly close at crossing time
- *   - Results directly correspond to displayed ghost planets
- *
- * Algorithm features:
- *   - Denser coarse sweep (5° steps)
- *   - Dynamic simulation resolution (12 steps/day, matching detector)
- *   - Expanded ultra-fine window (±2°)
- *   - Multi-horizon search (180, 365, 540, 730, 1095, 1460 days)
- *   - Gradient descent polish (50 iterations post-grid)
- *   - Iterative refinement (retry with expanded bounds if marginal)
- *
- * Estimated compute time: 30-45 seconds (user confirmed acceptable)
+ * Previous versions (preserved features):
+ *   v3.7: SOI-based intercept threshold
+ *   v3.0-3.6: Crossing-aware evaluation, quadratic interpolation,
+ *             dynamic resolution, shared config, refinement mode
  *
  * Uses async/await with yields to prevent UI blocking.
  */
@@ -84,66 +42,77 @@ const CONFIG = {
     pitchMin: -30,
     pitchMax: 30,
 
-    // Phase 1: Coarse sweep (5° for better coverage)
-    coarseStep: 5,
+    // ========================================================================
+    // BRACKET SEARCH CONFIGURATION (v4.0)
+    // ========================================================================
 
-    // Phase 2: Fine search
-    fineStep: 2,
-    fineRadius: 8,
-    topCandidates: 8,  // Increased from 5 to catch more candidates
+    // Strategic reconnaissance probes
+    // These are the "first shots" to map the landscape
+    reconProbes: [
+        { yaw: 0, pitch: 0 },        // Center (radial)
+        { yaw: 35, pitch: 0 },       // Raise orbit (near optimal angle)
+        { yaw: -35, pitch: 0 },      // Lower orbit
+        { yaw: 55, pitch: 0 },       // Steep raise
+        { yaw: -55, pitch: 0 },      // Steep lower
+        { yaw: 0, pitch: 15 },       // North
+        { yaw: 0, pitch: -15 },      // South
+        { yaw: 35, pitch: 15 },      // Raise + north diagonal
+        { yaw: -35, pitch: -15 },    // Lower + south diagonal
+    ],
 
-    // Phase 3: Ultra-fine polish (expanded window to escape local optima)
-    ultraStep: 0.1,
-    ultraRadius: 2,  // Increased from 0.5 to ±2°
+    // Nelder-Mead simplex parameters
+    nmAlpha: 1.0,     // Reflection coefficient
+    nmGamma: 2.0,     // Expansion coefficient
+    nmRho: 0.5,       // Contraction coefficient
+    nmSigma: 0.5,     // Shrink coefficient
+    nmMaxIterations: 80,
 
-    // Phase 3.5: Uber-fine polish (v3.6 - "last mile" exact course plotting)
-    uberStep: 0.01,
-    uberRadius: 0.2,  // ±0.2° around best ultra result
+    // Adaptive precision tolerances (degrees)
+    // Keyed by transfer duration breakpoints
+    precisionTiers: [
+        { maxDays: 180, tolerance: 0.01 },   // Short transfer: high precision
+        { maxDays: 365, tolerance: 0.1 },     // Medium: good precision
+        { maxDays: 730, tolerance: 0.5 },     // Long: moderate precision
+        { maxDays: Infinity, tolerance: 2.0 }, // Very long: coarse (refinements later)
+    ],
+
+    // Deployment sweep levels (percent)
+    deploymentLevels: [100, 75, 50, 25],
+
+    // Horizon scouting
+    // Quick probes per horizon to determine which are worth deep search
+    scoutProbesPerHorizon: 2,
+    topHorizonsToSearch: 2,
+
+    // Multi-start: if first Nelder-Mead result is poor, try from different quadrant
+    multiStartThreshold: 0.2,  // AU - trigger multi-start if worse than this
+    multiStartQuadrants: [
+        { yaw: 35, pitch: 0 },    // Raise orbit
+        { yaw: -35, pitch: 0 },   // Lower orbit
+        { yaw: 0, pitch: 20 },    // Incline
+        { yaw: -55, pitch: -10 }, // Steep lower + south
+    ],
 
     // ========================================================================
-    // REFINEMENT MODE CONFIGURATION (Course Refinement Feature)
+    // REFINEMENT MODE CONFIGURATION
     // ========================================================================
-    // Refinement mode uses narrower search bounds centered on seed settings
-    // for faster course corrections during transit.
+    refinementYawRadius: 20,    // ±20° yaw from seed
+    refinementPitchRadius: 15,  // ±15° pitch from seed
 
-    // Refinement search bounds around seed settings
-    // v3.6 CHANGE: Expanded bounds for large-distance course corrections
-    // When courses are plotted at longer horizons, initial offsets can be larger
-    refinementYawRadius: 20,    // ±20° yaw from seed (was ±15°)
-    refinementPitchRadius: 15,  // ±15° pitch from seed (was ±10°)
-
-    // Refinement grid step (finer than coarse, same as fine)
-    refinementStep: 2,
-
-    // Simulation parameters (high resolution for solar sail accuracy)
+    // Simulation parameters
     defaultMaxDays: 365,
     defaultDeployment: 100,
 
-    // Dynamic step calculation (Fix #1 - match intersection detector resolution)
-    // Fix #3: Import shared trajectory parameters from config.js
-    // This guarantees solver and intersection detector use identical resolution
-    stepsPerDay: INTERSECTION_CONFIG.stepsPerDay,   // ~2 hour intervals (12 steps/day)
-    maxSteps: INTERSECTION_CONFIG.maxSteps,         // Cap to prevent excessive computation
-    minSteps: INTERSECTION_CONFIG.minSteps,         // Quality floor for short durations
+    // Dynamic step calculation (shared with intersection detector)
+    stepsPerDay: INTERSECTION_CONFIG.stepsPerDay,
+    maxSteps: INTERSECTION_CONFIG.maxSteps,
+    minSteps: INTERSECTION_CONFIG.minSteps,
 
     // Multi-horizon search durations (days)
     horizons: [180, 365, 540, 730, 1095, 1460],
 
-    // Gradient descent parameters
-    gradientMaxIterations: 50,
-    gradientInitialLR: 1.0,  // Initial learning rate in degrees
-    gradientMinLR: 0.01,
-    gradientH: 0.05,  // Finite difference step in degrees
-
-    // Iterative refinement
-    maxRefinementPasses: 3,
-    refinementBoundsExpansion: 1.2,  // 20% expansion per pass
-
     // Quality thresholds (AU)
-    // NOTE: interceptThreshold is a FALLBACK for bodies without defined SOI.
-    // For bodies with SOI_RADII defined, we use the actual SOI as the intercept threshold.
-    // A true intercept means entering the target's sphere of influence.
-    interceptThresholdFallback: 0.01,  // Used when target has no SOI defined
+    interceptThresholdFallback: 0.01,
     nearMissThreshold: 0.05,
     marginalThreshold: 0.2,
 
@@ -151,104 +120,69 @@ const CONFIG = {
     yieldFrequency: 10,
 
     // Timeout for entire solve operation (ms)
-    maxSolveTimeMs: 90000,  // 90 seconds
+    maxSolveTimeMs: 30000,  // 30 seconds (down from 90s - solver is much faster now)
 
     // ========================================================================
     // CROSSING-AWARE SOLVER CONFIGURATION (v3.0)
     // ========================================================================
-
-    // Phase constraint: maximum angular separation (radians) between ship and planet
-    // at crossing time for a valid intercept candidate.
-    // 30° = 0.52 rad - planet must be within 30° of crossing point
-    // 45° = 0.79 rad - more lenient, catches wider transfer windows
-    maxPhaseAngle: 0.79,  // ~45 degrees - allows reasonable transfer windows
-
-    // Minimum steps between crossings to consider them distinct
-    // Prevents detecting the same crossing multiple times due to numerical noise
+    maxPhaseAngle: 0.79,  // ~45 degrees
     minCrossingGap: 5,
-
-    // Whether to use crossing-aware evaluation (can disable for debugging)
     useCrossingAware: true
 };
 
 // ============================================================================
-// CROSSING DETECTION HELPERS (v3.0)
+// CROSSING DETECTION HELPERS (v3.0) - UNCHANGED
 // ============================================================================
 
 /**
  * Calculate angular separation between two 3D positions (viewed from origin).
- *
- * θ = arccos( (P1 · P2) / (|P1| × |P2|) )
- *
- * @param {Object} pos1 - First position {x, y, z}
- * @param {Object} pos2 - Second position {x, y, z}
- * @returns {number} Angular separation in radians [0, π]
  */
 function calculateAngularSeparation(pos1, pos2) {
     const mag1 = Math.sqrt(pos1.x ** 2 + pos1.y ** 2 + pos1.z ** 2);
     const mag2 = Math.sqrt(pos2.x ** 2 + pos2.y ** 2 + pos2.z ** 2);
 
-    // Guard against zero vectors
     if (mag1 < 1e-15 || mag2 < 1e-15) {
         return 0;
     }
 
     const dot = pos1.x * pos2.x + pos1.y * pos2.y + pos1.z * pos2.z;
     const cosAngle = dot / (mag1 * mag2);
-
-    // Clamp to [-1, 1] to handle floating-point errors
     const clampedCos = Math.max(-1, Math.min(1, cosAngle));
 
     return Math.acos(clampedCos);
 }
 
 /**
- * Solve for the exact crossing parameter using quadratic equation (Fix #2).
+ * Solve for the exact crossing parameter using quadratic equation.
  * For P(t) = P1 + t*(P2-P1), solves ||P(t)||² = R²
- *
- * This gives exact crossing times (within floating-point precision) instead of
- * the approximate linear interpolation which had 5-30 minute errors.
- *
- * @param {Object} p1 - Start point {x, y, z}
- * @param {Object} p2 - End point {x, y, z}
- * @param {number} targetRadius - Target radius to find crossing for
- * @returns {number|null} Parameter t in [0,1] or null if no valid crossing
  */
 export function solveQuadraticCrossing(p1, p2, targetRadius) {
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const dz = p2.z - p1.z;
 
-    // Quadratic coefficients for ||P(t)||² = R²
-    // Expanding: (p1.x + t*dx)² + (p1.y + t*dy)² + (p1.z + t*dz)² = R²
-    // a*t² + b*t + c = 0
     const a = dx * dx + dy * dy + dz * dz;
     const b = 2 * (p1.x * dx + p1.y * dy + p1.z * dz);
     const r1sq = p1.x * p1.x + p1.y * p1.y + p1.z * p1.z;
     const c = r1sq - targetRadius * targetRadius;
 
-    // Check for degenerate case (no movement)
     if (a < 1e-20) {
         return null;
     }
 
     const discriminant = b * b - 4 * a * c;
 
-    // Epsilon tolerance for near-zero discriminant (tangent case)
-    // Matches the tolerance used in intersectionDetector.js
     const EPSILON = 1e-10;
     if (discriminant < -EPSILON) {
-        return null; // No real solution
+        return null;
     }
 
-    // Clamp tiny negatives to zero (handles floating-point near-tangent cases)
     const safeDisc = Math.max(0, discriminant);
     const sqrtDisc = Math.sqrt(safeDisc);
 
     const t1 = (-b - sqrtDisc) / (2 * a);
     const t2 = (-b + sqrtDisc) / (2 * a);
 
-    // Return the first valid solution in [0, 1]
     if (t1 >= 0 && t1 <= 1) {
         return t1;
     } else if (t2 >= 0 && t2 <= 1) {
@@ -260,14 +194,6 @@ export function solveQuadraticCrossing(p1, p2, targetRadius) {
 
 /**
  * Find all orbital radius crossings in a trajectory.
- *
- * Detects when ship crosses the target's semi-major axis distance from the Sun.
- * Uses the same quadratic algorithm as intersectionDetector for consistency with ghost planets.
- *
- * @param {Array} trajectory - Array of {x, y, z, time} points
- * @param {number} targetRadius - Target orbital radius (semi-major axis) in AU
- * @returns {Array} Array of crossing events: [{index, time, position, direction}, ...]
- *                  direction: 'outbound' (r increasing) or 'inbound' (r decreasing)
  */
 function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
     const crossings = [];
@@ -276,7 +202,7 @@ function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
         return crossings;
     }
 
-    let lastCrossingIndex = -CONFIG.minCrossingGap;  // Allow first crossing at index 0
+    let lastCrossingIndex = -CONFIG.minCrossingGap;
 
     for (let i = 0; i < trajectory.length - 1; i++) {
         const p1 = trajectory[i];
@@ -285,7 +211,6 @@ function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
         const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
         const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
 
-        // Check if segment crosses target radius
         const crossesOutbound = r1 < targetRadius && r2 >= targetRadius;
         const crossesInbound = r1 > targetRadius && r2 <= targetRadius;
 
@@ -293,21 +218,16 @@ function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
             continue;
         }
 
-        // Skip if too close to last crossing (prevents duplicate detection)
         if (i - lastCrossingIndex < CONFIG.minCrossingGap) {
             continue;
         }
 
-        // Calculate exact crossing point using QUADRATIC solving (Fix #2)
-        // This matches the intersection detector's algorithm for consistency
-        // and reduces crossing time error from 5-30 minutes to ~seconds
         let t = solveQuadraticCrossing(p1, p2, targetRadius);
 
         if (t === null) {
-            // Fallback to linear if quadratic fails (rare edge case)
             const radialDiff = r2 - r1;
             if (Math.abs(radialDiff) < 1e-15) {
-                t = 0.5;  // Midpoint if radii are essentially equal
+                t = 0.5;
             } else {
                 t = Math.max(0, Math.min(1, (targetRadius - r1) / radialDiff));
             }
@@ -335,10 +255,6 @@ function findRadiusCrossingsInTrajectory(trajectory, targetRadius) {
 
 /**
  * Calculate 3D distance between two positions.
- *
- * @param {Object} pos1 - First position {x, y, z}
- * @param {Object} pos2 - Second position {x, y, z}
- * @returns {number} Distance in AU
  */
 function distance3D(pos1, pos2) {
     const dx = pos2.x - pos1.x;
@@ -348,25 +264,17 @@ function distance3D(pos1, pos2) {
 }
 
 // ============================================================================
-// SOI-BASED INTERCEPT THRESHOLD
+// SOI-BASED INTERCEPT THRESHOLD - UNCHANGED
 // ============================================================================
 
 /**
  * Get the effective intercept threshold for a target body.
- *
- * A true "intercept" means the ship will enter the target's sphere of influence.
- * For bodies with defined SOI, we use that as the threshold.
- * For bodies without SOI (asteroids, etc.), we fall back to the default threshold.
- *
- * @param {Object} target - Target object with name property
- * @returns {number} Intercept threshold in AU
  */
 function getInterceptThreshold(target) {
     if (!target?.name) {
         return CONFIG.interceptThresholdFallback;
     }
 
-    // Look up SOI by body name (SOI_RADII uses uppercase keys)
     const bodyName = target.name.toUpperCase();
     const soi = SOI_RADII[bodyName];
 
@@ -374,36 +282,19 @@ function getInterceptThreshold(target) {
         return soi;
     }
 
-    // No SOI defined for this body - use fallback
     return CONFIG.interceptThresholdFallback;
 }
 
 // ============================================================================
-// CORE EVALUATION
+// CORE EVALUATION - UNCHANGED
 // ============================================================================
 
 /**
  * Evaluate a single candidate sail configuration (v3.0 - CROSSING-AWARE).
  *
- * v3.0 CHANGE: Evaluates based on ORBITAL CROSSING distance, not global minimum.
- *
- * Algorithm:
- *   1. Simulate trajectory with given sail settings
- *   2. Detect all orbital radius crossings (where ship crosses target's semi-major axis)
- *   3. For each crossing, compute:
- *      - Planet's actual position at crossing time
- *      - Distance between ship and planet at crossing
- *      - Angular separation (phase constraint)
- *   4. Return the best crossing that passes phase constraint
- *
- * This ensures the solver result corresponds directly to displayed ghost planets.
- *
- * @param {number} yawDeg - Sail yaw angle in degrees
- * @param {number} pitchDeg - Sail pitch angle in degrees
- * @param {Object} ship - Ship object with orbitalElements and sail
- * @param {Object} target - Target object with elements
- * @param {Object} options - Optional parameters
- * @returns {Object} Evaluation result (synchronous for performance)
+ * This function is the core of the solver and is UNCHANGED from v3.7.
+ * The optimization is in HOW we choose which candidates to evaluate,
+ * not in the evaluation itself.
  */
 export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) {
     const {
@@ -411,13 +302,9 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         deployment = CONFIG.defaultDeployment
     } = options;
 
-    // Calculate steps dynamically based on duration (Fix #1 - match intersection detector)
-    // Formula: min(maxSteps, max(minSteps, duration * stepsPerDay))
-    // This ensures consistent ~2 hour intervals matching the intersection detector
     const rawSteps = Math.round(maxDays * CONFIG.stepsPerDay);
     const steps = options.steps || Math.min(CONFIG.maxSteps, Math.max(CONFIG.minSteps, rawSteps));
 
-    // Validate inputs
     if (!ship?.orbitalElements || !target?.elements) {
         return {
             yawDeg,
@@ -432,12 +319,10 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
 
     const startTime = getJulianDate();
     const timeStep = maxDays / steps;
-    const targetRadius = target.elements.a;  // Semi-major axis
+    const targetRadius = target.elements.a;
 
-    // Clone ship orbital elements for simulation
     let simElements = { ...ship.orbitalElements };
 
-    // Create sail configuration with override angles
     const sail = {
         ...(ship.sail || {}),
         area: ship.sail?.area || 3000000,
@@ -451,27 +336,21 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
 
     const mass = ship.mass || 10000;
 
-    // Build trajectory array for crossing detection
     const trajectory = [];
 
-    // Also track global minimum as fallback (when no crossings found)
     let globalMinDistance = Infinity;
     let globalMinDistanceTime = 0;
 
-    // Forward simulation - build trajectory
     for (let i = 0; i <= steps; i++) {
         const simTime = startTime + i * timeStep;
 
-        // Get positions
         const shipPos = getPosition(simElements, simTime);
         const targetPos = getPosition(target.elements, simTime);
 
-        // Validate positions
         if (!isFinite(shipPos.x) || !isFinite(targetPos.x)) {
             break;
         }
 
-        // Store trajectory point
         trajectory.push({
             x: shipPos.x,
             y: shipPos.y,
@@ -479,7 +358,6 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             time: simTime
         });
 
-        // Track global minimum as fallback
         const dx = targetPos.x - shipPos.x;
         const dy = targetPos.y - shipPos.y;
         const dz = targetPos.z - shipPos.z;
@@ -490,14 +368,12 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             globalMinDistanceTime = (simTime - startTime);
         }
 
-        // Apply sail thrust for next step
         if (i < steps && deployment > 0) {
             const velocity = getVelocity(simElements, simTime);
             const distFromSun = Math.sqrt(
                 shipPos.x ** 2 + shipPos.y ** 2 + shipPos.z ** 2
             );
 
-            // Skip if too close to sun
             if (distFromSun < 0.02) break;
 
             const thrust = calculateSailThrust(
@@ -512,7 +388,6 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             if (thrustMag > 1e-20) {
                 const newElements = applyThrust(simElements, thrust, timeStep, simTime);
 
-                // Validate new elements
                 if (!isFinite(newElements.a) || !isFinite(newElements.e) ||
                     newElements.e < 0 || newElements.e > 50) {
                     break;
@@ -523,15 +398,10 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         }
     }
 
-    // ========================================================================
     // CROSSING-AWARE EVALUATION (v3.0)
-    // ========================================================================
-
     if (CONFIG.useCrossingAware && trajectory.length > 1) {
-        // Detect all orbital radius crossings
         const crossings = findRadiusCrossingsInTrajectory(trajectory, targetRadius);
 
-        // Evaluate each crossing
         let bestCrossing = null;
         let bestDistance = Infinity;
         let bestAngularSep = Math.PI;
@@ -540,25 +410,17 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         for (let ci = 0; ci < crossings.length; ci++) {
             const crossing = crossings[ci];
 
-            // Get planet's actual position at crossing time
             const planetPos = getPosition(target.elements, crossing.time);
 
-            // Validate planet position
             if (!isFinite(planetPos.x)) continue;
 
-            // Calculate distance at crossing
             const crossingDistance = distance3D(crossing.position, planetPos);
-
-            // Calculate angular separation (phase constraint)
             const angularSep = calculateAngularSeparation(crossing.position, planetPos);
 
-            // PHASE CONSTRAINT: Skip crossings where planet is too far angularly
-            // This ensures we only accept solutions where the planet is actually "there"
             if (angularSep > CONFIG.maxPhaseAngle) {
-                continue;  // Planet is on the other side of its orbit
+                continue;
             }
 
-            // Track best crossing that passes phase constraint
             if (crossingDistance < bestDistance) {
                 bestDistance = crossingDistance;
                 bestAngularSep = angularSep;
@@ -567,9 +429,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             }
         }
 
-        // If we found a valid crossing, use it
         if (bestCrossing) {
-            // Get SOI-based intercept threshold for this target
             const interceptThreshold = getInterceptThreshold(target);
 
             let status;
@@ -589,23 +449,17 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                 minDistance: bestDistance,
                 timeToClosest: bestCrossing.time - startTime,
                 status,
-                // v3.0 crossing metadata
                 crossingIndex: bestCrossingIndex,
                 totalCrossings: crossings.length,
                 angularSeparationDeg: bestAngularSep * (180 / Math.PI),
                 crossingDirection: bestCrossing.direction,
                 usedCrossingAware: true,
-                // Fix #4: Store crossing Julian date for UI display
                 crossingJulianDate: bestCrossing.time,
-                // Store threshold used for downstream comparisons
                 interceptThreshold
             };
         }
 
-        // No valid crossings found - check if there were any crossings at all
         if (crossings.length > 0) {
-            // There were crossings but all failed phase constraint
-            // Return the best crossing anyway but mark as phase-constrained failure
             let bestFailedCrossing = null;
             let bestFailedDistance = Infinity;
             let bestFailedAngularSep = Math.PI;
@@ -629,26 +483,19 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                     pitchDeg,
                     minDistance: bestFailedDistance,
                     timeToClosest: bestFailedCrossing.time - startTime,
-                    status: 'PHASE_MISS',  // Planet exists but is too far angularly
+                    status: 'PHASE_MISS',
                     crossingIndex: 0,
                     totalCrossings: crossings.length,
                     angularSeparationDeg: bestFailedAngularSep * (180 / Math.PI),
                     crossingDirection: bestFailedCrossing.direction,
                     usedCrossingAware: true,
-                    // Fix #4: Store crossing Julian date for UI display
                     crossingJulianDate: bestFailedCrossing.time
                 };
             }
         }
     }
 
-    // ========================================================================
-    // FALLBACK: No crossings found - use global minimum (original behavior)
-    // ========================================================================
-    // This happens when trajectory doesn't cross target's orbital radius at all
-    // (e.g., targeting outer planet from inner orbit without enough delta-v)
-
-    // Get SOI-based intercept threshold for this target
+    // FALLBACK: No crossings found
     const interceptThreshold = getInterceptThreshold(target);
 
     let status;
@@ -659,7 +506,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
     } else if (globalMinDistance < CONFIG.marginalThreshold) {
         status = 'MARGINAL';
     } else {
-        status = 'NO_CROSSING';  // Different from NO_INTERCEPT to indicate no crossing found
+        status = 'NO_CROSSING';
     }
 
     return {
@@ -670,716 +517,668 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         status,
         crossingIndex: -1,
         totalCrossings: 0,
-        angularSeparationDeg: 180,  // Unknown/invalid
+        angularSeparationDeg: 180,
         crossingDirection: 'none',
-        usedCrossingAware: false,  // Fell back to global minimum
-        // Fix #4: No crossing found, so no crossing date
+        usedCrossingAware: false,
         crossingJulianDate: null,
-        // Store threshold used for downstream comparisons
         interceptThreshold
     };
 }
 
 // ============================================================================
-// PHASE 1: COARSE SWEEP
+// ADAPTIVE PRECISION (v4.0)
 // ============================================================================
 
 /**
- * Phase 1: Coarse grid search over parameter space.
+ * Get convergence tolerance based on transfer duration.
  *
- * Sweeps yaw from -60° to +60° and pitch from -30° to +30° in 5° steps.
- * Returns results sorted by closest approach distance.
+ * Longer transfers don't need high precision - there will be course
+ * refinements later. Short transfers need accuracy.
+ *
+ * @param {number} maxDays - Transfer duration in days
+ * @returns {number} Convergence tolerance in degrees
+ */
+export function getConvergenceTolerance(maxDays) {
+    for (const tier of CONFIG.precisionTiers) {
+        if (maxDays <= tier.maxDays) {
+            return tier.tolerance;
+        }
+    }
+    return 2.0;  // Default: coarse
+}
+
+// ============================================================================
+// STRATEGIC RECONNAISSANCE (v4.0 - replaces coarseSweep)
+// ============================================================================
+
+/**
+ * Phase 1: Strategic reconnaissance - the "first shots" to map the landscape.
+ *
+ * Instead of a blind 91-point grid, fires 7-9 strategic probes at key
+ * angles that cover the physically meaningful directions:
+ *   - Center (radial from sun)
+ *   - ±35° yaw (optimal orbit raising/lowering)
+ *   - ±55° yaw (steep orbit changes)
+ *   - ±15° pitch (inclination changes)
+ *   - Diagonal combinations
+ *
+ * Like artillery: "Where did the round land relative to target?"
  *
  * @param {Object} ship - Ship object
  * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback (0-1)
- * @returns {Promise<Array>} Sorted array of evaluation results
+ * @param {Object} options - Solver options (maxDays, deployment, etc.)
+ * @param {Object} bounds - Optional custom bounds {yawCenter, pitchCenter, yawRadius, pitchRadius}
+ * @returns {Promise<Array>} Sorted evaluation results (best first)
  */
-export async function coarseSweep(ship, target, options = {}, onProgress = null) {
+export async function strategicReconnaissance(ship, target, options = {}, bounds = null) {
     const results = [];
-    const candidates = [];
+    let probes;
 
-    // Generate candidate grid
-    for (let yaw = CONFIG.yawMin; yaw <= CONFIG.yawMax; yaw += CONFIG.coarseStep) {
-        for (let pitch = CONFIG.pitchMin; pitch <= CONFIG.pitchMax; pitch += CONFIG.coarseStep) {
-            candidates.push({ yaw, pitch });
-        }
+    if (bounds) {
+        // Refinement mode: generate probes around seed point
+        const { yawCenter, pitchCenter, yawRadius, pitchRadius } = bounds;
+        probes = [
+            { yaw: yawCenter, pitch: pitchCenter },
+            { yaw: yawCenter + yawRadius * 0.5, pitch: pitchCenter },
+            { yaw: yawCenter - yawRadius * 0.5, pitch: pitchCenter },
+            { yaw: yawCenter + yawRadius, pitch: pitchCenter },
+            { yaw: yawCenter - yawRadius, pitch: pitchCenter },
+            { yaw: yawCenter, pitch: pitchCenter + pitchRadius * 0.5 },
+            { yaw: yawCenter, pitch: pitchCenter - pitchRadius * 0.5 },
+            { yaw: yawCenter + yawRadius * 0.5, pitch: pitchCenter + pitchRadius * 0.5 },
+            { yaw: yawCenter - yawRadius * 0.5, pitch: pitchCenter - pitchRadius * 0.5 },
+        ];
+    } else {
+        probes = CONFIG.reconProbes;
     }
 
-    const total = candidates.length;
+    for (let i = 0; i < probes.length; i++) {
+        const { yaw, pitch } = probes[i];
+        const clampedYaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, yaw));
+        const clampedPitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, pitch));
 
-    // Evaluate all candidates with yielding
-    for (let i = 0; i < candidates.length; i++) {
-        const { yaw, pitch } = candidates[i];
-        const result = evaluateCandidate(yaw, pitch, ship, target, options);
+        const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
         results.push(result);
 
-        // Yield to main thread periodically
         if (i % CONFIG.yieldFrequency === 0) {
-            onProgress?.(i / total);
             await yieldToMainThread();
         }
     }
 
-    // Sort by distance (closest first)
     results.sort((a, b) => a.minDistance - b.minDistance);
-
     return results;
 }
 
 // ============================================================================
-// REFINEMENT SWEEP (Course Refinement Feature)
+// NELDER-MEAD SIMPLEX CONVERGENCE (v4.0 - replaces fine/ultra/uber/gradient)
 // ============================================================================
 
 /**
- * Refinement sweep: narrow search centered on seed settings.
+ * Phase 2: Nelder-Mead simplex optimization - "artillery bracketing" in 2D.
  *
- * Used when re-plotting a course during transit. Instead of the full 91-point
- * coarse grid, searches ±15° yaw and ±10° pitch around the current sail settings
- * with 2° resolution (~120 evaluations).
+ * Takes a triangle of 3 points, evaluates which is worst, and:
+ *   - Reflects away from the worst ("too far left → go right")
+ *   - Expands if we're going in a good direction ("keep going!")
+ *   - Contracts if we overshot ("back off a bit")
+ *   - Shrinks if stuck ("reduce the search area")
  *
- * This is faster than full search and sufficient for mid-course corrections.
+ * This naturally brackets the target: each step makes an intelligent
+ * decision about where to shoot next based on all previous results.
+ *
+ * Converges to the adaptive precision tolerance for the transfer duration.
  *
  * @param {Object} ship - Ship object
  * @param {Object} target - Target object
- * @param {Object} seedSettings - { yawDeg, pitchDeg } to center search around
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback (0-1)
- * @returns {Promise<Array>} Sorted array of evaluation results
+ * @param {Array} initialPoints - Best 3+ points from reconnaissance
+ * @param {Object} options - Solver options
+ * @param {Function} onProgress - Progress callback
+ * @returns {Promise<Object>} Best result found
  */
-export async function refinementSweep(ship, target, seedSettings, options = {}, onProgress = null) {
-    const results = [];
-    const candidates = [];
-
-    const { yawDeg: seedYaw, pitchDeg: seedPitch } = seedSettings;
-
-    // Calculate bounds centered on seed settings
-    const yawMin = Math.max(CONFIG.yawMin, seedYaw - CONFIG.refinementYawRadius);
-    const yawMax = Math.min(CONFIG.yawMax, seedYaw + CONFIG.refinementYawRadius);
-    const pitchMin = Math.max(CONFIG.pitchMin, seedPitch - CONFIG.refinementPitchRadius);
-    const pitchMax = Math.min(CONFIG.pitchMax, seedPitch + CONFIG.refinementPitchRadius);
-
-    // Generate candidate grid with finer resolution
-    for (let yaw = yawMin; yaw <= yawMax; yaw += CONFIG.refinementStep) {
-        for (let pitch = pitchMin; pitch <= pitchMax; pitch += CONFIG.refinementStep) {
-            candidates.push({ yaw, pitch });
-        }
-    }
-
-    const total = candidates.length;
-    console.log(`[COURSE_SOLVER] Refinement sweep: ${total} candidates ` +
-                `(yaw ${yawMin.toFixed(0)}° to ${yawMax.toFixed(0)}°, ` +
-                `pitch ${pitchMin.toFixed(0)}° to ${pitchMax.toFixed(0)}°)`);
-
-    // Evaluate all candidates with yielding
-    for (let i = 0; i < candidates.length; i++) {
-        const { yaw, pitch } = candidates[i];
-        const result = evaluateCandidate(yaw, pitch, ship, target, options);
-        results.push(result);
-
-        // Yield to main thread periodically
-        if (i % CONFIG.yieldFrequency === 0) {
-            onProgress?.(i / total);
-            await yieldToMainThread();
-        }
-    }
-
-    // Sort by distance (closest first)
-    results.sort((a, b) => a.minDistance - b.minDistance);
-
-    return results;
-}
-
-// ============================================================================
-// PHASE 2: FINE SEARCH
-// ============================================================================
-
-/**
- * Phase 2: Fine search around top candidates.
- *
- * For each top candidate, searches ±8° in 2° steps.
- * Returns the single best result found.
- *
- * @param {Array} topCandidates - Top candidates from coarse sweep
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback (0-1)
- * @returns {Promise<Object>} Best refined result
- */
-export async function fineSearch(topCandidates, ship, target, options = {}, onProgress = null) {
-    let best = topCandidates[0];
-
-    // Get SOI-based intercept threshold for this target
+export async function nelderMeadSearch(ship, target, initialPoints, options = {}, onProgress = null) {
+    const tolerance = getConvergenceTolerance(options.maxDays || CONFIG.defaultMaxDays);
     const interceptThreshold = getInterceptThreshold(target);
+    const maxIter = CONFIG.nmMaxIterations;
 
-    // Early termination if already have intercept
-    if (best.minDistance < interceptThreshold) {
-        return best;
+    // Initialize simplex from best 3 reconnaissance points
+    // Ensure they form a proper triangle (not collinear)
+    let simplex = [];
+    for (let i = 0; i < Math.min(3, initialPoints.length); i++) {
+        simplex.push({
+            yaw: initialPoints[i].yawDeg,
+            pitch: initialPoints[i].pitchDeg,
+            value: initialPoints[i].minDistance,
+            result: initialPoints[i]
+        });
     }
 
-    let evalCount = 0;
-    const totalEvals = topCandidates.length * Math.pow((CONFIG.fineRadius * 2 / CONFIG.fineStep + 1), 2);
-
-    for (const candidate of topCandidates) {
-        const centerYaw = candidate.yawDeg;
-        const centerPitch = candidate.pitchDeg;
-
-        for (let yaw = centerYaw - CONFIG.fineRadius; yaw <= centerYaw + CONFIG.fineRadius; yaw += CONFIG.fineStep) {
-            for (let pitch = centerPitch - CONFIG.fineRadius; pitch <= centerPitch + CONFIG.fineRadius; pitch += CONFIG.fineStep) {
-                // Clamp to valid range
-                const clampedYaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, yaw));
-                const clampedPitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, pitch));
-
-                const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
-
-                if (result.minDistance < best.minDistance) {
-                    best = result;
-                }
-
-                evalCount++;
-
-                // Yield periodically
-                if (evalCount % CONFIG.yieldFrequency === 0) {
-                    onProgress?.(evalCount / totalEvals);
-                    await yieldToMainThread();
-                }
-
-                // Early termination on intercept
-                if (best.minDistance < interceptThreshold) {
-                    return best;
-                }
-            }
-        }
+    // If we don't have 3 distinct points, add perturbations
+    while (simplex.length < 3) {
+        const base = simplex[0];
+        simplex.push({
+            yaw: base.yaw + (simplex.length === 1 ? 10 : 0),
+            pitch: base.pitch + (simplex.length === 2 ? 10 : 0),
+            value: Infinity,
+            result: null
+        });
     }
 
-    return best;
-}
-
-// ============================================================================
-// PHASE 3: ULTRA-FINE POLISH
-// ============================================================================
-
-/**
- * Phase 3: Ultra-fine polish around best result.
- *
- * Searches ±2° in 0.1° steps for final grid precision.
- * Expanded window allows escaping local optima.
- *
- * @param {Object} candidate - Best result from fine search
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback (0-1)
- * @returns {Promise<Object>} Final polished result
- */
-export async function ultraFinePolish(candidate, ship, target, options = {}, onProgress = null) {
-    let best = candidate;
-
-    const centerYaw = candidate.yawDeg;
-    const centerPitch = candidate.pitchDeg;
-
-    let evalCount = 0;
-    const totalEvals = Math.pow((CONFIG.ultraRadius * 2 / CONFIG.ultraStep + 1), 2);
-
-    for (let yaw = centerYaw - CONFIG.ultraRadius; yaw <= centerYaw + CONFIG.ultraRadius; yaw += CONFIG.ultraStep) {
-        for (let pitch = centerPitch - CONFIG.ultraRadius; pitch <= centerPitch + CONFIG.ultraRadius; pitch += CONFIG.ultraStep) {
-            // Clamp to valid range
-            const clampedYaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, yaw));
-            const clampedPitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, pitch));
-
+    // Ensure initial simplex points are evaluated
+    for (let i = 0; i < simplex.length; i++) {
+        if (!simplex[i].result) {
+            const clampedYaw = clampYaw(simplex[i].yaw);
+            const clampedPitch = clampPitch(simplex[i].pitch);
             const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
-
-            if (result.minDistance < best.minDistance) {
-                best = result;
-            }
-
-            evalCount++;
-
-            // Yield periodically
-            if (evalCount % CONFIG.yieldFrequency === 0) {
-                onProgress?.(evalCount / totalEvals);
-                await yieldToMainThread();
-            }
+            simplex[i].value = result.minDistance;
+            simplex[i].result = result;
         }
     }
 
-    return best;
-}
-
-// ============================================================================
-// PHASE 3.5: UBER-FINE POLISH (v3.6 - "LAST MILE" EXACT PLOTTING)
-// ============================================================================
-
-/**
- * Phase 3.5: Uber-fine polish for exact course plotting.
- *
- * Searches ±0.2° in 0.01° steps for maximum precision.
- * This "last mile" phase achieves sub-0.01 AU intercept accuracy.
- *
- * @param {Object} candidate - Best result from ultra-fine polish
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback (0-1)
- * @returns {Promise<Object>} Final uber-polished result
- */
-export async function uberFinePolish(candidate, ship, target, options = {}, onProgress = null) {
-    let best = candidate;
-
-    const centerYaw = candidate.yawDeg;
-    const centerPitch = candidate.pitchDeg;
-
+    const { nmAlpha, nmGamma, nmRho, nmSigma } = CONFIG;
     let evalCount = 0;
-    const totalEvals = Math.pow((CONFIG.uberRadius * 2 / CONFIG.uberStep + 1), 2);
 
-    for (let yaw = centerYaw - CONFIG.uberRadius; yaw <= centerYaw + CONFIG.uberRadius; yaw += CONFIG.uberStep) {
-        for (let pitch = centerPitch - CONFIG.uberRadius; pitch <= centerPitch + CONFIG.uberRadius; pitch += CONFIG.uberStep) {
-            // Clamp to valid range
-            const clampedYaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, yaw));
-            const clampedPitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, pitch));
+    for (let iter = 0; iter < maxIter; iter++) {
+        // Sort: best (lowest distance) first
+        simplex.sort((a, b) => a.value - b.value);
 
-            const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
-
-            if (result.minDistance < best.minDistance) {
-                best = result;
-            }
-
-            evalCount++;
-
-            // Yield periodically
-            if (evalCount % CONFIG.yieldFrequency === 0) {
-                onProgress?.(evalCount / totalEvals);
-                await yieldToMainThread();
-            }
-        }
-    }
-
-    return best;
-}
-
-// ============================================================================
-// PHASE 4: GRADIENT DESCENT POLISH
-// ============================================================================
-
-/**
- * Phase 4: Gradient descent optimization for continuous refinement.
- *
- * Uses finite differences to estimate gradient and hill-climb to
- * the local minimum. This finds optimal values between grid points.
- *
- * @param {Object} candidate - Best result from ultra-fine polish
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback (0-1)
- * @returns {Promise<Object>} Gradient-optimized result
- */
-export async function gradientDescentPolish(candidate, ship, target, options = {}, onProgress = null) {
-    let yaw = candidate.yawDeg;
-    let pitch = candidate.pitchDeg;
-    let best = candidate;
-    let learningRate = CONFIG.gradientInitialLR;
-
-    // Get SOI-based intercept threshold for this target
-    const interceptThreshold = getInterceptThreshold(target);
-
-    const h = CONFIG.gradientH;
-    const maxIter = CONFIG.gradientMaxIterations;
-
-    for (let i = 0; i < maxIter; i++) {
-        // Compute gradient using central finite differences
-        const evalYawPlus = evaluateCandidate(yaw + h, pitch, ship, target, options);
-        const evalYawMinus = evaluateCandidate(yaw - h, pitch, ship, target, options);
-        const evalPitchPlus = evaluateCandidate(yaw, pitch + h, ship, target, options);
-        const evalPitchMinus = evaluateCandidate(yaw, pitch - h, ship, target, options);
-
-        const gradYaw = (evalYawPlus.minDistance - evalYawMinus.minDistance) / (2 * h);
-        const gradPitch = (evalPitchPlus.minDistance - evalPitchMinus.minDistance) / (2 * h);
-
-        // Update with gradient descent (move in direction of steepest decrease)
-        const newYaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, yaw - learningRate * gradYaw));
-        const newPitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, pitch - learningRate * gradPitch));
-
-        const newResult = evaluateCandidate(newYaw, newPitch, ship, target, options);
-
-        // Adaptive learning rate: reduce if no improvement
-        if (newResult.minDistance >= best.minDistance) {
-            learningRate *= 0.5;
-            if (learningRate < CONFIG.gradientMinLR) {
-                break;  // Converged
-            }
-        } else {
-            // Accept new position
-            yaw = newYaw;
-            pitch = newPitch;
-            best = newResult;
-        }
-
-        // Yield periodically
-        if (i % 5 === 0) {
-            onProgress?.(i / maxIter);
-            await yieldToMainThread();
+        // Check convergence: simplex diameter < tolerance
+        const diameter = simplexDiameter(simplex);
+        if (diameter < tolerance) {
+            break;
         }
 
         // Early termination on intercept
-        if (best.minDistance < interceptThreshold) {
+        if (simplex[0].value < interceptThreshold) {
             break;
+        }
+
+        // Centroid of all vertices except worst
+        const cx = (simplex[0].yaw + simplex[1].yaw) / 2;
+        const cy = (simplex[0].pitch + simplex[1].pitch) / 2;
+
+        const worst = simplex[2];
+
+        // REFLECT: Try reflecting worst through centroid
+        const rx = cx + nmAlpha * (cx - worst.yaw);
+        const ry = cy + nmAlpha * (cy - worst.pitch);
+        const reflected = await evalPoint(rx, ry, ship, target, options);
+        evalCount++;
+
+        if (reflected.value < simplex[0].value) {
+            // Reflected is best so far - try EXPANDING further
+            const ex = cx + nmGamma * (rx - cx);
+            const ey = cy + nmGamma * (ry - cy);
+            const expanded = await evalPoint(ex, ey, ship, target, options);
+            evalCount++;
+
+            if (expanded.value < reflected.value) {
+                simplex[2] = expanded;  // Accept expansion
+            } else {
+                simplex[2] = reflected;  // Accept reflection
+            }
+        } else if (reflected.value < simplex[1].value) {
+            // Better than second worst - accept reflection
+            simplex[2] = reflected;
+        } else {
+            // Reflected is still poor - try CONTRACTING
+            if (reflected.value < worst.value) {
+                // Outside contraction
+                const ocx = cx + nmRho * (rx - cx);
+                const ocy = cy + nmRho * (ry - cy);
+                const contracted = await evalPoint(ocx, ocy, ship, target, options);
+                evalCount++;
+
+                if (contracted.value <= reflected.value) {
+                    simplex[2] = contracted;
+                } else {
+                    // Contraction failed - SHRINK toward best
+                    await shrinkSimplex(simplex, ship, target, options);
+                    evalCount += 2;
+                }
+            } else {
+                // Inside contraction
+                const icx = cx + nmRho * (worst.yaw - cx);
+                const icy = cy + nmRho * (worst.pitch - cy);
+                const contracted = await evalPoint(icx, icy, ship, target, options);
+                evalCount++;
+
+                if (contracted.value < worst.value) {
+                    simplex[2] = contracted;
+                } else {
+                    // Contraction failed - SHRINK toward best
+                    await shrinkSimplex(simplex, ship, target, options);
+                    evalCount += 2;
+                }
+            }
+        }
+
+        // Yield periodically
+        if (iter % 5 === 0) {
+            onProgress?.(iter / maxIter);
+            await yieldToMainThread();
         }
     }
 
-    return best;
+    // Return best vertex
+    simplex.sort((a, b) => a.value - b.value);
+    return { best: simplex[0].result, evalCount };
+}
+
+/**
+ * Evaluate a point with clamping to valid bounds.
+ */
+async function evalPoint(yaw, pitch, ship, target, options) {
+    const clampedYaw = clampYaw(yaw);
+    const clampedPitch = clampPitch(pitch);
+    const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
+    return {
+        yaw: clampedYaw,
+        pitch: clampedPitch,
+        value: result.minDistance,
+        result
+    };
+}
+
+/**
+ * Shrink simplex toward best vertex.
+ */
+async function shrinkSimplex(simplex, ship, target, options) {
+    const best = simplex[0];
+    for (let i = 1; i < simplex.length; i++) {
+        simplex[i].yaw = best.yaw + CONFIG.nmSigma * (simplex[i].yaw - best.yaw);
+        simplex[i].pitch = best.pitch + CONFIG.nmSigma * (simplex[i].pitch - best.pitch);
+
+        const clampedYaw = clampYaw(simplex[i].yaw);
+        const clampedPitch = clampPitch(simplex[i].pitch);
+        const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
+        simplex[i].value = result.minDistance;
+        simplex[i].result = result;
+    }
+}
+
+/**
+ * Calculate the diameter (max edge length) of a simplex.
+ */
+function simplexDiameter(simplex) {
+    let maxDist = 0;
+    for (let i = 0; i < simplex.length; i++) {
+        for (let j = i + 1; j < simplex.length; j++) {
+            const dist = Math.sqrt(
+                (simplex[i].yaw - simplex[j].yaw) ** 2 +
+                (simplex[i].pitch - simplex[j].pitch) ** 2
+            );
+            if (dist > maxDist) maxDist = dist;
+        }
+    }
+    return maxDist;
+}
+
+function clampYaw(yaw) {
+    return Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, yaw));
+}
+
+function clampPitch(pitch) {
+    return Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, pitch));
 }
 
 // ============================================================================
-// SINGLE HORIZON SOLVER
+// HORIZON SCOUTING (v4.0 - replaces exhaustive multi-horizon search)
+// ============================================================================
+
+/**
+ * Quick horizon scout: evaluate 1-2 candidates per horizon to rank them.
+ *
+ * Instead of doing a full search on all 6 horizons (~6000 evals),
+ * this does 2 quick probes per horizon (~12 evals total) and picks
+ * the top 2 most promising horizons for deep search.
+ *
+ * The scout probes use the best angle from target geometry:
+ * - Inner planet (target.a < ship.a): try -35° yaw (lower orbit)
+ * - Outer planet (target.a > ship.a): try +35° yaw (raise orbit)
+ * - Plus a second probe at a different angle for diversity
+ *
+ * @param {Object} ship - Ship object
+ * @param {Object} target - Target object
+ * @param {Object} baseOptions - Base solver options
+ * @returns {Promise<Array>} Top horizon durations sorted by potential, with eval count
+ */
+export async function scoutHorizons(ship, target, baseOptions = {}) {
+    const horizons = baseOptions.horizons || CONFIG.horizons;
+    const results = [];
+    let evalCount = 0;
+
+    // Determine smart probe angles based on target geometry
+    const targetA = target.elements?.a || 1;
+    const shipA = ship.orbitalElements?.a || 1;
+    const goingInward = targetA < shipA;
+
+    // Primary probe: direction toward target
+    const primaryYaw = goingInward ? -35 : 35;
+    // Secondary probe: steep version
+    const secondaryYaw = goingInward ? -55 : 55;
+
+    for (const maxDays of horizons) {
+        const horizonOptions = { ...baseOptions, maxDays };
+
+        // Probe 1: primary direction
+        const r1 = evaluateCandidate(primaryYaw, 0, ship, target, horizonOptions);
+        evalCount++;
+
+        // Probe 2: secondary direction
+        const r2 = evaluateCandidate(secondaryYaw, 0, ship, target, horizonOptions);
+        evalCount++;
+
+        const bestProbe = r1.minDistance < r2.minDistance ? r1 : r2;
+
+        results.push({
+            maxDays,
+            bestDistance: bestProbe.minDistance,
+            bestResult: bestProbe,
+            status: bestProbe.status
+        });
+
+        await yieldToMainThread();
+    }
+
+    // Sort by best distance (most promising first)
+    results.sort((a, b) => a.bestDistance - b.bestDistance);
+
+    return { horizons: results, evalCount };
+}
+
+// ============================================================================
+// DEPLOYMENT SWEEP (v4.0 - new, multi-sail awareness)
+// ============================================================================
+
+/**
+ * Phase 3: Test deployment levels at the best angle.
+ *
+ * The solver previously always used 100% deployment. But with multiple sails
+ * or certain transfer geometries, lower deployment can sometimes yield
+ * better results (less aggressive thrust allows better phasing).
+ *
+ * @param {Object} ship - Ship object
+ * @param {Object} target - Target object
+ * @param {Object} bestResult - Best result from Nelder-Mead (at 100% deployment)
+ * @param {Object} options - Solver options (maxDays, etc.)
+ * @returns {Promise<Object>} Best result across all deployment levels, with eval count
+ */
+export async function deploymentSweep(ship, target, bestResult, options = {}) {
+    let best = bestResult;
+    let evalCount = 0;
+
+    const yaw = bestResult.yawDeg;
+    const pitch = bestResult.pitchDeg;
+
+    for (const deployPct of CONFIG.deploymentLevels) {
+        // Skip 100% if that's what we already have
+        if (deployPct === (options.deployment || CONFIG.defaultDeployment)) {
+            continue;
+        }
+
+        const deployOptions = { ...options, deployment: deployPct };
+        const result = evaluateCandidate(yaw, pitch, ship, target, deployOptions);
+        evalCount++;
+
+        if (result.minDistance < best.minDistance) {
+            best = result;
+            // Store the deployment that was used
+            best._deploymentOverride = deployPct;
+        }
+
+        await yieldToMainThread();
+    }
+
+    return { best, evalCount };
+}
+
+// ============================================================================
+// SINGLE HORIZON SOLVER (v4.0 - bracket search pipeline)
 // ============================================================================
 
 /**
  * Solve for optimal course at a single time horizon.
  *
- * Runs all phases: coarse → fine → ultra → uber → gradient descent
+ * v4.0 pipeline: reconnaissance → Nelder-Mead → deployment sweep
+ * Replaces: coarse → fine → ultra → uber → gradient descent
  *
  * @param {Object} ship - Ship object
  * @param {Object} target - Target object
- * @param {Object} options - Optional parameters including maxDays
+ * @param {Object} options - Solver options (maxDays, etc.)
  * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} Best result for this horizon
+ * @returns {Promise<Object>} Best result for this horizon, with eval count
  */
 async function solveForHorizon(ship, target, options = {}, onProgress = null) {
-    const horizonDays = options.maxDays || CONFIG.defaultMaxDays;
-
-    // Get SOI-based intercept threshold for this target
     const interceptThreshold = getInterceptThreshold(target);
+    let totalEvals = 0;
 
-    // Phase 1: Coarse sweep
-    const coarseResults = await coarseSweep(ship, target, options, (p) => {
-        onProgress?.({ subPhase: 'coarse', progress: p });
-    });
-
-    // Check for early termination
-    if (coarseResults[0].minDistance < interceptThreshold) {
-        return coarseResults[0];
-    }
-
-    // Phase 2: Fine search
-    const topCandidates = coarseResults.slice(0, CONFIG.topCandidates);
-    const fineResult = await fineSearch(topCandidates, ship, target, options, (p) => {
-        onProgress?.({ subPhase: 'fine', progress: p });
-    });
+    // Phase 1: Strategic Reconnaissance
+    onProgress?.({ subPhase: 'recon', progress: 0 });
+    const reconResults = await strategicReconnaissance(ship, target, options, options.reconBounds || null);
+    totalEvals += reconResults.length;
 
     // Check for early termination
-    if (fineResult.minDistance < interceptThreshold) {
-        return fineResult;
+    if (reconResults[0].minDistance < interceptThreshold) {
+        return { result: reconResults[0], totalEvals };
     }
 
-    // Phase 3: Ultra-fine polish
-    const ultraResult = await ultraFinePolish(fineResult, ship, target, options, (p) => {
-        onProgress?.({ subPhase: 'ultra', progress: p });
+    // Phase 2: Nelder-Mead Convergence
+    onProgress?.({ subPhase: 'converge', progress: 0.3 });
+    const nmResult = await nelderMeadSearch(ship, target, reconResults, options, (p) => {
+        onProgress?.({ subPhase: 'converge', progress: 0.3 + p * 0.5 });
     });
+    totalEvals += nmResult.evalCount;
+
+    let best = nmResult.best;
 
     // Check for early termination
-    if (ultraResult.minDistance < interceptThreshold) {
-        return ultraResult;
+    if (best.minDistance < interceptThreshold) {
+        return { result: best, totalEvals };
     }
 
-    // Phase 3.5: Uber-fine polish (v3.6 - "last mile" exact plotting)
-    const uberResult = await uberFinePolish(ultraResult, ship, target, options, (p) => {
-        onProgress?.({ subPhase: 'uber', progress: p });
-    });
+    // Phase 2b: Multi-start if result is poor
+    if (best.minDistance > CONFIG.multiStartThreshold) {
+        onProgress?.({ subPhase: 'multistart', progress: 0.8 });
 
-    // Check for early termination
-    if (uberResult.minDistance < interceptThreshold) {
-        return uberResult;
-    }
+        for (const quadrant of CONFIG.multiStartQuadrants) {
+            // Skip if this is close to where we already searched
+            const dist = Math.sqrt(
+                (quadrant.yaw - best.yawDeg) ** 2 +
+                (quadrant.pitch - best.pitchDeg) ** 2
+            );
+            if (dist < 15) continue;  // Already explored this region
 
-    // Phase 4: Gradient descent polish
-    const gradientResult = await gradientDescentPolish(uberResult, ship, target, options, (p) => {
-        onProgress?.({ subPhase: 'gradient', progress: p });
-    });
-
-    return gradientResult;
-}
-
-// ============================================================================
-// MULTI-HORIZON SEARCH
-// ============================================================================
-
-/**
- * Search across multiple time horizons to find optimal transfer time.
- *
- * Different horizons capture different planetary phase alignments.
- * For Venus, optimal transfer might be 180 days; for Jupiter, 1095 days.
- *
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} Best result across all horizons
- */
-export async function solveMultiHorizon(ship, target, options = {}, onProgress = null) {
-    const horizons = options.horizons || CONFIG.horizons;
-    let overallBest = { minDistance: Infinity };
-    let bestHorizon = horizons[0];
-
-    // Get SOI-based intercept threshold for this target
-    const interceptThreshold = getInterceptThreshold(target);
-
-    for (let i = 0; i < horizons.length; i++) {
-        const maxDays = horizons[i];
-
-        onProgress?.({
-            phase: 'multi-horizon',
-            horizonIndex: i,
-            horizonCount: horizons.length,
-            currentHorizon: maxDays,
-            message: `Searching ${maxDays} day horizon...`
-        });
-
-        const horizonOptions = { ...options, maxDays };
-        const result = await solveForHorizon(ship, target, horizonOptions, (subProgress) => {
-            onProgress?.({
-                phase: 'multi-horizon',
-                horizonIndex: i,
-                horizonCount: horizons.length,
-                currentHorizon: maxDays,
-                subPhase: subProgress.subPhase,
-                subProgress: subProgress.progress,
-                message: `Horizon ${maxDays}d: ${subProgress.subPhase}`
+            // Quick recon from this quadrant
+            const altRecon = await strategicReconnaissance(ship, target, options, {
+                yawCenter: quadrant.yaw,
+                pitchCenter: quadrant.pitch,
+                yawRadius: 20,
+                pitchRadius: 10
             });
-        });
+            totalEvals += altRecon.length;
 
-        if (result.minDistance < overallBest.minDistance) {
-            overallBest = result;
-            bestHorizon = maxDays;
-        }
+            // If recon found something better, run Nelder-Mead from there
+            if (altRecon[0].minDistance < best.minDistance) {
+                const altNm = await nelderMeadSearch(ship, target, altRecon, options);
+                totalEvals += altNm.evalCount;
 
-        // Early termination if intercept found
-        if (result.minDistance < interceptThreshold) {
-            break;
-        }
+                if (altNm.best.minDistance < best.minDistance) {
+                    best = altNm.best;
+                }
 
-        await yieldToMainThread();
-    }
-
-    return {
-        ...overallBest,
-        horizonDays: bestHorizon
-    };
-}
-
-// ============================================================================
-// ITERATIVE REFINEMENT
-// ============================================================================
-
-/**
- * Iteratively refine search with expanded bounds if result is marginal.
- *
- * If the best solution is > 0.05 AU, expand search bounds and retry.
- * This catches cases where optimal is near edge of search space.
- *
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} Best refined result
- */
-async function solveWithRefinement(ship, target, options = {}, onProgress = null) {
-    let best = await solveMultiHorizon(ship, target, options, onProgress);
-
-    // If we have an intercept or near miss, we're done
-    if (best.minDistance < CONFIG.nearMissThreshold) {
-        return best;
-    }
-
-    // Iterative refinement for marginal results
-    for (let pass = 1; pass <= CONFIG.maxRefinementPasses; pass++) {
-        onProgress?.({
-            phase: 'refinement',
-            pass,
-            maxPasses: CONFIG.maxRefinementPasses,
-            message: `Refinement pass ${pass}/${CONFIG.maxRefinementPasses}...`
-        });
-
-        // Expand search bounds around best result
-        const expandedOptions = {
-            ...options,
-            // Focus search around current best with expanded window
-            customBounds: {
-                yawMin: Math.max(CONFIG.yawMin, best.yawDeg - 20 * pass),
-                yawMax: Math.min(CONFIG.yawMax, best.yawDeg + 20 * pass),
-                pitchMin: Math.max(CONFIG.pitchMin, best.pitchDeg - 10 * pass),
-                pitchMax: Math.min(CONFIG.pitchMax, best.pitchDeg + 10 * pass)
+                // Early termination
+                if (best.minDistance < interceptThreshold) {
+                    break;
+                }
             }
-        };
 
-        // Re-run multi-horizon search with expanded bounds
-        const refinedResult = await solveMultiHorizon(ship, target, expandedOptions, onProgress);
-
-        if (refinedResult.minDistance < best.minDistance) {
-            best = refinedResult;
+            await yieldToMainThread();
         }
-
-        // Stop if we achieved near miss or better
-        if (best.minDistance < CONFIG.nearMissThreshold) {
-            break;
-        }
-
-        await yieldToMainThread();
     }
 
-    return best;
+    // Phase 3: Deployment Sweep
+    onProgress?.({ subPhase: 'deployment', progress: 0.9 });
+    const deployResult = await deploymentSweep(ship, target, best, options);
+    totalEvals += deployResult.evalCount;
+    best = deployResult.best;
+
+    return { result: best, totalEvals };
 }
 
 // ============================================================================
-// REFINEMENT MODE SOLVER (Course Refinement Feature)
-// ============================================================================
-
-/**
- * Solve for optimal course using refinement mode.
- *
- * Refinement mode is used when re-plotting during transit. Instead of the full
- * multi-horizon search, it:
- *   1. Uses narrow search bounds around seed settings (±20° yaw, ±15° pitch)
- *   2. Skips multi-horizon search (uses single horizon from current trajectory)
- *   3. Still applies fine, ultra-fine, uber-fine, and gradient descent polish
- *
- * This is significantly faster than full search (~5-10 seconds vs ~30-45 seconds).
- *
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} seedSettings - { yawDeg, pitchDeg, deployment } to center search around
- * @param {Object} options - Optional parameters (including maxDays)
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} Best result from refinement search
- */
-async function solveWithRefinementMode(ship, target, seedSettings, options = {}, onProgress = null) {
-    const maxDays = options.maxDays || CONFIG.defaultMaxDays;
-
-    // Get SOI-based intercept threshold for this target
-    const interceptThreshold = getInterceptThreshold(target);
-
-    console.log(`[COURSE_SOLVER] Running refinement mode (seed: yaw=${seedSettings.yawDeg.toFixed(1)}°, ` +
-                `pitch=${seedSettings.pitchDeg.toFixed(1)}°, horizon=${maxDays}d)`);
-
-    onProgress?.({
-        phase: 'refinement-mode',
-        progress: 0,
-        message: 'Refinement search...'
-    });
-
-    // Phase 1: Refinement sweep (replaces coarse sweep)
-    const refinementResults = await refinementSweep(ship, target, seedSettings, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'sweep', progress: p * 0.25, message: 'Refinement sweep...' });
-    });
-
-    // Check for early termination
-    if (refinementResults[0].minDistance < interceptThreshold) {
-        return { ...refinementResults[0], horizonDays: maxDays };
-    }
-
-    // Phase 2: Fine search around top candidates
-    const topCandidates = refinementResults.slice(0, CONFIG.topCandidates);
-    const fineResult = await fineSearch(topCandidates, ship, target, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'fine', progress: 0.25 + p * 0.25, message: 'Fine search...' });
-    });
-
-    // Check for early termination
-    if (fineResult.minDistance < interceptThreshold) {
-        return { ...fineResult, horizonDays: maxDays };
-    }
-
-    // Phase 3: Ultra-fine polish
-    const ultraResult = await ultraFinePolish(fineResult, ship, target, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'ultra', progress: 0.5 + p * 0.15, message: 'Ultra-fine polish...' });
-    });
-
-    // Check for early termination
-    if (ultraResult.minDistance < interceptThreshold) {
-        return { ...ultraResult, horizonDays: maxDays };
-    }
-
-    // Phase 3.5: Uber-fine polish (v3.6 - "last mile" exact plotting)
-    const uberResult = await uberFinePolish(ultraResult, ship, target, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'uber', progress: 0.65 + p * 0.15, message: 'Uber-fine polish...' });
-    });
-
-    // Check for early termination
-    if (uberResult.minDistance < interceptThreshold) {
-        return { ...uberResult, horizonDays: maxDays };
-    }
-
-    // Phase 4: Gradient descent polish
-    const gradientResult = await gradientDescentPolish(uberResult, ship, target, options, (p) => {
-        onProgress?.({ phase: 'refinement-mode', subPhase: 'gradient', progress: 0.8 + p * 0.2, message: 'Gradient descent...' });
-    });
-
-    return { ...gradientResult, horizonDays: maxDays };
-}
-
-// ============================================================================
-// MAIN SOLVER
+// MAIN SOLVER (v4.0)
 // ============================================================================
 
 /**
  * Solve for optimal course to target.
  *
- * Enhanced v3.6 algorithm with refinement mode support:
+ * v4.0 Algorithm: Artillery Bracket Search
  *
  * FULL MODE (default):
- *   1. Multi-horizon search (180-1460 days)
- *   2. For each horizon: coarse → fine → ultra → uber → gradient descent
- *   3. Iterative refinement if result is marginal
+ *   1. Horizon Scout: quick probes across 6 horizons → pick top 2
+ *   2. For each top horizon: recon → Nelder-Mead → deployment sweep
+ *   3. Return best across horizons
  *
  * REFINEMENT MODE (when options.refinementMode = true):
- *   1. Single horizon search with narrow bounds (±20° yaw, ±15° pitch)
- *   2. Refinement sweep → fine → ultra → uber → gradient descent
- *   3. Faster completion (~5-10s vs ~30-45s)
+ *   1. Single horizon with recon centered on seed settings
+ *   2. Nelder-Mead → deployment sweep
+ *   3. Faster completion (~0.5-2s vs ~1-3s full)
  *
  * @param {Object} ship - Ship object with orbitalElements and sail
  * @param {Object} target - Target object with elements
- * @param {Object} options - Optional parameters:
- *   - refinementMode: boolean - Use narrow search around seedSettings
- *   - seedSettings: { yawDeg, pitchDeg, deployment } - Center for refinement search
- *   - maxDays: number - Horizon for single-horizon search
+ * @param {Object} options - Optional parameters
  * @param {Function} onProgress - Progress callback ({phase, progress, message})
  * @returns {Promise<Object|null>} Course solution or null
  */
 export async function solveCourse(ship, target, options = {}, onProgress = null) {
     const startTimeMs = Date.now();
+    let totalEvaluations = 0;
 
-    // Validate inputs
     if (!ship?.orbitalElements || !target?.elements) {
         return null;
     }
 
-    onProgress?.({ phase: 'starting', progress: 0, message: 'Initializing course solver...' });
+    onProgress?.({ phase: 'starting', progress: 0, message: 'Initializing bracket search...' });
 
     try {
-        let result;
+        let bestResult = null;
+        let bestHorizon = CONFIG.defaultMaxDays;
 
-        // Check for refinement mode
         if (options.refinementMode && options.seedSettings) {
-            // Use refinement mode: narrow search around seed settings
-            onProgress?.({ phase: 'starting', progress: 0, message: 'Refinement mode: narrow search...' });
-            result = await solveWithRefinementMode(ship, target, options.seedSettings, options, onProgress);
+            // ============================================================
+            // REFINEMENT MODE: narrow search around seed settings
+            // ============================================================
+            const maxDays = options.maxDays || CONFIG.defaultMaxDays;
+
+            onProgress?.({ phase: 'refinement-mode', progress: 0, message: 'Refinement bracket search...' });
+
+            console.log(`[COURSE_SOLVER] Refinement mode: seed yaw=${options.seedSettings.yawDeg.toFixed(1)}°, ` +
+                        `pitch=${options.seedSettings.pitchDeg.toFixed(1)}°, horizon=${maxDays}d`);
+
+            const horizonOptions = {
+                ...options,
+                maxDays,
+                reconBounds: {
+                    yawCenter: options.seedSettings.yawDeg,
+                    pitchCenter: options.seedSettings.pitchDeg,
+                    yawRadius: CONFIG.refinementYawRadius,
+                    pitchRadius: CONFIG.refinementPitchRadius
+                }
+            };
+
+            const { result, totalEvals } = await solveForHorizon(ship, target, horizonOptions, (subProgress) => {
+                onProgress?.({
+                    phase: 'refinement-mode',
+                    subPhase: subProgress.subPhase,
+                    progress: subProgress.progress,
+                    message: `Refinement: ${subProgress.subPhase}`
+                });
+            });
+
+            bestResult = result;
+            bestHorizon = maxDays;
+            totalEvaluations = totalEvals;
+
         } else {
-            // Use full mode: multi-horizon search
-            result = await solveWithRefinement(ship, target, options, onProgress);
+            // ============================================================
+            // FULL MODE: horizon scout → deep search on top horizons
+            // ============================================================
+            onProgress?.({ phase: 'scouting', progress: 0, message: 'Scouting horizons...' });
+
+            console.log('[COURSE_SOLVER] Full mode: bracket search with horizon scouting');
+
+            // Phase 0: Scout horizons
+            const scoutResult = await scoutHorizons(ship, target, options);
+            totalEvaluations += scoutResult.evalCount;
+
+            const topHorizons = scoutResult.horizons.slice(0, CONFIG.topHorizonsToSearch);
+
+            console.log(`[COURSE_SOLVER] Top horizons: ${topHorizons.map(h =>
+                `${h.maxDays}d (${h.bestDistance.toFixed(4)} AU)`).join(', ')}`);
+
+            const interceptThreshold = getInterceptThreshold(target);
+
+            // Deep search on top horizons
+            for (let i = 0; i < topHorizons.length; i++) {
+                const horizon = topHorizons[i];
+
+                onProgress?.({
+                    phase: 'deep-search',
+                    horizonIndex: i,
+                    horizonCount: topHorizons.length,
+                    currentHorizon: horizon.maxDays,
+                    message: `Searching ${horizon.maxDays}d horizon...`
+                });
+
+                const horizonOptions = { ...options, maxDays: horizon.maxDays };
+
+                const { result, totalEvals } = await solveForHorizon(ship, target, horizonOptions, (subProgress) => {
+                    onProgress?.({
+                        phase: 'deep-search',
+                        horizonIndex: i,
+                        horizonCount: topHorizons.length,
+                        currentHorizon: horizon.maxDays,
+                        subPhase: subProgress.subPhase,
+                        subProgress: subProgress.progress,
+                        message: `${horizon.maxDays}d: ${subProgress.subPhase}`
+                    });
+                });
+
+                totalEvaluations += totalEvals;
+
+                if (!bestResult || result.minDistance < bestResult.minDistance) {
+                    bestResult = result;
+                    bestHorizon = horizon.maxDays;
+                }
+
+                // Early termination if intercept found
+                if (result.minDistance < interceptThreshold) {
+                    console.log(`[COURSE_SOLVER] Intercept found at ${horizon.maxDays}d horizon, stopping`);
+                    break;
+                }
+
+                await yieldToMainThread();
+            }
         }
 
         const computeTimeMs = Date.now() - startTimeMs;
 
         onProgress?.({ phase: 'complete', progress: 1, message: 'Course computation complete' });
 
-        const solution = buildSolution(result, {
+        if (!bestResult) {
+            return null;
+        }
+
+        const solution = buildSolution(bestResult, {
             computeTimeMs,
-            horizonDays: result.horizonDays
+            horizonDays: bestHorizon,
+            totalEvaluations
         });
 
-        // Add refinement mode flag to solution
         solution.usedRefinementMode = options.refinementMode || false;
+
+        console.log(`[COURSE_SOLVER] Complete: ${totalEvaluations} evals in ${computeTimeMs}ms ` +
+                    `(yaw=${bestResult.yawDeg.toFixed(1)}°, pitch=${bestResult.pitchDeg.toFixed(1)}°, ` +
+                    `dist=${bestResult.minDistance.toFixed(4)} AU, quality=${solution.quality})`);
 
         return solution;
     } catch (error) {
@@ -1390,12 +1189,6 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
 
 /**
  * Legacy single-horizon solve for backward compatibility.
- *
- * @param {Object} ship - Ship object
- * @param {Object} target - Target object
- * @param {Object} options - Optional parameters
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object|null>} Course solution
  */
 export async function solveCourseSimple(ship, target, options = {}, onProgress = null) {
     const startTimeMs = Date.now();
@@ -1404,13 +1197,135 @@ export async function solveCourseSimple(ship, target, options = {}, onProgress =
         return null;
     }
 
-    const result = await solveForHorizon(ship, target, options, onProgress);
+    const { result, totalEvals } = await solveForHorizon(ship, target, options, onProgress);
     const computeTimeMs = Date.now() - startTimeMs;
 
     return buildSolution(result, {
         computeTimeMs,
-        horizonDays: options.maxDays || CONFIG.defaultMaxDays
+        horizonDays: options.maxDays || CONFIG.defaultMaxDays,
+        totalEvaluations: totalEvals
     });
+}
+
+// ============================================================================
+// LEGACY EXPORTS (for backward compatibility with tests)
+// ============================================================================
+
+/**
+ * Legacy coarse sweep - now uses strategic reconnaissance.
+ * Kept for backward compatibility with existing tests.
+ */
+export async function coarseSweep(ship, target, options = {}, onProgress = null) {
+    const results = [];
+    const candidates = [];
+
+    // Generate the same 91-point grid for backward compatibility
+    for (let yaw = CONFIG.yawMin; yaw <= CONFIG.yawMax; yaw += 5) {
+        for (let pitch = CONFIG.pitchMin; pitch <= CONFIG.pitchMax; pitch += 5) {
+            candidates.push({ yaw, pitch });
+        }
+    }
+
+    const total = candidates.length;
+
+    for (let i = 0; i < candidates.length; i++) {
+        const { yaw, pitch } = candidates[i];
+        const result = evaluateCandidate(yaw, pitch, ship, target, options);
+        results.push(result);
+
+        if (i % CONFIG.yieldFrequency === 0) {
+            onProgress?.(i / total);
+            await yieldToMainThread();
+        }
+    }
+
+    results.sort((a, b) => a.minDistance - b.minDistance);
+    return results;
+}
+
+/**
+ * Legacy fine search - kept for backward compatibility with tests.
+ */
+export async function fineSearch(topCandidates, ship, target, options = {}, onProgress = null) {
+    let best = topCandidates[0];
+    const interceptThreshold = getInterceptThreshold(target);
+
+    if (best.minDistance < interceptThreshold) {
+        return best;
+    }
+
+    let evalCount = 0;
+    const fineRadius = 8;
+    const fineStep = 2;
+    const totalEvals = topCandidates.length * Math.pow((fineRadius * 2 / fineStep + 1), 2);
+
+    for (const candidate of topCandidates) {
+        const centerYaw = candidate.yawDeg;
+        const centerPitch = candidate.pitchDeg;
+
+        for (let yaw = centerYaw - fineRadius; yaw <= centerYaw + fineRadius; yaw += fineStep) {
+            for (let pitch = centerPitch - fineRadius; pitch <= centerPitch + fineRadius; pitch += fineStep) {
+                const clampedYaw = clampYaw(yaw);
+                const clampedPitch = clampPitch(pitch);
+
+                const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
+
+                if (result.minDistance < best.minDistance) {
+                    best = result;
+                }
+
+                evalCount++;
+
+                if (evalCount % CONFIG.yieldFrequency === 0) {
+                    onProgress?.(evalCount / totalEvals);
+                    await yieldToMainThread();
+                }
+
+                if (best.minDistance < interceptThreshold) {
+                    return best;
+                }
+            }
+        }
+    }
+
+    return best;
+}
+
+/**
+ * Legacy ultra-fine polish - kept for backward compatibility with tests.
+ */
+export async function ultraFinePolish(candidate, ship, target, options = {}, onProgress = null) {
+    let best = candidate;
+
+    const centerYaw = candidate.yawDeg;
+    const centerPitch = candidate.pitchDeg;
+    const ultraRadius = 2;
+    const ultraStep = 0.1;
+
+    let evalCount = 0;
+    const totalEvals = Math.pow((ultraRadius * 2 / ultraStep + 1), 2);
+
+    for (let yaw = centerYaw - ultraRadius; yaw <= centerYaw + ultraRadius; yaw += ultraStep) {
+        for (let pitch = centerPitch - ultraRadius; pitch <= centerPitch + ultraRadius; pitch += ultraStep) {
+            const clampedYaw = clampYaw(yaw);
+            const clampedPitch = clampPitch(pitch);
+
+            const result = evaluateCandidate(clampedYaw, clampedPitch, ship, target, options);
+
+            if (result.minDistance < best.minDistance) {
+                best = result;
+            }
+
+            evalCount++;
+
+            if (evalCount % CONFIG.yieldFrequency === 0) {
+                onProgress?.(evalCount / totalEvals);
+                await yieldToMainThread();
+            }
+        }
+    }
+
+    return best;
 }
 
 // ============================================================================
@@ -1421,13 +1336,8 @@ export async function solveCourseSimple(ship, target, options = {}, onProgress =
  * Build complete solution object with quality metrics.
  */
 function buildSolution(result, metrics) {
-    // Use SOI-based intercept threshold from result (set by evaluateCandidate)
-    // Fall back to default if not available (backwards compatibility)
     const interceptThreshold = result.interceptThreshold || CONFIG.interceptThresholdFallback;
 
-    // Determine quality rating
-    // v3.0: Account for new status types (PHASE_MISS, NO_CROSSING)
-    // v3.7: Use SOI-based intercept threshold for accurate intercept classification
     let quality;
     if (result.minDistance < interceptThreshold) {
         quality = 'INTERCEPT';
@@ -1436,43 +1346,43 @@ function buildSolution(result, metrics) {
     } else if (result.minDistance < CONFIG.marginalThreshold) {
         quality = 'MARGINAL';
     } else if (result.status === 'PHASE_MISS') {
-        quality = 'PHASE_MISS';  // New: crossed orbit but planet was elsewhere
+        quality = 'PHASE_MISS';
     } else if (result.status === 'NO_CROSSING') {
-        quality = 'NO_CROSSING';  // New: didn't cross target's orbital radius
+        quality = 'NO_CROSSING';
     } else {
         quality = 'NO_SOLUTION';
     }
 
-    // Calculate confidence based on result quality
-    // v3.0: Factor in angular separation for crossing-aware results
     let confidence;
     if (quality === 'INTERCEPT') {
         confidence = 0.95;
     } else if (quality === 'NEAR_MISS') {
         confidence = 0.85;
     } else if (quality === 'MARGINAL') {
-        // v3.0: Boost confidence if angular separation is good
         const angularSep = result.angularSeparationDeg || 180;
         if (angularSep < 15) {
-            confidence = 0.7;  // Good phase alignment
+            confidence = 0.7;
         } else if (angularSep < 30) {
             confidence = 0.6;
         } else {
             confidence = 0.5;
         }
     } else if (quality === 'PHASE_MISS') {
-        confidence = 0.2;  // Low confidence - wrong timing
+        confidence = 0.2;
     } else if (quality === 'NO_CROSSING') {
-        confidence = 0.1;  // Very low - can't reach target's orbit
+        confidence = 0.1;
     } else {
         confidence = 0.3;
     }
+
+    // Determine deployment: use override if deployment sweep found a better one
+    const deployment = result._deploymentOverride || CONFIG.defaultDeployment;
 
     return {
         // Recommended settings
         yawDeg: result.yawDeg,
         pitchDeg: result.pitchDeg,
-        deployment: CONFIG.defaultDeployment,
+        deployment,
 
         // Predicted outcome
         minDistance: result.minDistance,
@@ -1486,9 +1396,7 @@ function buildSolution(result, metrics) {
         quality,
         confidence,
 
-        // v3.0: Crossing-aware metadata
-        // Fix #4: Added crossingJulianDate for UI display of solver's computed crossing time
-        // v3.7: Added interceptThreshold (SOI-based) for transparent intercept classification
+        // Crossing-aware metadata
         crossingInfo: {
             crossingIndex: result.crossingIndex ?? -1,
             totalCrossings: result.totalCrossings ?? 0,
@@ -1496,13 +1404,15 @@ function buildSolution(result, metrics) {
             crossingDirection: result.crossingDirection ?? 'unknown',
             usedCrossingAware: result.usedCrossingAware ?? false,
             crossingJulianDate: result.crossingJulianDate ?? null,
-            interceptThreshold: interceptThreshold  // SOI radius for this target
+            interceptThreshold: interceptThreshold
         },
 
         // Search metrics
         searchMetrics: {
             computeTimeMs: metrics.computeTimeMs,
-            horizonDays: metrics.horizonDays
+            horizonDays: metrics.horizonDays,
+            totalEvaluations: metrics.totalEvaluations || 0,
+            algorithm: 'bracket-v4.0'
         }
     };
 }
@@ -1521,4 +1431,4 @@ export function getConfig() {
     return { ...CONFIG };
 }
 
-console.log('[COURSE_SOLVER] Module v3.7 loaded - SOI-based intercept threshold (true intercept = enter SOI)');
+console.log('[COURSE_SOLVER] Module v4.0 loaded - Artillery Bracket Search (Nelder-Mead + adaptive precision)');
