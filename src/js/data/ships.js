@@ -14,6 +14,7 @@ import {
     DEFAULT_THRUSTER,
     SHIP_COLORS,
     SOLAR_PRESSURE_1AU,
+    SAIL_MASS_PER_UNIT,
 } from '../config.js';
 
 // Re-export defaults for external use (e.g., creating new ships, tests)
@@ -218,8 +219,12 @@ export function getCurrentThrustAccel(ship) {
     const cosPitch = Math.cos(pitchAngle);
     const thrustN = 2 * P * effectiveArea * cosAngle * cosAngle * cosPitch * cosPitch * reflectivity * sailCount;
 
+    // Effective mass: hull + additional sail mass (first sail included in hull)
+    const hullMass = ship.mass || DEFAULT_SHIP_MASS;
+    const effectiveMass = hullMass + Math.max(0, sailCount - 1) * SAIL_MASS_PER_UNIT;
+
     // Acceleration in m/s²
-    return thrustN / (ship.mass || DEFAULT_SHIP_MASS);
+    return thrustN / effectiveMass;
 }
 
 /**

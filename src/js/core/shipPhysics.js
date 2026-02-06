@@ -24,7 +24,7 @@ import {
     getGravitationalParam,
     getSOIRadius
 } from '../lib/soi.js';
-import { PHYSICS_CONFIG } from '../config.js';
+import { PHYSICS_CONFIG, SAIL_MASS_PER_UNIT, SOLAR_PRESSURE_1AU } from '../config.js';
 
 // ============================================================================
 // Visual Orbital Elements (for smooth orbit visualization)
@@ -1524,19 +1524,23 @@ export function getThrustInfo(ship) {
     if (r < 0.01) return null;
     
     // Solar pressure at this distance (N/m²)
-    const solarPressure = 4.56e-6 / (r * r);
+    const solarPressure = SOLAR_PRESSURE_1AU / (r * r);
     
     // Effective area
-    const { area, reflectivity, angle, deploymentPercent, condition } = ship.sail;
+    const { area, reflectivity, angle, pitchAngle = 0, deploymentPercent, condition, sailCount = 1 } = ship.sail;
     const effectiveArea = area * (deploymentPercent / 100) * (condition / 100);
-    
-    // Thrust magnitude: F = 2 * P * A * cos²(θ) * ρ
+
+    // Thrust magnitude: F = 2 * P * A * cos²(yaw) * cos²(pitch) * ρ * sailCount
     const cosAngle = Math.cos(angle);
-    const thrustN = 2 * solarPressure * effectiveArea * cosAngle * cosAngle * reflectivity;
-    
+    const cosPitch = Math.cos(pitchAngle);
+    const thrustN = 2 * solarPressure * effectiveArea * cosAngle * cosAngle * cosPitch * cosPitch * reflectivity * sailCount;
+
+    // Effective mass: hull + additional sail mass (first sail included in hull)
+    const hullMass = ship.mass || 10000;
+    const effectiveMass = hullMass + Math.max(0, sailCount - 1) * SAIL_MASS_PER_UNIT;
+
     // Acceleration in m/s²
-    const mass = ship.mass || 10000;
-    const accelMS2 = thrustN / mass;
+    const accelMS2 = thrustN / effectiveMass;
     
     // Acceleration in g's
     const accelG = accelMS2 / 9.81;
