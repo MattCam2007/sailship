@@ -2,8 +2,8 @@
  * UI update functions for panels and displays
  */
 
-import { destination, getDestinationInfo, predictClosestApproach, computeNavigationPlan, computeApproachPlan, computeCapturePlan, computeEscapePlan } from '../core/navigation.js';
-import { getTime, getCurrentZoom, isAutoPilotEnabled, getAutoPilotPhase, AUTOPILOT_PHASES, getClosestApproachForBody } from '../core/gameState.js';
+import { destination, getDestinationInfo, predictClosestApproach } from '../core/navigation.js';
+import { getTime, getCurrentZoom, getClosestApproachForBody } from '../core/gameState.js';
 import { getBodyByName } from '../data/celestialBodies.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
@@ -32,16 +32,6 @@ export function initUI() {
         sailAccelG: document.getElementById('sailAccelG'),
         sailDeployment: document.getElementById('sailDeployment'),
         sailAngle: document.getElementById('sailAngle'),
-        // Navigation computer elements
-        navStrategy: document.getElementById('navStrategy'),
-        navRecAngle: document.getElementById('navRecAngle'),
-        navRecDeploy: document.getElementById('navRecDeploy'),
-        navCurrentSettings: document.getElementById('navCurrentSettings'),
-        navDeviation: document.getElementById('navDeviation'),
-        navArrival: document.getElementById('navArrival'),
-        navApproach: document.getElementById('navApproach'),
-        navProgressPct: document.getElementById('navProgressPct'),
-        navProgressFill: document.getElementById('navProgressFill'),
         // SOI status elements
         soiStatus: document.getElementById('soiStatus'),
         soiBody: document.getElementById('soiBody'),
@@ -66,7 +56,6 @@ export function updateUI() {
     updateDestinationDisplay();
     updateSailDisplay();
     updateThrusterDisplayInternal();
-    updateNavigationComputer();
     updateSOIStatus();
     updateInclinationDisplay();
 }
@@ -337,244 +326,6 @@ function updateThrusterDisplayInternal() {
 export function setDestinationName(name) {
     if (elements.destName) {
         elements.destName.textContent = name;
-    }
-}
-
-/**
- * Update navigation computer display.
- * Shows different info based on autopilot phase.
- */
-function updateNavigationComputer() {
-    const player = getPlayerShip();
-
-    // Inside SOI - use capture plan display
-    if (player?.soiState?.isInSOI) {
-        const plan = computeCapturePlan();
-        updateNavigationComputerCapture(plan);
-        return;
-    }
-
-    // Default: standard navigation plan for both cruise and approach
-    const plan = computeNavigationPlan();
-
-    if (!plan) {
-        if (elements.navStrategy) {
-            elements.navStrategy.textContent = 'NO DATA';
-        }
-        return;
-    }
-
-    // Update strategy name
-    if (elements.navStrategy) {
-        elements.navStrategy.textContent = plan.strategyName;
-    }
-
-    // Update recommended settings
-    if (elements.navRecAngle) {
-        const sign = plan.recommendedAngle >= 0 ? '+' : '';
-        elements.navRecAngle.textContent = sign + plan.recommendedAngle + '°';
-    }
-    if (elements.navRecDeploy) {
-        elements.navRecDeploy.textContent = plan.recommendedDeployment + '%';
-    }
-
-    // Update current settings comparison
-    if (elements.navCurrentSettings) {
-        const sign = plan.currentAngle >= 0 ? '+' : '';
-        elements.navCurrentSettings.textContent =
-            sign + plan.currentAngle + '°, ' + plan.currentDeployment + '%';
-    }
-
-    // Update deviation status with color coding
-    if (elements.navDeviation) {
-        elements.navDeviation.textContent = plan.deviationStatus;
-        elements.navDeviation.classList.remove(
-            'deviation-optimal', 'deviation-acceptable', 'deviation-adjust'
-        );
-        if (plan.deviationStatus === 'OPTIMAL') {
-            elements.navDeviation.classList.add('deviation-optimal');
-        } else if (plan.deviationStatus === 'ACCEPTABLE') {
-            elements.navDeviation.classList.add('deviation-acceptable');
-        } else {
-            elements.navDeviation.classList.add('deviation-adjust');
-        }
-    }
-
-    // Update arrival prediction
-    if (elements.navArrival) {
-        if (plan.willIntercept) {
-            const days = Math.floor(plan.estimatedArrival);
-            const hours = Math.floor((plan.estimatedArrival % 1) * 24);
-            elements.navArrival.textContent = days + 'd ' + hours + 'h';
-            elements.navArrival.classList.add('status-intercept');
-            elements.navArrival.classList.remove('status-miss');
-        } else {
-            elements.navArrival.textContent = 'NO INTERCEPT';
-            elements.navArrival.classList.add('status-miss');
-            elements.navArrival.classList.remove('status-intercept');
-        }
-    }
-
-    // Update approach distance
-    if (elements.navApproach) {
-        elements.navApproach.textContent = plan.closestApproach.toFixed(3) + ' AU';
-    }
-
-    // Update progress bar
-    if (elements.navProgressPct) {
-        elements.navProgressPct.textContent = Math.round(plan.progress) + '%';
-    }
-    if (elements.navProgressFill) {
-        elements.navProgressFill.style.width = Math.round(plan.progress) + '%';
-    }
-}
-
-/**
- * Update navigation computer for approach phase.
- */
-function updateNavigationComputerApproach(plan) {
-    if (!plan) {
-        if (elements.navStrategy) {
-            elements.navStrategy.textContent = 'APPROACH';
-        }
-        return;
-    }
-
-    // Update strategy
-    if (elements.navStrategy) {
-        elements.navStrategy.textContent = plan.strategyName;
-    }
-
-    // Update recommended settings
-    if (elements.navRecAngle) {
-        const sign = plan.recommendedAngle >= 0 ? '+' : '';
-        elements.navRecAngle.textContent = sign + plan.recommendedAngle + '°';
-    }
-    if (elements.navRecDeploy) {
-        elements.navRecDeploy.textContent = plan.recommendedDeployment + '%';
-    }
-
-    // Show relative velocity info
-    if (elements.navCurrentSettings) {
-        elements.navCurrentSettings.textContent = plan.relativeVelocity.toFixed(1) + ' km/s';
-    }
-
-    // Show capture readiness with escape velocity threshold
-    if (elements.navDeviation) {
-        if (plan.captureReady) {
-            elements.navDeviation.textContent = 'CAPTURE READY';
-            elements.navDeviation.classList.remove('deviation-acceptable', 'deviation-adjust');
-            elements.navDeviation.classList.add('deviation-optimal');
-        } else {
-            // Show how much over the limit we are
-            const excess = plan.relativeVelocity - plan.escapeVelocity;
-            elements.navDeviation.textContent = `+${excess.toFixed(1)} km/s OVER`;
-            elements.navDeviation.classList.remove('deviation-optimal', 'deviation-acceptable');
-            elements.navDeviation.classList.add('deviation-adjust');
-        }
-    }
-
-    // Show distance to SOI
-    if (elements.navArrival) {
-        if (plan.distanceToSOI !== null) {
-            elements.navArrival.textContent = plan.distanceToSOI.toFixed(4) + ' AU';
-        } else {
-            elements.navArrival.textContent = '---';
-        }
-        elements.navArrival.classList.remove('status-intercept', 'status-miss');
-    }
-
-    if (elements.navApproach) {
-        elements.navApproach.textContent = 'TO SOI';
-    }
-
-    // Progress shows velocity matching progress
-    const maxVel = 60; // km/s reference
-    const progress = Math.max(0, Math.min(100, (1 - plan.relativeVelocity / maxVel) * 100));
-    if (elements.navProgressPct) {
-        elements.navProgressPct.textContent = Math.round(progress) + '%';
-    }
-    if (elements.navProgressFill) {
-        elements.navProgressFill.style.width = Math.round(progress) + '%';
-    }
-}
-
-/**
- * Update navigation computer for capture phase (inside SOI).
- */
-function updateNavigationComputerCapture(plan) {
-    if (!plan) {
-        if (elements.navStrategy) {
-            elements.navStrategy.textContent = 'IN SOI';
-        }
-        return;
-    }
-
-    // Update strategy
-    if (elements.navStrategy) {
-        elements.navStrategy.textContent = plan.strategyName;
-    }
-
-    // Update recommended settings
-    if (elements.navRecAngle) {
-        const sign = plan.recommendedAngle >= 0 ? '+' : '';
-        elements.navRecAngle.textContent = sign + plan.recommendedAngle + '°';
-    }
-    if (elements.navRecDeploy) {
-        elements.navRecDeploy.textContent = plan.recommendedDeployment + '%';
-    }
-
-    // Show eccentricity
-    if (elements.navCurrentSettings) {
-        elements.navCurrentSettings.textContent = 'e=' + plan.eccentricity.toFixed(3);
-    }
-
-    // Show orbit stability
-    if (elements.navDeviation) {
-        if (plan.isStable) {
-            elements.navDeviation.textContent = 'STABLE ORBIT';
-            elements.navDeviation.classList.remove('deviation-acceptable', 'deviation-adjust');
-            elements.navDeviation.classList.add('deviation-optimal');
-        } else if (plan.eccentricity < 0.5) {
-            elements.navDeviation.textContent = 'CIRCULARIZING';
-            elements.navDeviation.classList.remove('deviation-optimal', 'deviation-adjust');
-            elements.navDeviation.classList.add('deviation-acceptable');
-        } else {
-            elements.navDeviation.textContent = 'HIGH ECCENTRICITY';
-            elements.navDeviation.classList.remove('deviation-optimal', 'deviation-acceptable');
-            elements.navDeviation.classList.add('deviation-adjust');
-        }
-    }
-
-    // Show orbit info
-    if (elements.navArrival) {
-        // Show periapsis in km (convert from AU)
-        const periKm = plan.periapsis * 149597870.7;
-        if (periKm < 1000000) {
-            elements.navArrival.textContent = Math.round(periKm) + ' km';
-        } else {
-            elements.navArrival.textContent = (periKm / 1000000).toFixed(2) + 'M km';
-        }
-        elements.navArrival.classList.remove('status-intercept', 'status-miss');
-    }
-
-    if (elements.navApproach) {
-        // Show apoapsis
-        const apoKm = plan.apoapsis * 149597870.7;
-        if (apoKm < 1000000) {
-            elements.navApproach.textContent = Math.round(apoKm) + ' km';
-        } else {
-            elements.navApproach.textContent = (apoKm / 1000000).toFixed(2) + 'M km';
-        }
-    }
-
-    // Progress shows circularization progress (lower e = more progress)
-    const progress = Math.max(0, Math.min(100, (1 - plan.eccentricity) * 100));
-    if (elements.navProgressPct) {
-        elements.navProgressPct.textContent = Math.round(progress) + '%';
-    }
-    if (elements.navProgressFill) {
-        elements.navProgressFill.style.width = Math.round(progress) + '%';
     }
 }
 
