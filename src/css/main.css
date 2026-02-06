@@ -1933,6 +1933,84 @@ body::after {
     color: var(--text-dim);
 }
 
+.course-action-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.course-action-buttons .apply-course-btn {
+    flex: 1;
+    margin-top: 0;
+}
+
+.reset-course-btn {
+    background: transparent;
+    border: 1px solid var(--text-dim);
+    color: var(--text-dim);
+    padding: 8px 12px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.reset-course-btn:hover {
+    border-color: var(--coral);
+    color: var(--coral);
+    background: rgba(232, 93, 76, 0.1);
+}
+
+.course-sail-count {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    margin-bottom: 8px;
+}
+
+.course-sail-count-label {
+    color: var(--text-dim);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+
+.course-sail-count-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.course-sail-count-btn {
+    background: transparent;
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.course-sail-count-btn:hover {
+    background: rgba(0, 212, 255, 0.15);
+}
+
+.course-sail-count-value {
+    color: var(--coral);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    min-width: 20px;
+    text-align: center;
+}
+
 /* ============================================================================
    THRUSTER STYLES
    ============================================================================ */
