@@ -218,7 +218,8 @@ export function getInterceptThreshold(target) {
 export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) {
     const {
         maxDays = EVAL_CONFIG.defaultMaxDays,
-        deployment = EVAL_CONFIG.defaultDeployment
+        deployment = EVAL_CONFIG.defaultDeployment,
+        sailCount
     } = options;
 
     const rawSteps = Math.round(maxDays * EVAL_CONFIG.stepsPerDay);
@@ -264,7 +265,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         pitchAngle: pitchDeg * DEG_TO_RAD,
         deploymentPercent: deployment,
         condition: ship.sail?.condition || 100,
-        sailCount: ship.sail?.sailCount || 1
+        sailCount: sailCount || ship.sail?.sailCount || 1
     };
 
     const mass = ship.mass || 10000;

@@ -651,19 +651,20 @@ export async function computeOptimalCourse(onProgress = null, sailCount = null, 
     optimalCourseCache.progress = { phase: 0, progress: 0, message: 'Starting...' };
     optimalCourseCache.destination = destination;
 
-    // Temporarily override sail count for computation if specified
-    const originalSailCount = player.sail?.sailCount || 1;
-    if (sailCount !== null && player.sail) {
-        player.sail.sailCount = sailCount;
-    }
+    // Determine effective sail count for this computation
+    const effectiveSailCount = sailCount !== null ? sailCount : (player.sail?.sailCount || 1);
 
     try {
         // Check for refinement mode
         const useRefinementMode = isRefinementMode();
         const seedSettings = useRefinementMode ? getRefinementSeedSettings() : null;
 
-        // Build solver options
+        // Build solver options - pass sailCount through options instead of
+        // mutating the live ship (which corrupts physics during async computation)
         const solverOptions = { workerCount };
+        if (sailCount !== null) {
+            solverOptions.sailCount = sailCount;
+        }
 
         if (useRefinementMode && seedSettings) {
             // Refinement mode: narrow search around current settings
@@ -682,14 +683,9 @@ export async function computeOptimalCourse(onProgress = null, sailCount = null, 
             onProgress?.(progress);
         });
 
-        // Restore original sail count
-        if (player.sail) {
-            player.sail.sailCount = originalSailCount;
-        }
-
         // Store result (with sail count used for this computation)
         if (result) {
-            result.sailCount = sailCount !== null ? sailCount : originalSailCount;
+            result.sailCount = effectiveSailCount;
         }
         optimalCourseCache.result = result;
         optimalCourseCache.computing = false;
@@ -707,10 +703,6 @@ export async function computeOptimalCourse(onProgress = null, sailCount = null, 
 
     } catch (error) {
         console.error('[NAVIGATION] Course computation failed:', error);
-        // Restore original sail count on error
-        if (player.sail) {
-            player.sail.sailCount = originalSailCount;
-        }
         optimalCourseCache.computing = false;
         optimalCourseCache.result = null;
         return null;
