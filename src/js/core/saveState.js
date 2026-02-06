@@ -31,6 +31,7 @@ import {
 import { destination, setDestination, clearInterceptCache, clearNavPlanCache } from './navigation.js';
 import { getPlayerShip } from '../data/ships.js';
 import { camera, setCameraFollow } from './camera.js';
+import { ASSET_BASE_URL } from '../config.js';
 
 // Version for save format compatibility
 const SAVE_VERSION = 1;
@@ -260,7 +261,7 @@ export function importGameState(jsonString) {
  * @returns {Promise<string[]>} Array of save file names
  */
 export async function fetchSaveIndex() {
-    const response = await fetch('saves/index.json');
+    const response = await fetch(ASSET_BASE_URL + 'saves/index.json');
     if (!response.ok) {
         throw new Error(`Failed to load save index: ${response.status}`);
     }
@@ -272,7 +273,7 @@ export async function fetchSaveIndex() {
  * @param {string} filename - Name of the save file (e.g. "my-save.json")
  */
 export async function loadSaveFile(filename) {
-    const response = await fetch(`saves/${filename}`);
+    const response = await fetch(ASSET_BASE_URL + `saves/${filename}`);
     if (!response.ok) {
         throw new Error(`Failed to load save file: ${response.status}`);
     }

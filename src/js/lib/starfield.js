@@ -16,6 +16,7 @@
 
 import { camera } from '../core/camera.js';
 import { getJulianDate } from '../core/gameState.js';
+import { ASSET_BASE_URL } from '../config.js';
 
 // ============================================================================
 // Star Catalog Data
@@ -34,7 +35,7 @@ export async function loadStarCatalog() {
     }
 
     try {
-        const response = await fetch('data/stars/bsc5-processed.json');
+        const response = await fetch(ASSET_BASE_URL + 'data/stars/bsc5-processed.json');
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
