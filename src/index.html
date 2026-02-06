@@ -327,15 +327,28 @@
                 <div class="tab-panel" id="autoPanel">
                     <div class="panel-section course-plotter-section">
                         <div class="panel-header">COURSE PLOTTER</div>
+                        <div class="course-sail-count">
+                            <span class="course-sail-count-label">SAILS</span>
+                            <div class="course-sail-count-controls">
+                                <button class="course-sail-count-btn" id="courseSailCountDown">−</button>
+                                <span class="course-sail-count-value" id="courseSailCountValue">1</span>
+                                <button class="course-sail-count-btn" id="courseSailCountUp">+</button>
+                            </div>
+                        </div>
                         <button class="course-btn" id="plotCourseBtn">
                             <span class="course-btn-text">PLOT COURSE</span>
                         </button>
                         <div class="course-result" id="courseResult">
                             <div class="course-status">Select destination, then plot course</div>
                         </div>
-                        <button class="apply-course-btn" id="applyCourseBtn" disabled>
-                            APPLY COURSE
-                        </button>
+                        <div class="course-action-buttons">
+                            <button class="apply-course-btn" id="applyCourseBtn" disabled>
+                                APPLY COURSE
+                            </button>
+                            <button class="reset-course-btn" id="resetCourseBtn" style="display: none;">
+                                RESET
+                            </button>
+                        </div>
                     </div>
                     <div class="panel-section launch-window-section">
                         <div class="panel-header">LAUNCH WINDOWS</div>

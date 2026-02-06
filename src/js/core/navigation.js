@@ -628,9 +628,10 @@ export function getCourseComputationState() {
  *   - Faster completion (~5-10s vs ~30-45s)
  *
  * @param {Function} onProgress - Progress callback ({phase, progress, message})
+ * @param {number} [sailCount] - Number of sails to use for computation (overrides current ship sail count)
  * @returns {Promise<Object|null>} Course solution or null
  */
-export async function computeOptimalCourse(onProgress = null) {
+export async function computeOptimalCourse(onProgress = null, sailCount = null) {
     // Prevent concurrent computations
     if (optimalCourseCache.computing) {
         console.log('[NAVIGATION] Course computation already in progress');
@@ -649,6 +650,12 @@ export async function computeOptimalCourse(onProgress = null) {
     optimalCourseCache.computing = true;
     optimalCourseCache.progress = { phase: 0, progress: 0, message: 'Starting...' };
     optimalCourseCache.destination = destination;
+
+    // Temporarily override sail count for computation if specified
+    const originalSailCount = player.sail?.sailCount || 1;
+    if (sailCount !== null && player.sail) {
+        player.sail.sailCount = sailCount;
+    }
 
     try {
         // Check for refinement mode
@@ -675,7 +682,15 @@ export async function computeOptimalCourse(onProgress = null) {
             onProgress?.(progress);
         });
 
-        // Store result
+        // Restore original sail count
+        if (player.sail) {
+            player.sail.sailCount = originalSailCount;
+        }
+
+        // Store result (with sail count used for this computation)
+        if (result) {
+            result.sailCount = sailCount !== null ? sailCount : originalSailCount;
+        }
         optimalCourseCache.result = result;
         optimalCourseCache.computing = false;
 
@@ -684,6 +699,7 @@ export async function computeOptimalCourse(onProgress = null) {
             console.log(`[NAVIGATION] Course computed (${modeLabel}): yaw=${result.yawDeg.toFixed(1)}°, ` +
                         `pitch=${result.pitchDeg.toFixed(1)}°, ` +
                         `distance=${result.minDistance.toFixed(4)} AU, ` +
+                        `sails=${result.sailCount}, ` +
                         `quality=${result.quality}`);
         }
 
@@ -691,6 +707,10 @@ export async function computeOptimalCourse(onProgress = null) {
 
     } catch (error) {
         console.error('[NAVIGATION] Course computation failed:', error);
+        // Restore original sail count on error
+        if (player.sail) {
+            player.sail.sailCount = originalSailCount;
+        }
         optimalCourseCache.computing = false;
         optimalCourseCache.result = null;
         return null;
@@ -816,13 +836,17 @@ export function applyComputedCourse(course) {
     player.sail.angle = course.yawDeg * Math.PI / 180;
     player.sail.pitchAngle = course.pitchDeg * Math.PI / 180;
     player.sail.deploymentPercent = course.deployment;
+    if (course.sailCount) {
+        player.sail.sailCount = course.sailCount;
+    }
 
     // Set transit state for course refinement feature
     // This enables re-plotting to use narrower search bounds
     setTransitState(destination, course, getJulianDate());
 
     console.log(`[NAVIGATION] Applied course: yaw=${course.yawDeg.toFixed(1)}°, ` +
-                `pitch=${course.pitchDeg.toFixed(1)}°, deployment=${course.deployment}%`);
+                `pitch=${course.pitchDeg.toFixed(1)}°, deployment=${course.deployment}%, ` +
+                `sails=${course.sailCount || 1}`);
 
     // Post-apply verification: re-evaluate from current ship state
     // Uses normal resolution (not 2x) to avoid UI blocking (<200ms)

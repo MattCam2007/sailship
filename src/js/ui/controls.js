@@ -18,6 +18,7 @@ import {
     applyComputedCourse,
     getCourseComputationState,
     isRefinementMode,
+    clearOptimalCourseCache,
     computeLaunchWindows,
     getLaunchWindowState
 } from '../core/navigation.js';
@@ -1225,13 +1226,52 @@ function initThrusterControls() {
     }
 }
 
+// Course plotter sail count (separate from the ship's current sail count)
+let coursePlotterSailCount = 1;
+
+/**
+ * Get the course plotter's selected sail count.
+ * @returns {number} Selected sail count for course plotting
+ */
+export function getCoursePlotterSailCount() {
+    return coursePlotterSailCount;
+}
+
 /**
  * Set up course plotter controls
  */
 function initCoursePlotter() {
     const plotBtn = document.getElementById('plotCourseBtn');
     const applyBtn = document.getElementById('applyCourseBtn');
+    const resetBtn = document.getElementById('resetCourseBtn');
     const resultDiv = document.getElementById('courseResult');
+
+    // Initialize sail count from current ship state
+    const player = getPlayerShip();
+    if (player?.sail) {
+        coursePlotterSailCount = player.sail.sailCount || 1;
+        const sailCountDisplay = document.getElementById('courseSailCountValue');
+        if (sailCountDisplay) sailCountDisplay.textContent = coursePlotterSailCount;
+    }
+
+    // Sail count +/- buttons
+    const sailCountDown = document.getElementById('courseSailCountDown');
+    const sailCountUp = document.getElementById('courseSailCountUp');
+    const sailCountDisplay = document.getElementById('courseSailCountValue');
+
+    if (sailCountDown) {
+        sailCountDown.addEventListener('click', () => {
+            coursePlotterSailCount = Math.max(1, coursePlotterSailCount - 1);
+            if (sailCountDisplay) sailCountDisplay.textContent = coursePlotterSailCount;
+        });
+    }
+
+    if (sailCountUp) {
+        sailCountUp.addEventListener('click', () => {
+            coursePlotterSailCount = Math.min(20, coursePlotterSailCount + 1);
+            if (sailCountDisplay) sailCountDisplay.textContent = coursePlotterSailCount;
+        });
+    }
 
     if (plotBtn) {
         plotBtn.addEventListener('click', async () => {
@@ -1271,7 +1311,7 @@ function initCoursePlotter() {
                         statusText = progress.message || 'Computing...';
                     }
                     resultDiv.innerHTML = `<div class="course-status">${statusText}</div>`;
-                });
+                }, coursePlotterSailCount);
 
                 // Update button state
                 plotBtn.classList.remove('computing');
@@ -1280,6 +1320,8 @@ function initCoursePlotter() {
                 if (course) {
                     displayCourseResult(course, resultDiv);
                     applyBtn.disabled = false;
+                    // Show reset button when we have a result
+                    if (resetBtn) resetBtn.style.display = '';
                 } else {
                     resultDiv.innerHTML = '<div class="course-status">No solution found</div>';
                 }
@@ -1305,9 +1347,11 @@ function initCoursePlotter() {
                 const deploySlider = document.getElementById('sailDeployment');
                 const angleSlider = document.getElementById('sailAngle');
                 const pitchSlider = document.getElementById('sailPitch');
+                const sailCountSlider = document.getElementById('sailCount');
                 const deployValue = document.getElementById('sailDeployValue');
                 const angleValue = document.getElementById('sailAngleValue');
                 const pitchValue = document.getElementById('sailPitchValue');
+                const sailCountValue = document.getElementById('sailCountValue');
 
                 // Helper to format values - show decimal only if not a whole number
                 const formatValue = (val, suffix) => {
@@ -1319,21 +1363,47 @@ function initCoursePlotter() {
                 if (deploySlider) deploySlider.value = course.deployment;
                 if (angleSlider) angleSlider.value = course.yawDeg;
                 if (pitchSlider) pitchSlider.value = course.pitchDeg;
+                if (sailCountSlider) sailCountSlider.value = coursePlotterSailCount;
                 if (deployValue) deployValue.textContent = formatValue(course.deployment, '%');
                 if (angleValue) angleValue.textContent = formatValue(course.yawDeg, '°');
                 if (pitchValue) pitchValue.textContent = formatValue(course.pitchDeg, '°');
+                if (sailCountValue) sailCountValue.textContent = coursePlotterSailCount;
 
                 // Update sail display (also updates mobile sliders)
                 updateSailDisplay();
-                // Visual feedback
+
+                // Disable apply button until next recalculation
+                applyBtn.disabled = true;
                 applyBtn.textContent = 'APPLIED';
-                setTimeout(() => {
-                    applyBtn.textContent = 'APPLY COURSE';
-                }, 1500);
 
                 // Update plot button to show "REFINE COURSE" since course is now applied
                 updatePlotButtonText();
             }
+        });
+    }
+
+    // Reset button - clears the course plotter state
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            // Clear the cached course
+            clearOptimalCourseCache();
+            clearTransitState('course plotter reset');
+
+            // Reset result display
+            if (resultDiv) {
+                resultDiv.classList.remove('has-solution');
+                resultDiv.innerHTML = '<div class="course-status">Select destination, then plot course</div>';
+            }
+
+            // Disable apply and hide reset
+            if (applyBtn) {
+                applyBtn.disabled = true;
+                applyBtn.textContent = 'APPLY COURSE';
+            }
+            resetBtn.style.display = 'none';
+
+            // Reset plot button text
+            updatePlotButtonText();
         });
     }
 }
@@ -1387,6 +1457,10 @@ function displayCourseResult(course, container) {
     container.classList.add('has-solution');
     container.innerHTML = `
         <div class="course-settings">
+            <div class="course-row">
+                <span class="course-label">SAILS</span>
+                <span class="course-value">${course.sailCount || 1}</span>
+            </div>
             <div class="course-row">
                 <span class="course-label">YAW</span>
                 <span class="course-value">${course.yawDeg.toFixed(1)}°</span>
