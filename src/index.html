@@ -375,10 +375,6 @@
         <div class="time-display" id="timeDisplay">2351.127 // 14:23:07 UTC</div>
     </div>
 
-    <button class="flight-view-btn" onclick="window.location.href='flight.html'" title="Enter cockpit view (first-person 3D)">
-        COCKPIT VIEW →
-    </button>
-
     <button class="save-load-btn" id="saveLoadBtn" title="Save or load game state">
         SAVE/LOAD
     </button>
@@ -425,26 +421,6 @@
     </div>
 
     <style>
-        .flight-view-btn {
-            position: fixed;
-            bottom: 50px;
-            right: 20px;
-            background: rgba(232, 93, 76, 0.2);
-            border: 1px solid rgba(232, 93, 76, 0.5);
-            color: #e85d4c;
-            padding: 10px 20px;
-            font-family: 'Share Tech Mono', monospace;
-            font-size: 12px;
-            cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
-            z-index: 100;
-            letter-spacing: 1px;
-        }
-        .flight-view-btn:hover {
-            background: rgba(232, 93, 76, 0.4);
-            transform: translateX(-2px);
-        }
-
         .save-load-btn {
             position: fixed;
             bottom: 50px;
@@ -626,12 +602,6 @@
         }
 
         @media (max-width: 768px) {
-            .flight-view-btn {
-                bottom: 120px;
-                right: 10px;
-                padding: 8px 12px;
-                font-size: 10px;
-            }
             .save-load-btn {
                 bottom: 120px;
                 left: 10px;
