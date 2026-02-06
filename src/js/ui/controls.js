@@ -28,6 +28,54 @@ import { fireThruster } from '../core/shipPhysics.js';
 import { setDestinationName, updateSailDisplay } from './uiUpdater.js';
 import { initExpandablePanel, loadPanelState, initTabGroup, isMobileView } from './ui-components.js';
 
+// ============================================================================
+// WORKER COUNT CONTROLS
+// ============================================================================
+
+const DEFAULT_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 16);
+const MIN_WORKERS = 1;
+const MAX_WORKERS = Math.max(navigator.hardwareConcurrency || 4, 16);
+
+/**
+ * Initialize a worker count control (+/- buttons with display).
+ * Persists to localStorage for each control.
+ */
+function initWorkerControl(downBtnId, upBtnId, countId, storageKey) {
+    const downBtn = document.getElementById(downBtnId);
+    const upBtn = document.getElementById(upBtnId);
+    const countEl = document.getElementById(countId);
+    if (!downBtn || !upBtn || !countEl) return;
+
+    // Load saved value or default
+    const saved = localStorage.getItem(storageKey);
+    let count = saved ? parseInt(saved, 10) : DEFAULT_WORKERS;
+    count = Math.max(MIN_WORKERS, Math.min(MAX_WORKERS, count));
+    countEl.textContent = count;
+
+    downBtn.addEventListener('click', () => {
+        let val = parseInt(countEl.textContent, 10) || DEFAULT_WORKERS;
+        val = Math.max(MIN_WORKERS, val - 1);
+        countEl.textContent = val;
+        localStorage.setItem(storageKey, val);
+    });
+
+    upBtn.addEventListener('click', () => {
+        let val = parseInt(countEl.textContent, 10) || DEFAULT_WORKERS;
+        val = Math.min(MAX_WORKERS, val + 1);
+        countEl.textContent = val;
+        localStorage.setItem(storageKey, val);
+    });
+}
+
+/**
+ * Read the current worker count from a UI element.
+ */
+function getWorkerCount(countId) {
+    const el = document.getElementById(countId);
+    if (!el) return 1;
+    return parseInt(el.textContent, 10) || 1;
+}
+
 // Drag state for camera panning
 const dragState = {
     isDragging: false,
@@ -1273,11 +1321,22 @@ function initCoursePlotter() {
         });
     }
 
+    // Worker count control
+    initWorkerControl(
+        'coursePlotterWorkersDown',
+        'coursePlotterWorkersUp',
+        'coursePlotterWorkerCount',
+        'coursePlotterWorkers'
+    );
+
     if (plotBtn) {
         plotBtn.addEventListener('click', async () => {
             // Check if already computing
             const state = getCourseComputationState();
             if (state.computing) return;
+
+            // Read worker count from UI
+            const workerCount = getWorkerCount('coursePlotterWorkerCount');
 
             // Update button to show computing state
             plotBtn.classList.add('computing');
@@ -1311,7 +1370,7 @@ function initCoursePlotter() {
                         statusText = progress.message || 'Computing...';
                     }
                     resultDiv.innerHTML = `<div class="course-status">${statusText}</div>`;
-                }, coursePlotterSailCount);
+                }, coursePlotterSailCount, workerCount);
 
                 // Update button state
                 plotBtn.classList.remove('computing');
@@ -1511,10 +1570,21 @@ function initLaunchWindowFinder() {
 
     if (!findBtn || !resultDiv) return;
 
+    // Worker count control
+    initWorkerControl(
+        'launchWindowWorkersDown',
+        'launchWindowWorkersUp',
+        'launchWindowWorkerCount',
+        'launchWindowWorkers'
+    );
+
     findBtn.addEventListener('click', async () => {
         // Check if already computing
         const state = getLaunchWindowState();
         if (state.computing) return;
+
+        // Read worker count from UI
+        const workerCount = getWorkerCount('launchWindowWorkerCount');
 
         // Update button to show computing state
         findBtn.classList.add('computing');
@@ -1541,7 +1611,7 @@ function initLaunchWindowFinder() {
                     statusText = progress.message || 'Computing...';
                 }
                 resultDiv.innerHTML = `<div class="course-status">${statusText}</div>`;
-            });
+            }, workerCount);
 
             // Restore button
             findBtn.classList.remove('computing');

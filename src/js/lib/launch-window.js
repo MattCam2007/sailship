@@ -21,6 +21,7 @@
 
 import { evaluateCandidate, coarseSweep } from './course-solver.js';
 import { MU_SUN, meanMotion, getPosition } from './orbital.js';
+import { WorkerPool } from '../workers/worker-pool.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -242,6 +243,7 @@ function uniformSchedule(maxCoastDays, intervalDays) {
  */
 export async function scanLaunchWindows(ship, target, startJD, options = {}, onProgress = null) {
     const maxCoastDays = options.maxCoastDays || SCAN_CONFIG.defaultMaxCoastDays;
+    const workerCount = options.workerCount || 1;
 
     // Choose flight horizons based on target distance
     const isOuterPlanet = target.elements.a > SCAN_CONFIG.outerPlanetThreshold;
@@ -250,14 +252,23 @@ export async function scanLaunchWindows(ship, target, startJD, options = {}, onP
         : SCAN_CONFIG.flightHorizons;
 
     // Use synodic-period-aware scheduling instead of uniform intervals.
-    // Falls back to uniform if intervalDays is explicitly provided (backward compat).
     const departureDates = options.intervalDays
         ? uniformSchedule(maxCoastDays, options.intervalDays)
         : computeDepartureSchedule(ship.orbitalElements, target.elements, startJD, maxCoastDays);
 
     const totalEvals = departureDates.length * LAUNCH_WINDOW_STRATEGIES.length * flightHorizons.length;
-    let evalCount = 0;
 
+    // ================================================================
+    // PARALLEL PATH: Use worker pool when workerCount > 1
+    // ================================================================
+    if (workerCount > 1) {
+        return await _scanParallel(ship, target, startJD, departureDates, flightHorizons, workerCount, totalEvals, onProgress);
+    }
+
+    // ================================================================
+    // SERIAL PATH: Original single-threaded implementation
+    // ================================================================
+    let evalCount = 0;
     const results = [];
 
     for (const coastDays of departureDates) {
@@ -279,7 +290,6 @@ export async function scanLaunchWindows(ship, target, startJD, options = {}, onP
                     }
                 );
 
-                // Track best result for this departure date
                 if (!bestForDeparture || result.minDistance < bestForDeparture.minDistance) {
                     bestForDeparture = {
                         ...result,
@@ -309,6 +319,81 @@ export async function scanLaunchWindows(ship, target, startJD, options = {}, onP
     }
 
     return results;
+}
+
+/**
+ * Parallel scan implementation using WorkerPool.
+ *
+ * Batches all (departure × horizon × strategy) evaluations and dispatches
+ * them across workers. Each departure date's evaluations are independent.
+ */
+async function _scanParallel(ship, target, startJD, departureDates, flightHorizons, workerCount, totalEvals, onProgress) {
+    const pool = new WorkerPool(workerCount);
+
+    try {
+        // Build flat batch of all evaluations with metadata for reassembly
+        const items = [];
+        const itemMeta = []; // Parallel array: { coastDays, horizon, strategy }
+
+        for (const coastDays of departureDates) {
+            const departureJD = startJD + coastDays;
+            for (const horizon of flightHorizons) {
+                for (const strategy of LAUNCH_WINDOW_STRATEGIES) {
+                    items.push({
+                        yawDeg: strategy.yawDeg,
+                        pitchDeg: strategy.pitchDeg,
+                        options: {
+                            startJulianDate: departureJD,
+                            maxDays: horizon,
+                            deployment: strategy.deployment,
+                        }
+                    });
+                    itemMeta.push({ coastDays, horizon, strategy });
+                }
+            }
+        }
+
+        onProgress?.({
+            phase: 'scanning',
+            progress: 0,
+            message: `Scanning ${departureDates.length} departures (${workerCount} workers)...`,
+        });
+
+        // Dispatch entire batch to worker pool
+        const allResults = await pool.evaluateBatch(items, { ship, target });
+
+        onProgress?.({
+            phase: 'scanning',
+            progress: 1,
+            message: `Scan complete (${allResults.length} evaluations)`,
+        });
+
+        // Reassemble: find best result per departure date
+        const bestByDeparture = new Map();
+
+        for (let i = 0; i < allResults.length; i++) {
+            const result = allResults[i];
+            const meta = itemMeta[i];
+            const key = meta.coastDays;
+
+            const current = bestByDeparture.get(key);
+            if (!current || result.minDistance < current.minDistance) {
+                bestByDeparture.set(key, {
+                    ...result,
+                    coastDays: meta.coastDays,
+                    flightDays: result.timeToClosest,
+                    totalDays: meta.coastDays + result.timeToClosest,
+                    horizonUsed: meta.horizon,
+                    strategyUsed: meta.strategy,
+                });
+            }
+        }
+
+        return [...bestByDeparture.values()];
+
+    } finally {
+        pool.terminate();
+    }
 }
 
 // ============================================================================
@@ -435,7 +520,7 @@ export async function verifyTopWindows(ship, target, startJD, windows, options =
         const coarseResults = await coarseSweep(
             ship,
             target,
-            { startJulianDate: departureJD, maxDays: horizon },
+            { startJulianDate: departureJD, maxDays: horizon, workerCount: options.workerCount || 1 },
             (p) => {
                 onProgress?.({
                     phase: 'verifying',
@@ -501,7 +586,7 @@ export async function verifyTopWindows(ship, target, startJD, windows, options =
  * @param {Function} onProgress - Progress callback
  * @returns {Promise<Array>} Combined results (original + fill-in)
  */
-async function adaptiveRefinement(scanResults, ship, target, startJD, flightHorizons, onProgress = null) {
+async function adaptiveRefinement(scanResults, ship, target, startJD, flightHorizons, onProgress = null, workerCount = 1) {
     // Identify departure dates where crossings were found (any status except NO_CROSSING)
     const promisingDates = new Set();
     const scannedDates = new Set();
@@ -544,6 +629,64 @@ async function adaptiveRefinement(scanResults, ship, target, startJD, flightHori
 
     const strategies = LAUNCH_WINDOW_STRATEGIES;
     const totalEvals = sortedFillIns.length * strategies.length * flightHorizons.length;
+
+    // Parallel refinement when workers available
+    if (workerCount > 1) {
+        const pool = new WorkerPool(workerCount);
+        try {
+            const items = [];
+            const itemMeta = [];
+
+            for (const coastDays of sortedFillIns) {
+                const departureJD = startJD + coastDays;
+                for (const horizon of flightHorizons) {
+                    for (const strategy of strategies) {
+                        items.push({
+                            yawDeg: strategy.yawDeg,
+                            pitchDeg: strategy.pitchDeg,
+                            options: {
+                                startJulianDate: departureJD,
+                                maxDays: horizon,
+                                deployment: strategy.deployment,
+                            }
+                        });
+                        itemMeta.push({ coastDays, horizon, strategy });
+                    }
+                }
+            }
+
+            onProgress?.({
+                phase: 'refining',
+                progress: 0,
+                message: `Refining ${sortedFillIns.length} dates (${workerCount} workers)...`,
+            });
+
+            const allResults = await pool.evaluateBatch(items, { ship, target });
+
+            const bestByDeparture = new Map();
+            for (let i = 0; i < allResults.length; i++) {
+                const result = allResults[i];
+                const meta = itemMeta[i];
+                const current = bestByDeparture.get(meta.coastDays);
+                if (!current || result.minDistance < current.minDistance) {
+                    bestByDeparture.set(meta.coastDays, {
+                        ...result,
+                        coastDays: meta.coastDays,
+                        flightDays: result.timeToClosest,
+                        totalDays: meta.coastDays + result.timeToClosest,
+                        horizonUsed: meta.horizon,
+                        strategyUsed: meta.strategy,
+                    });
+                }
+            }
+
+            return [...scanResults, ...bestByDeparture.values()];
+        } finally {
+            pool.terminate();
+        }
+    }
+
+    // Serial fallback
     let evalCount = 0;
     const newResults = [];
 
@@ -593,7 +736,6 @@ async function adaptiveRefinement(scanResults, ship, target, startJD, flightHori
         }
     }
 
-    // Merge with original results
     return [...scanResults, ...newResults];
 }
 
@@ -712,7 +854,8 @@ export async function findLaunchWindows(ship, target, startJD, options = {}, onP
             (p) => onProgress?.({
                 ...p,
                 progress: 0.25 + p.progress * 0.1,  // Phase 1.5 is 10% of total
-            })
+            }),
+            options.workerCount || 1
         );
 
         // Check timeout
