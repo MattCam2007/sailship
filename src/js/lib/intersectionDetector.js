@@ -379,6 +379,50 @@ function refineCrossingBisection(p1, p2, targetRadius, maxIterations = null) {
 const ECCENTRICITY_THRESHOLD = 0.05;
 
 /**
+ * Deduplicate multi-radius crossings for a single body.
+ *
+ * When eccentricity causes us to check perihelion/a/aphelion radii, a single
+ * orbit transit can produce 2-3 crossings. These are clustered in time and
+ * represent the same navigation event. We merge nearby crossings, keeping
+ * the one with smallest ship-to-planet distance (best intercept).
+ *
+ * Crossings far apart in time (e.g., outbound vs return leg) are preserved
+ * as separate encounters.
+ *
+ * @param {Array} crossings - Array of crossing objects for one body
+ * @param {Object} elements - Body's orbital elements {a, e}
+ * @returns {Array} Deduplicated crossings (one per distinct orbit transit)
+ */
+function deduplicateBodyCrossings(crossings, elements) {
+    if (crossings.length <= 1) return crossings;
+
+    // Sort by time
+    crossings.sort((a, b) => a.time - b.time);
+
+    // Merge window: time for object at orbital speed to traverse perihelion-aphelion band
+    // dt = e * sqrt(a) * 365.25 / pi  (days), minimum 5 days
+    const { a, e } = elements;
+    const mergeWindow = Math.max(5, e * Math.sqrt(a) * 365.25 / Math.PI);
+
+    const result = [];
+    let group = [crossings[0]];
+
+    for (let i = 1; i < crossings.length; i++) {
+        if (crossings[i].time - group[0].time < mergeWindow) {
+            group.push(crossings[i]);
+        } else {
+            // Keep the crossing with smallest ship-to-planet distance
+            result.push(group.reduce((best, c) => c.distance < best.distance ? c : best));
+            group = [crossings[i]];
+        }
+    }
+    // Last group
+    result.push(group.reduce((best, c) => c.distance < best.distance ? c : best));
+
+    return result;
+}
+
+/**
  * Calculate the orbital plane normal vector from orbital elements.
  * The normal is perpendicular to the orbital plane in ecliptic coordinates.
  *
@@ -667,8 +711,10 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
             continue;  // No possible crossing
         }
 
-        // Track crossing times to avoid duplicates
+        // Track crossing times to avoid floating-point duplicates
         const crossingTimes = new Set();
+        // Collect per-body crossings before deduplication
+        const bodyCrossings = [];
 
         // ====================================================================
         // SCAN TRAJECTORY FOR ORBITAL RADIUS CROSSINGS
@@ -729,8 +775,7 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 const dz = crossing.position.z - planetPos.z;
                 const crossingDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-                // Add intersection
-                intersections.push({
+                bodyCrossings.push({
                     bodyName: body.name,
                     time: crossing.time,
                     bodyPosition: planetPos,
@@ -739,6 +784,12 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 });
             }
         }
+
+        // Deduplicate multi-radius crossings for this body.
+        // Checking perihelion/a/aphelion can produce 2-3 crossings for a single
+        // orbit transit. Merge nearby ones, keeping the best intercept.
+        const deduped = deduplicateBodyCrossings(bodyCrossings, body.elements);
+        intersections.push(...deduped);
     }
 
     // Sort by time (chronological order), limit to 20 markers
