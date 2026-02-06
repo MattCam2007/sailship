@@ -47,7 +47,7 @@ describe('zoomLevels', () => {
         assert.strictEqual(zoomLevels['system'], 50);
         assert.strictEqual(zoomLevels['inner'], 200);
         assert.strictEqual(zoomLevels['local'], 800);
-        assert.strictEqual(zoomLevels['tactical'], 3000);
+        assert.strictEqual(zoomLevels['tactical'], 10000);
     });
 
     it('has increasing scale values', () => {
