@@ -331,7 +331,21 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
 
     const startTime = getJulianDate();
     const timeStep = maxDays / steps;
-    const targetRadius = target.elements.a;
+
+    // For eccentric targets, compute crossing radii at perihelion, semi-major axis, and aphelion.
+    // This captures crossings that the single-radius approach misses for Mercury (e=0.206) and Mars (e=0.093).
+    // Guard against hyperbolic orbits (e >= 0.95) where aphelion is undefined.
+    const targetA = target.elements.a;
+    const targetE = target.elements.e || 0;
+    let targetRadii;
+    if (targetE > 0.05 && targetE < 0.95) {
+        const perihelion = targetA * (1 - targetE);
+        const aphelion = targetA * (1 + targetE);
+        targetRadii = [perihelion, targetA, aphelion];
+    } else {
+        targetRadii = [targetA];
+    }
+    const targetRadius = targetA;  // Keep for fallback path
 
     let simElements = { ...ship.orbitalElements };
 
@@ -410,17 +424,22 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         }
     }
 
-    // CROSSING-AWARE EVALUATION (v3.0)
+    // CROSSING-AWARE EVALUATION (v3.0, enhanced for eccentric orbits)
     if (CONFIG.useCrossingAware && trajectory.length > 1) {
-        const crossings = findRadiusCrossingsInTrajectory(trajectory, targetRadius);
+        // Detect crossings at all target radii (perihelion, a, aphelion for eccentric orbits)
+        let allCrossings = [];
+        for (const radius of targetRadii) {
+            const crossings = findRadiusCrossingsInTrajectory(trajectory, radius);
+            allCrossings = allCrossings.concat(crossings);
+        }
 
         let bestCrossing = null;
         let bestDistance = Infinity;
         let bestAngularSep = Math.PI;
         let bestCrossingIndex = -1;
 
-        for (let ci = 0; ci < crossings.length; ci++) {
-            const crossing = crossings[ci];
+        for (let ci = 0; ci < allCrossings.length; ci++) {
+            const crossing = allCrossings[ci];
 
             const planetPos = getPosition(target.elements, crossing.time);
 
@@ -462,7 +481,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                 timeToClosest: bestCrossing.time - startTime,
                 status,
                 crossingIndex: bestCrossingIndex,
-                totalCrossings: crossings.length,
+                totalCrossings: allCrossings.length,
                 angularSeparationDeg: bestAngularSep * (180 / Math.PI),
                 crossingDirection: bestCrossing.direction,
                 usedCrossingAware: true,
@@ -471,12 +490,12 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             };
         }
 
-        if (crossings.length > 0) {
+        if (allCrossings.length > 0) {
             let bestFailedCrossing = null;
             let bestFailedDistance = Infinity;
             let bestFailedAngularSep = Math.PI;
 
-            for (const crossing of crossings) {
+            for (const crossing of allCrossings) {
                 const planetPos = getPosition(target.elements, crossing.time);
                 if (!isFinite(planetPos.x)) continue;
                 const crossingDistance = distance3D(crossing.position, planetPos);
@@ -497,7 +516,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                     timeToClosest: bestFailedCrossing.time - startTime,
                     status: 'PHASE_MISS',
                     crossingIndex: 0,
-                    totalCrossings: crossings.length,
+                    totalCrossings: allCrossings.length,
                     angularSeparationDeg: bestFailedAngularSep * (180 / Math.PI),
                     crossingDirection: bestFailedCrossing.direction,
                     usedCrossingAware: true,
