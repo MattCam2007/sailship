@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "savedAt": "2026-02-05T17:21:17.019Z",
+  "time": {
+    "gameDays": 1059.3437785499825,
+    "julianDate": 2459909.343776021,
+    "currentSpeed": "1x"
+  },
+  "view": {
+    "zoom": "tactical",
+    "focusTarget": "VENUS"
+  },
+  "displayOptions": {
+    "showStarfield": true,
+    "showOrbits": true,
+    "showTargetOrbitOnly": false,
+    "showLabels": true,
+    "showTrajectory": true,
+    "showGrid": true,
+    "showPredictedTrajectory": true,
+    "showIntersectionMarkers": true
+  },
+  "bodyFilters": {
+    "planet": true,
+    "dwarf-planet": true,
+    "major-moon": true,
+    "minor-moon": false,
+    "asteroid": false
+  },
+  "trajectoryConfig": {
+    "durationDays": 365
+  },
+  "navigation": {
+    "destination": "VENUS"
+  },
+  "autopilot": {
+    "enabled": false,
+    "phase": "CRUISE"
+  },
+  "camera": {
+    "angleX": 0.2617993877991494,
+    "angleZ": 0,
+    "zoom": 4.683545852090012,
+    "target": {
+      "x": -0.048766493137919004,
+      "y": -0.7648830994639357,
+      "z": -0.04174072778685086
+    },
+    "followTarget": null
+  },
+  "ship": {
+    "orbitalElements": {
+      "a": 0.8924418661685258,
+      "e": 0.9024500648705054,
+      "i": 0.3826059568819136,
+      "Ω": 4.70692362090421,
+      "ω": 2.5633733541292156,
+      "M0": 5.742774038794526,
+      "epoch": 2459909.343776021,
+      "μ": 0.00029591220828559093
+    },
+    "sail": {
+      "area": 3000000,
+      "reflectivity": 0.9,
+      "angle": -0.5967280712568608,
+      "pitchAngle": 0.3399901382884967,
+      "deploymentPercent": 100,
+      "condition": 100,
+      "sailCount": 1
+    },
+    "soiState": {
+      "currentBody": "SUN",
+      "isInSOI": false
+    },
+    "mass": 10000
+  }
+}
