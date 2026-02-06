@@ -465,6 +465,92 @@ export function applyThrust(elements, thrust, deltaTime, julianDate) {
 }
 
 // ============================================================================
+// Thruster Impulse Burns
+// ============================================================================
+
+/**
+ * Apply an instantaneous thruster burn (impulsive delta-V).
+ *
+ * Unlike continuous solar sail thrust, chemical thrusters deliver
+ * delta-V as an instantaneous velocity change. This function:
+ * 1. Gets current position and velocity from orbital elements
+ * 2. Computes prograde or retrograde unit vector
+ * 3. Applies delta-V as instantaneous velocity change
+ * 4. Converts back to orbital elements
+ *
+ * @param {Object} elements - Current orbital elements
+ * @param {number} deltaVKmS - Delta-V magnitude in km/s
+ * @param {string} direction - 'prograde' or 'retrograde'
+ * @param {number} julianDate - Current Julian date
+ * @returns {Object} New orbital elements after burn
+ */
+export function applyThrusterBurn(elements, deltaVKmS, direction, julianDate) {
+    const { μ } = elements;
+
+    // Get current position and velocity
+    const position = getPosition(elements, julianDate);
+    const velocity = getVelocity(elements, julianDate);
+
+    // Validate
+    const posValid = isFinite(position.x) && isFinite(position.y) && isFinite(position.z) &&
+                     (position.x !== 0 || position.y !== 0 || position.z !== 0);
+    const velValid = isFinite(velocity.vx) && isFinite(velocity.vy) && isFinite(velocity.vz);
+    if (!posValid || !velValid) {
+        return { ...elements };
+    }
+
+    // Compute velocity magnitude
+    const vMag = Math.sqrt(velocity.vx ** 2 + velocity.vy ** 2 + velocity.vz ** 2);
+    if (vMag < 1e-15) {
+        return { ...elements };
+    }
+
+    // Prograde unit vector (along velocity)
+    const progX = velocity.vx / vMag;
+    const progY = velocity.vy / vMag;
+    const progZ = velocity.vz / vMag;
+
+    // Convert delta-V from km/s to AU/day
+    // 1 AU/day = 1731.46 km/s, so 1 km/s = 1/1731.46 AU/day
+    const deltaVAUDay = deltaVKmS / 1731.46;
+
+    // Direction multiplier: +1 for prograde, -1 for retrograde
+    const sign = direction === 'retrograde' ? -1 : 1;
+
+    // Apply instantaneous velocity change
+    const newVelocity = {
+        vx: velocity.vx + sign * deltaVAUDay * progX,
+        vy: velocity.vy + sign * deltaVAUDay * progY,
+        vz: velocity.vz + sign * deltaVAUDay * progZ
+    };
+
+    // Convert back to orbital elements (position unchanged)
+    const newElements = stateToElements(position, newVelocity, μ, julianDate);
+
+    // Validate
+    const valid = isFinite(newElements.a) && newElements.a !== 0 &&
+                  isFinite(newElements.e) && newElements.e >= 0 &&
+                  isFinite(newElements.i) &&
+                  isFinite(newElements.Ω) &&
+                  isFinite(newElements.ω) &&
+                  isFinite(newElements.M0);
+
+    if (!valid) {
+        return { ...elements };
+    }
+
+    // Log the burn
+    const oldVKmS = vMag * 1731.46;
+    const newVMag = Math.sqrt(newVelocity.vx ** 2 + newVelocity.vy ** 2 + newVelocity.vz ** 2);
+    const newVKmS = newVMag * 1731.46;
+    console.log(`[THRUSTER] ${direction.toUpperCase()} burn: ΔV=${deltaVKmS.toFixed(3)} km/s`);
+    console.log(`[THRUSTER] Velocity: ${oldVKmS.toFixed(2)} → ${newVKmS.toFixed(2)} km/s`);
+    console.log(`[THRUSTER] Orbit: a=${elements.a.toFixed(6)} → ${newElements.a.toFixed(6)} AU, e=${elements.e.toFixed(4)} → ${newElements.e.toFixed(4)}`);
+
+    return newElements;
+}
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 

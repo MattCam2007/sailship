@@ -22,7 +22,8 @@ import {
     isRefinementMode
 } from '../core/navigation.js';
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
-import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount } from '../data/ships.js';
+import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount, setThrusterBurnSize } from '../data/ships.js';
+import { fireThruster } from '../core/shipPhysics.js';
 import { setDestinationName, updateSailDisplay } from './uiUpdater.js';
 import { initExpandablePanel, loadPanelState, initTabGroup, isMobileView } from './ui-components.js';
 
@@ -193,6 +194,7 @@ export function initControls(canvas) {
     initSailControls();
     initFineTuneControls();
     initAutoPilotControls();
+    initThrusterControls();
     initCoursePlotter();
     initSaveLoadControls();
     initKeyboardShortcuts();
@@ -1100,6 +1102,86 @@ export function updatePlotButtonText() {
 
     const useRefinement = isRefinementMode();
     btnText.textContent = useRefinement ? 'REFINE COURSE' : 'PLOT COURSE';
+}
+
+/**
+ * Set up thruster controls for orbital insertion and gravity assist
+ */
+function initThrusterControls() {
+    const retroBtn = document.getElementById('thrusterRetrograde');
+    const proBtn = document.getElementById('thrusterPrograde');
+    const burnSlider = document.getElementById('thrusterBurnSize');
+    const burnValue = document.getElementById('thrusterBurnValue');
+    const deltaVDisplay = document.getElementById('thrusterDeltaV');
+    const fuelFill = document.getElementById('thrusterFuelFill');
+    const lastBurnDisplay = document.getElementById('thrusterLastBurn');
+
+    // Burn size slider
+    if (burnSlider) {
+        burnSlider.addEventListener('input', () => {
+            const value = parseFloat(burnSlider.value);
+            const player = getPlayerShip();
+            if (player) {
+                setThrusterBurnSize(player, value);
+            }
+            if (burnValue) {
+                burnValue.textContent = value.toFixed(1) + ' km/s';
+            }
+        });
+    }
+
+    // Retrograde burn (orbital insertion)
+    if (retroBtn) {
+        retroBtn.addEventListener('click', () => {
+            const player = getPlayerShip();
+            if (!player) return;
+
+            const result = fireThruster(player, 'retrograde');
+            handleThrusterResult(result, 'RETROGRADE', retroBtn);
+        });
+    }
+
+    // Prograde burn (gravity assist)
+    if (proBtn) {
+        proBtn.addEventListener('click', () => {
+            const player = getPlayerShip();
+            if (!player) return;
+
+            const result = fireThruster(player, 'prograde');
+            handleThrusterResult(result, 'PROGRADE', proBtn);
+        });
+    }
+
+    /**
+     * Handle thruster burn result: update UI, show feedback
+     */
+    function handleThrusterResult(result, label, btn) {
+        const player = getPlayerShip();
+
+        // Flash the button
+        btn.classList.add('firing');
+        setTimeout(() => btn.classList.remove('firing'), 300);
+
+        if (result.success) {
+            // Show last burn result
+            if (lastBurnDisplay) {
+                lastBurnDisplay.textContent =
+                    `${label}: -${result.deltaVApplied.toFixed(2)} km/s | e=${result.newEccentricity.toFixed(4)}`;
+                lastBurnDisplay.classList.add('success');
+                lastBurnDisplay.classList.remove('empty');
+                setTimeout(() => lastBurnDisplay.classList.remove('success'), 2000);
+            }
+
+            // Update sail display too (thrust info may change)
+            updateSailDisplay();
+        } else {
+            if (lastBurnDisplay) {
+                lastBurnDisplay.textContent = `NO FUEL - ${result.reason || 'empty'}`;
+                lastBurnDisplay.classList.add('empty');
+                lastBurnDisplay.classList.remove('success');
+            }
+        }
+    }
 }
 
 /**

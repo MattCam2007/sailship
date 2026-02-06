@@ -410,6 +410,27 @@ export const BODY_DISPLAY = {
     EROS:     { radius: 2,  color: '#888878', physicalRadiusKm: 8 },
 };
 
+// ============================================================================
+// Thruster Configuration
+// ============================================================================
+
+/**
+ * Default thruster configuration for player ship.
+ *
+ * Chemical thrusters provide high-thrust, low-duration impulse burns
+ * for orbital insertion and gravity assist maneuvers. Unlike the solar
+ * sail (continuous, low thrust), thrusters deliver instantaneous delta-V.
+ *
+ * Budget: 5 km/s total delta-V is reasonable for a small ship with
+ * auxiliary chemical propulsion (comparable to spacecraft like Dawn or
+ * New Horizons adjustment motors, but scaled up).
+ */
+export const DEFAULT_THRUSTER = {
+    deltaVRemaining: 5.0,   // km/s of delta-V fuel remaining
+    deltaVMax: 5.0,          // km/s total capacity (for fuel gauge)
+    burnSize: 0.5,           // km/s per button press
+};
+
 /**
  * Default colors for ships by faction/type.
  */
