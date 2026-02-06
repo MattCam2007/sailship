@@ -458,12 +458,13 @@ export const PLANET_TEXTURE_CONFIG = {
     /** Resolution of the offscreen WebGL render target (square) */
     renderSize: 512,
 
-    /** Base URL for Solar System Scope texture downloads */
-    baseUrl: 'https://www.solarsystemscope.com/textures/download/',
+    /** Base path for locally-stored planet textures */
+    baseUrl: '../textures/',
 
     /**
      * Per-body texture filenames.
-     * These are appended to baseUrl to form the full URL.
+     * These are appended to baseUrl to form the full path.
+     * Textures stored locally in src/textures/ (Solar System Scope, CC-BY 4.0).
      * Only bodies with textures listed here will use textured rendering.
      * Bodies not listed fall back to gradient rendering.
      */
