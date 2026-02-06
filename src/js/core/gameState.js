@@ -86,17 +86,30 @@ export let focusTarget = null;  // null = player ship by default
  * - APPROACH: Near SOI boundary, optimize for velocity matching
  * - CAPTURE: Inside SOI, circularize orbit around planet
  * - ESCAPE: Inside SOI, raise orbit to escape
+ * - SLINGSHOT: Inside SOI during gravity assist, thrust prograde at periapsis
  */
 export const AUTOPILOT_PHASES = {
     CRUISE: 'CRUISE',
     APPROACH: 'APPROACH',
     CAPTURE: 'CAPTURE',
     ESCAPE: 'ESCAPE',
+    SLINGSHOT: 'SLINGSHOT',
+};
+
+/**
+ * Autopilot encounter modes - determines behavior when entering a planet's SOI.
+ * - ORBITAL_INSERTION: Slow down and capture into stable orbit (retrograde burns at periapsis)
+ * - GRAVITY_SLINGSHOT: Use planet's gravity to change trajectory (prograde burns at periapsis)
+ */
+export const AUTOPILOT_MODES = {
+    ORBITAL_INSERTION: 'ORBITAL_INSERTION',
+    GRAVITY_SLINGSHOT: 'GRAVITY_SLINGSHOT',
 };
 
 export const autoPilotState = {
     enabled: false,
     phase: AUTOPILOT_PHASES.CRUISE,
+    mode: AUTOPILOT_MODES.ORBITAL_INSERTION,
     adjustmentRateDegPerSec: AUTOPILOT_CONFIG.adjustmentRateDegPerSec,
     adjustmentRatePctPerSec: AUTOPILOT_CONFIG.adjustmentRatePctPerSec,
 };
@@ -141,6 +154,24 @@ export function setAutoPilotPhase(phase) {
  */
 export function getAutoPilotPhase() {
     return autoPilotState.phase;
+}
+
+/**
+ * Set autopilot encounter mode
+ * @param {string} mode - One of AUTOPILOT_MODES
+ */
+export function setAutoPilotMode(mode) {
+    if (Object.values(AUTOPILOT_MODES).includes(mode)) {
+        autoPilotState.mode = mode;
+    }
+}
+
+/**
+ * Get current autopilot encounter mode
+ * @returns {string}
+ */
+export function getAutoPilotMode() {
+    return autoPilotState.mode;
 }
 
 /**

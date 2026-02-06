@@ -383,6 +383,26 @@
                             APPLY COURSE
                         </button>
                     </div>
+                    <div class="panel-section encounter-mode-section">
+                        <div class="panel-header">ENCOUNTER MODE</div>
+                        <div class="encounter-mode-selector">
+                            <button class="encounter-mode-btn active" id="modeOrbitalInsertion"
+                                    title="Slow down and capture into stable orbit around destination">
+                                <span class="mode-icon">&#9679;</span>
+                                <span class="mode-label">ORBITAL INSERTION</span>
+                                <span class="mode-desc">Capture into orbit (retrograde burns)</span>
+                            </button>
+                            <button class="encounter-mode-btn" id="modeGravitySlingshot"
+                                    title="Use planet gravity to redirect trajectory toward next target">
+                                <span class="mode-icon">&#10148;</span>
+                                <span class="mode-label">GRAVITY SLINGSHOT</span>
+                                <span class="mode-desc">Flyby assist (prograde burns)</span>
+                            </button>
+                        </div>
+                        <div class="encounter-mode-status" id="encounterModeStatus">
+                            <span class="mode-status-text">Thruster fires retrograde at periapsis to capture</span>
+                        </div>
+                    </div>
                     <div class="panel-section autopilot-section">
                         <div class="panel-header">AUTOPILOT</div>
                         <button class="autopilot-btn" id="autoPilotToggle">
