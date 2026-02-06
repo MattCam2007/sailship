@@ -11,12 +11,13 @@ import {
     GAME_START_EPOCH,
     DEFAULT_SAIL,
     DEFAULT_SHIP_MASS,
+    DEFAULT_THRUSTER,
     SHIP_COLORS,
     SOLAR_PRESSURE_1AU,
 } from '../config.js';
 
 // Re-export defaults for external use (e.g., creating new ships, tests)
-export { DEFAULT_SAIL, DEFAULT_SHIP_MASS };
+export { DEFAULT_SAIL, DEFAULT_SHIP_MASS, DEFAULT_THRUSTER };
 
 /**
  * Create orbital elements for a ship starting in a circular orbit.
@@ -59,6 +60,9 @@ export const ships = [
 
         // Solar sail state
         sail: { ...DEFAULT_SAIL },
+
+        // Chemical thruster state (for orbital insertion and gravity assist)
+        thruster: { ...DEFAULT_THRUSTER },
 
         // SOI (Sphere of Influence) state for planetary orbit mechanics
         soiState: {
@@ -172,6 +176,35 @@ export function setSailDeployment(ship, percent) {
     if (ship.sail) {
         ship.sail.deploymentPercent = Math.max(0, Math.min(100, percent));
     }
+}
+
+/**
+ * Set thruster burn size.
+ *
+ * @param {Object} ship - Ship object with thruster state
+ * @param {number} burnSize - Burn size in km/s (0.1 to 2.0)
+ */
+export function setThrusterBurnSize(ship, burnSize) {
+    if (ship.thruster) {
+        ship.thruster.burnSize = Math.max(0.1, Math.min(2.0, burnSize));
+    }
+}
+
+/**
+ * Consume delta-V fuel from thruster.
+ * Returns the actual delta-V applied (may be less if fuel is low).
+ *
+ * @param {Object} ship - Ship object with thruster state
+ * @param {number} deltaV - Requested delta-V in km/s
+ * @returns {number} Actual delta-V consumed in km/s
+ */
+export function consumeThrusterFuel(ship, deltaV) {
+    if (!ship.thruster || ship.thruster.deltaVRemaining <= 0) {
+        return 0;
+    }
+    const actual = Math.min(deltaV, ship.thruster.deltaVRemaining);
+    ship.thruster.deltaVRemaining = Math.max(0, ship.thruster.deltaVRemaining - actual);
+    return actual;
 }
 
 /**

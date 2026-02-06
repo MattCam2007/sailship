@@ -65,6 +65,7 @@ export function updateUI() {
     updateScaleDisplay();
     updateDestinationDisplay();
     updateSailDisplay();
+    updateThrusterDisplayInternal();
     updateNavigationComputer();
     updateSOIStatus();
     updateInclinationDisplay();
@@ -276,6 +277,55 @@ export function updateSailDisplay() {
 
         if (mobileThrustValue) {
             mobileThrustValue.textContent = thrustText;
+        }
+    }
+}
+
+/**
+ * Update thruster display (fuel gauge, delta-V remaining)
+ * Called each frame from updateUI.
+ */
+function updateThrusterDisplayInternal() {
+    const player = getPlayerShip();
+    if (!player || !player.thruster) return;
+
+    const { deltaVRemaining, deltaVMax } = player.thruster;
+
+    const deltaVDisplay = document.getElementById('thrusterDeltaV');
+    const fuelFill = document.getElementById('thrusterFuelFill');
+
+    if (deltaVDisplay) {
+        deltaVDisplay.textContent = deltaVRemaining.toFixed(1) + ' km/s';
+    }
+
+    if (fuelFill) {
+        const pct = (deltaVRemaining / deltaVMax) * 100;
+        fuelFill.style.width = pct + '%';
+        if (pct < 20) {
+            fuelFill.classList.add('low');
+        } else {
+            fuelFill.classList.remove('low');
+        }
+    }
+
+    // Disable buttons if no fuel
+    const hasFuel = deltaVRemaining > 0;
+    const retroBtn = document.getElementById('thrusterRetrograde');
+    const proBtn = document.getElementById('thrusterPrograde');
+    if (retroBtn) retroBtn.disabled = !hasFuel;
+    if (proBtn) proBtn.disabled = !hasFuel;
+
+    // Update header fuel indicator
+    const fuelIndicator = document.getElementById('fuelIndicator');
+    if (fuelIndicator) {
+        const pct = (deltaVRemaining / deltaVMax) * 100;
+        fuelIndicator.classList.remove('warning', 'active');
+        if (pct <= 0) {
+            fuelIndicator.classList.add('warning');
+        } else if (pct < 30) {
+            fuelIndicator.classList.add('warning');
+        } else {
+            fuelIndicator.classList.add('active');
         }
     }
 }

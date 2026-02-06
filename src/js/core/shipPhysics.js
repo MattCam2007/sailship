@@ -12,7 +12,7 @@
  */
 
 import { getPosition, getVelocity, MU_SUN } from '../lib/orbital.js';
-import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
+import { calculateSailThrust, applyThrust, applyThrusterBurn } from '../lib/orbital-maneuvers.js';
 import { getJulianDate, clearTransitState, getTransitState } from './gameState.js';
 import { celestialBodies, getBodyByName } from '../data/celestialBodies.js';
 import {
@@ -1553,10 +1553,108 @@ export function getThrustInfo(ship) {
 }
 
 /**
+ * Fire a thruster burn on the ship.
+ *
+ * Applies an instantaneous delta-V in either the prograde or retrograde
+ * direction relative to the ship's current velocity vector. Consumes
+ * fuel from the ship's thruster budget.
+ *
+ * Use cases:
+ * - 'retrograde': Orbital insertion (slow down to capture into orbit)
+ * - 'prograde': Gravity assist boost (speed up for slingshot)
+ *
+ * @param {Object} ship - Ship object with orbitalElements and thruster state
+ * @param {string} direction - 'prograde' or 'retrograde'
+ * @returns {Object} Result { success, deltaVApplied, deltaVRemaining, newEccentricity }
+ */
+export function fireThruster(ship, direction) {
+    if (!ship.thruster || !ship.orbitalElements) {
+        return { success: false, reason: 'No thruster or orbital elements' };
+    }
+
+    if (ship.thruster.deltaVRemaining <= 0) {
+        console.warn('[THRUSTER] No fuel remaining!');
+        return { success: false, reason: 'No fuel remaining' };
+    }
+
+    const burnSize = ship.thruster.burnSize;
+    const { consumeThrusterFuel } = require_consumeFuel(ship);
+    const actualDeltaV = consumeThrusterFuel(burnSize);
+
+    if (actualDeltaV <= 0) {
+        return { success: false, reason: 'No fuel available' };
+    }
+
+    const julianDate = getJulianDate();
+
+    // Apply the burn
+    const newElements = applyThrusterBurn(
+        ship.orbitalElements,
+        actualDeltaV,
+        direction,
+        julianDate
+    );
+
+    // Update ship orbital elements
+    ship.orbitalElements = newElements;
+
+    // Update visual elements immediately for responsive feedback
+    if (ship.visualOrbitalElements) {
+        ship.visualOrbitalElements = { ...newElements };
+    }
+
+    // Update cached position and velocity
+    const pos = getPosition(newElements, julianDate);
+    const vel = getVelocity(newElements, julianDate);
+    ship.x = pos.x;
+    ship.y = pos.y;
+    ship.z = pos.z;
+    ship.velocity = { x: vel.vx, y: vel.vy, z: vel.vz };
+
+    // If in SOI, add heliocentric offset for rendering
+    if (ship.soiState?.isInSOI) {
+        const parent = getBodyByName(ship.soiState.currentBody);
+        if (parent) {
+            ship.x += parent.x;
+            ship.y += parent.y;
+            ship.z += parent.z;
+        }
+    }
+
+    const result = {
+        success: true,
+        direction: direction,
+        deltaVApplied: actualDeltaV,
+        deltaVRemaining: ship.thruster.deltaVRemaining,
+        newEccentricity: newElements.e,
+        newSemiMajorAxis: newElements.a
+    };
+
+    console.log(`[THRUSTER] ${direction.toUpperCase()} burn complete: ` +
+                `ΔV=${actualDeltaV.toFixed(3)} km/s, fuel=${ship.thruster.deltaVRemaining.toFixed(3)} km/s remaining`);
+
+    return result;
+}
+
+/**
+ * Internal helper: inline fuel consumption (avoids circular import with ships.js).
+ */
+function require_consumeFuel(ship) {
+    return {
+        consumeThrusterFuel(deltaV) {
+            if (!ship.thruster || ship.thruster.deltaVRemaining <= 0) return 0;
+            const actual = Math.min(deltaV, ship.thruster.deltaVRemaining);
+            ship.thruster.deltaVRemaining = Math.max(0, ship.thruster.deltaVRemaining - actual);
+            return actual;
+        }
+    };
+}
+
+/**
  * Predict future orbital state.
- * 
+ *
  * This is useful for trajectory preview without modifying actual state.
- * 
+ *
  * @param {Object} ship - Ship with orbital elements
  * @param {number} daysAhead - Days in the future to predict
  * @param {number} steps - Number of prediction steps

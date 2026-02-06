@@ -103,6 +103,7 @@ export function serializeGameState() {
                 sailCount: player.sail.sailCount,
             } : null,
             soiState: player.soiState ? { ...player.soiState } : null,
+            thruster: player.thruster ? { ...player.thruster } : null,
             mass: player.mass,
         } : null,
     };
@@ -214,6 +215,9 @@ export function deserializeGameState(state) {
             }
             if (state.ship.soiState) {
                 player.soiState = { ...state.ship.soiState };
+            }
+            if (state.ship.thruster) {
+                player.thruster = { ...player.thruster, ...state.ship.thruster };
             }
             if (state.ship.mass) {
                 player.mass = state.ship.mass;
