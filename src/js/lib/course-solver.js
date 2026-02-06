@@ -105,6 +105,11 @@ const CONFIG = {
     maxSteps: INTERSECTION_CONFIG.maxSteps,
     minSteps: INTERSECTION_CONFIG.minSteps,
 
+    // Adaptive resolution: use fewer steps during search for speed,
+    // then re-evaluate final result at full resolution for accuracy.
+    // Search uses searchMaxSteps cap; verification uses full maxSteps.
+    searchMaxSteps: 3000,
+
     // Multi-horizon search durations (days)
     horizons: [180, 365, 540, 730, 1095, 1460],
 
@@ -1003,9 +1008,16 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     const earlyTermThreshold = interceptThreshold * CONFIG.earlyTerminationFactor;
     let totalEvals = 0;
 
+    // Adaptive resolution: use reduced steps during search for speed
+    const searchOptions = { ...options };
+    const maxDays = options.maxDays || CONFIG.defaultMaxDays;
+    const rawSearchSteps = Math.round(maxDays * CONFIG.stepsPerDay);
+    const searchStepsCapped = Math.min(CONFIG.searchMaxSteps, Math.max(CONFIG.minSteps, rawSearchSteps));
+    searchOptions.steps = searchStepsCapped;
+
     // Phase 1: Strategic Reconnaissance
     onProgress?.({ subPhase: 'recon', progress: 0 });
-    const reconResults = await strategicReconnaissance(ship, target, options, options.reconBounds || null);
+    const reconResults = await strategicReconnaissance(ship, target, searchOptions, searchOptions.reconBounds || null);
     totalEvals += reconResults.length;
 
     // Check for early termination (only if well inside threshold)
@@ -1013,9 +1025,9 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
         return { result: reconResults[0], totalEvals };
     }
 
-    // Phase 2: Nelder-Mead Convergence
+    // Phase 2: Nelder-Mead Convergence (at search resolution)
     onProgress?.({ subPhase: 'converge', progress: 0.3 });
-    const nmResult = await nelderMeadSearch(ship, target, reconResults, options, (p) => {
+    const nmResult = await nelderMeadSearch(ship, target, reconResults, searchOptions, (p) => {
         onProgress?.({ subPhase: 'converge', progress: 0.3 + p * 0.5 });
     });
     totalEvals += nmResult.evalCount;
@@ -1027,7 +1039,7 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
         return { result: best, totalEvals };
     }
 
-    // Phase 2b: Multi-start if result is poor
+    // Phase 2b: Multi-start if result is poor (at search resolution)
     if (best.minDistance > CONFIG.multiStartThreshold) {
         onProgress?.({ subPhase: 'multistart', progress: 0.8 });
 
@@ -1040,7 +1052,7 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
             if (dist < 15) continue;  // Already explored this region
 
             // Quick recon from this quadrant
-            const altRecon = await strategicReconnaissance(ship, target, options, {
+            const altRecon = await strategicReconnaissance(ship, target, searchOptions, {
                 yawCenter: quadrant.yaw,
                 pitchCenter: quadrant.pitch,
                 yawRadius: 20,
@@ -1050,7 +1062,7 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
 
             // If recon found something better, run Nelder-Mead from there
             if (altRecon[0].minDistance < best.minDistance) {
-                const altNm = await nelderMeadSearch(ship, target, altRecon, options);
+                const altNm = await nelderMeadSearch(ship, target, altRecon, searchOptions);
                 totalEvals += altNm.evalCount;
 
                 if (altNm.best.minDistance < best.minDistance) {
@@ -1067,11 +1079,27 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
         }
     }
 
-    // Phase 3: Deployment Sweep
+    // Phase 3: Deployment Sweep (at search resolution)
     onProgress?.({ subPhase: 'deployment', progress: 0.9 });
-    const deployResult = await deploymentSweep(ship, target, best, options);
+    const deployResult = await deploymentSweep(ship, target, best, searchOptions);
     totalEvals += deployResult.evalCount;
     best = deployResult.best;
+
+    // Phase 4: Re-evaluate best result at full resolution
+    // Search used reduced steps for speed; now verify with full accuracy
+    const fullResResult = evaluateCandidate(
+        best.yawDeg, best.pitchDeg, ship, target,
+        { ...options, maxDays, deployment: best._deploymentOverride || options.deployment }
+    );
+    totalEvals++;
+
+    if (isFinite(fullResResult.minDistance)) {
+        best = fullResResult;
+        // Preserve deployment override if it came from the sweep
+        if (deployResult.best._deploymentOverride) {
+            best._deploymentOverride = deployResult.best._deploymentOverride;
+        }
+    }
 
     return { result: best, totalEvals };
 }
