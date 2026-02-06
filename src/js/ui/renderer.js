@@ -13,7 +13,6 @@ import {
     getTime,
     getJulianDate,
     getIntersectionCache,
-    getClosestApproachCache,
     getNodeCrossingsCache,
     bodyFilters
 } from '../core/gameState.js';
@@ -1126,15 +1125,14 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
     // at its far-future position, causing the player to navigate toward a point
     // where the planet won't be when they arrive at the orbital radius.
     const intersectionCache = getIntersectionCache();
-    const approachCache = getClosestApproachCache();
 
-    // Build the list of encounters from radius-crossing data (primary)
-    // or closest-approach data (fallback when no crossings detected)
+    // Only show ghosts for actual trajectory radius crossings.
+    // No fallback to closest-approach — a ghost with no real crossing
+    // would mislead the player into flying toward a position where
+    // the planet won't be when they arrive.
     let encounters = [];
 
     if (intersectionCache.results && intersectionCache.results.length > 0) {
-        // Radius-crossing data: shows planet position at each orbital crossing
-        // Already sorted by time (chronological), so first match is the next encounter
         encounters = intersectionCache.results
             .filter(intersection => {
                 if (intersection.bodyName !== destination) return false;
@@ -1147,22 +1145,6 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
                 bodyPosition: intersection.bodyPosition,
                 time: intersection.time,
                 distance: intersection.distance
-            }));
-    } else if (approachCache.results && approachCache.results.length > 0) {
-        // Fallback to closest-approach data when no radius crossings found
-        // (e.g., trajectory doesn't reach the planet's orbital radius)
-        encounters = approachCache.results
-            .filter(approach => {
-                if (approach.bodyName !== destination) return false;
-                const body = celestialBodies.find(b => b.name === approach.bodyName);
-                if (body && body.category && !bodyFilters[body.category]) return false;
-                return true;
-            })
-            .map(approach => ({
-                bodyName: approach.bodyName,
-                bodyPosition: approach.bodyPos,
-                time: approach.time,
-                distance: approach.minDistance
             }));
     }
 
