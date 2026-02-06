@@ -1241,13 +1241,44 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
             }
         }
 
+        if (!bestResult) {
+            onProgress?.({ phase: 'complete', progress: 1, message: 'No solution found' });
+            return null;
+        }
+
+        // ============================================================
+        // POST-SOLVE VERIFICATION: Re-evaluate at 2× step resolution
+        // ============================================================
+        onProgress?.({ phase: 'verifying', progress: 0.95, message: 'Verifying course accuracy...' });
+
+        const verifyMaxDays = bestHorizon;
+        const verifyRawSteps = Math.round(verifyMaxDays * CONFIG.stepsPerDay * 2);
+        const verifySteps = Math.min(CONFIG.maxSteps * 2, Math.max(CONFIG.minSteps, verifyRawSteps));
+        const verifyDeployment = bestResult._deploymentOverride || options.deployment || CONFIG.defaultDeployment;
+
+        const verifiedResult = evaluateCandidate(
+            bestResult.yawDeg, bestResult.pitchDeg, ship, target,
+            { maxDays: verifyMaxDays, steps: verifySteps, deployment: verifyDeployment }
+        );
+        totalEvaluations++;
+
+        // Use verified result if valid; keep search result as fallback
+        const searchDistance = bestResult.minDistance;
+        let verifiedDistance = searchDistance;
+
+        if (isFinite(verifiedResult.minDistance)) {
+            verifiedDistance = verifiedResult.minDistance;
+            // Use verified result for quality assessment
+            bestResult = verifiedResult;
+            // Preserve deployment override
+            if (verifyDeployment !== CONFIG.defaultDeployment) {
+                bestResult._deploymentOverride = verifyDeployment;
+            }
+        }
+
         const computeTimeMs = Date.now() - startTimeMs;
 
         onProgress?.({ phase: 'complete', progress: 1, message: 'Course computation complete' });
-
-        if (!bestResult) {
-            return null;
-        }
 
         const solution = buildSolution(bestResult, {
             computeTimeMs,
@@ -1255,11 +1286,24 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
             totalEvaluations
         });
 
+        // Attach verification data to solution
+        solution.verification = {
+            searchDistance,
+            verifiedDistance,
+            verificationSteps: verifySteps,
+            driftAU: Math.abs(verifiedDistance - searchDistance),
+            driftPct: searchDistance > 0 ? Math.abs(verifiedDistance - searchDistance) / searchDistance * 100 : 0
+        };
+
         solution.usedRefinementMode = options.refinementMode || false;
 
+        const driftLabel = solution.verification.driftAU > 0.001
+            ? ` (drift: ${solution.verification.driftAU.toFixed(4)} AU)`
+            : '';
         console.log(`[COURSE_SOLVER] Complete: ${totalEvaluations} evals in ${computeTimeMs}ms ` +
                     `(yaw=${bestResult.yawDeg.toFixed(1)}°, pitch=${bestResult.pitchDeg.toFixed(1)}°, ` +
-                    `dist=${bestResult.minDistance.toFixed(4)} AU, quality=${solution.quality})`);
+                    `search=${searchDistance.toFixed(4)} AU, verified=${verifiedDistance.toFixed(4)} AU${driftLabel}, ` +
+                    `quality=${solution.quality})`);
 
         return solution;
     } catch (error) {
