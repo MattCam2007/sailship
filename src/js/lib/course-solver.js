@@ -119,6 +119,12 @@ const CONFIG = {
     // Timeout for entire solve operation (ms)
     maxSolveTimeMs: 30000,  // 30 seconds (down from 90s - solver is much faster now)
 
+    // Early termination: stop optimizing when distance < interceptThreshold * earlyTerminationFactor.
+    // Using 0.5 means we terminate at SOI/4 (half of the SOI/2 intercept threshold).
+    // This forces the optimizer to find tighter solutions instead of stopping at
+    // the first course that barely crosses the intercept boundary.
+    earlyTerminationFactor: 0.5,
+
     // ========================================================================
     // CROSSING-AWARE SOLVER CONFIGURATION (v3.0)
     // ========================================================================
@@ -644,6 +650,7 @@ export async function strategicReconnaissance(ship, target, options = {}, bounds
 export async function nelderMeadSearch(ship, target, initialPoints, options = {}, onProgress = null) {
     const tolerance = getConvergenceTolerance(options.maxDays || CONFIG.defaultMaxDays);
     const interceptThreshold = getInterceptThreshold(target);
+    const earlyTermThreshold = interceptThreshold * CONFIG.earlyTerminationFactor;
     const maxIter = CONFIG.nmMaxIterations;
 
     // Initialize simplex from best 3 reconnaissance points
@@ -724,8 +731,9 @@ export async function nelderMeadSearch(ship, target, initialPoints, options = {}
             break;
         }
 
-        // Early termination on intercept
-        if (simplex[0].value < interceptThreshold) {
+        // Early termination: only stop when well inside intercept threshold
+        // This forces the optimizer to continue refining past "barely intercept"
+        if (simplex[0].value < earlyTermThreshold) {
             break;
         }
 
@@ -992,6 +1000,7 @@ export async function deploymentSweep(ship, target, bestResult, options = {}) {
  */
 async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     const interceptThreshold = getInterceptThreshold(target);
+    const earlyTermThreshold = interceptThreshold * CONFIG.earlyTerminationFactor;
     let totalEvals = 0;
 
     // Phase 1: Strategic Reconnaissance
@@ -999,8 +1008,8 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
     const reconResults = await strategicReconnaissance(ship, target, options, options.reconBounds || null);
     totalEvals += reconResults.length;
 
-    // Check for early termination
-    if (reconResults[0].minDistance < interceptThreshold) {
+    // Check for early termination (only if well inside threshold)
+    if (reconResults[0].minDistance < earlyTermThreshold) {
         return { result: reconResults[0], totalEvals };
     }
 
@@ -1013,8 +1022,8 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
 
     let best = nmResult.best;
 
-    // Check for early termination
-    if (best.minDistance < interceptThreshold) {
+    // Check for early termination (only if well inside threshold)
+    if (best.minDistance < earlyTermThreshold) {
         return { result: best, totalEvals };
     }
 
@@ -1048,8 +1057,8 @@ async function solveForHorizon(ship, target, options = {}, onProgress = null) {
                     best = altNm.best;
                 }
 
-                // Early termination
-                if (best.minDistance < interceptThreshold) {
+                // Early termination (only if well inside threshold)
+                if (best.minDistance < earlyTermThreshold) {
                     break;
                 }
             }
@@ -1159,6 +1168,7 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
                 `${h.maxDays}d (${h.bestDistance.toFixed(4)} AU)`).join(', ')}`);
 
             const interceptThreshold = getInterceptThreshold(target);
+            const earlyTermThreshold = interceptThreshold * CONFIG.earlyTerminationFactor;
 
             // Deep search on top horizons
             for (let i = 0; i < topHorizons.length; i++) {
@@ -1193,9 +1203,9 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
                     bestHorizon = horizon.maxDays;
                 }
 
-                // Early termination if intercept found
-                if (result.minDistance < interceptThreshold) {
-                    console.log(`[COURSE_SOLVER] Intercept found at ${horizon.maxDays}d horizon, stopping`);
+                // Early termination only if well inside intercept threshold
+                if (result.minDistance < earlyTermThreshold) {
+                    console.log(`[COURSE_SOLVER] Strong intercept found at ${horizon.maxDays}d horizon, stopping`);
                     break;
                 }
 
