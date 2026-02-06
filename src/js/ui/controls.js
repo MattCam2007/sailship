@@ -1714,7 +1714,8 @@ function determineAutopilotPhase() {
 
 // Cooldown for autopilot thruster firing (prevents rapid-fire burns)
 let lastAutopilotThrusterTime = 0;
-const AUTOPILOT_THRUSTER_COOLDOWN = 2000; // ms between auto-fires
+const AUTOPILOT_THRUSTER_COOLDOWN = 500;       // ms between auto-fires (normal orbits)
+const AUTOPILOT_THRUSTER_COOLDOWN_FAST = 100;   // ms between auto-fires (extreme flybys)
 
 /**
  * Update autopilot - call this each frame to adjust sail toward nav computer recommendations.
@@ -1764,7 +1765,10 @@ export function updateAutoPilot(deltaTime) {
     // Auto-fire thruster if plan recommends it
     if (plan.thrusterAction && plan.thrusterAction.when === 'NOW') {
         const now = Date.now();
-        if (now - lastAutopilotThrusterTime > AUTOPILOT_THRUSTER_COOLDOWN) {
+        // Use fast cooldown for extreme flybys (e > 50) - ship traverses SOI in seconds
+        const ecc = plan.eccentricity || 0;
+        const cooldown = ecc > 50 ? AUTOPILOT_THRUSTER_COOLDOWN_FAST : AUTOPILOT_THRUSTER_COOLDOWN;
+        if (now - lastAutopilotThrusterTime > cooldown) {
             const result = fireThruster(player, plan.thrusterAction.direction);
             if (result.success) {
                 lastAutopilotThrusterTime = now;
