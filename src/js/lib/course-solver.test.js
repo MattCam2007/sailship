@@ -1,7 +1,7 @@
 /**
- * Course Solver Test Suite (v4.0)
+ * Course Solver Test Suite (v4.1)
  *
- * Tests for the artillery bracket search algorithm.
+ * Tests for the grid-bracket search algorithm.
  * Run in browser console:
  *   import('/js/lib/course-solver.test.js').then(m => m.runAllTests())
  */
@@ -191,7 +191,8 @@ test('testStrategicReconReturnsResults', async () => {
 
     const results = await strategicReconnaissance(ship, target);
 
-    assert(results.length === 9, `Expected 9 recon results, got ${results.length}`);
+    // v4.1: 10° grid over ±60° yaw (13 values) × ±30° pitch (7 values) = 91 probes
+    assert(results.length === 91, `Expected 91 recon results, got ${results.length}`);
 });
 
 test('testStrategicReconSortedByDistance', async () => {
@@ -234,7 +235,8 @@ test('testStrategicReconWithCustomBounds', async () => {
 
     const results = await strategicReconnaissance(ship, target, {}, bounds);
 
-    assert(results.length === 9, `Expected 9 results with custom bounds, got ${results.length}`);
+    // v4.1: 5° grid in bounds. yaw: -45 to -25 step 5 = 5 values, pitch: -5 to 5 step 5 = 3 values = 15
+    assert(results.length === 15, `Expected 15 results with custom bounds, got ${results.length}`);
 
     // All results should be within bounds
     for (const r of results) {
@@ -306,7 +308,8 @@ test('testHorizonScoutReturnsRankedHorizons', async () => {
     const result = await scoutHorizons(ship, target);
 
     assert(result.horizons.length === 6, `Expected 6 horizons, got ${result.horizons.length}`);
-    assert(result.evalCount === 12, `Expected 12 scout evals (2 per horizon), got ${result.evalCount}`);
+    // v4.1: 5 probes per horizon × 6 horizons = 30
+    assert(result.evalCount === 30, `Expected 30 scout evals (5 per horizon), got ${result.evalCount}`);
 
     // Should be sorted by best distance
     for (let i = 1; i < result.horizons.length; i++) {
@@ -405,15 +408,16 @@ test('testSolveCourseIsFasterThanOldSolver', async () => {
 
     const solution = await solveCourse(ship, target);
 
-    // v4.0 should complete in under 10 seconds (vs 30-45s old)
-    assert(solution.searchMetrics.computeTimeMs < 10000,
-        `Solver should complete in < 10s, took ${solution.searchMetrics.computeTimeMs}ms`);
+    // v4.1 should complete in under 15 seconds (vs 30-45s old)
+    assert(solution.searchMetrics.computeTimeMs < 15000,
+        `Solver should complete in < 15s, took ${solution.searchMetrics.computeTimeMs}ms`);
 
     // Should use far fewer evaluations than old solver (~6000)
-    assert(solution.searchMetrics.totalEvaluations < 500,
-        `Should use < 500 evaluations, used ${solution.searchMetrics.totalEvaluations}`);
+    // v4.1: ~500-1000 evals (91 recon × 3 horizons + NM + scouting)
+    assert(solution.searchMetrics.totalEvaluations < 1500,
+        `Should use < 1500 evaluations, used ${solution.searchMetrics.totalEvaluations}`);
 
-    console.log(`  v4.0 performance: ${solution.searchMetrics.totalEvaluations} evals ` +
+    console.log(`  v4.1 performance: ${solution.searchMetrics.totalEvaluations} evals ` +
                 `in ${solution.searchMetrics.computeTimeMs}ms`);
 });
 
@@ -424,8 +428,8 @@ test('testSolveCourseReportsAlgorithm', async () => {
 
     const solution = await solveCourse(ship, target);
 
-    assert(solution.searchMetrics.algorithm === 'bracket-v4.0',
-        `Algorithm should be bracket-v4.0, got ${solution.searchMetrics.algorithm}`);
+    assert(solution.searchMetrics.algorithm === 'grid-bracket-v4.1',
+        `Algorithm should be grid-bracket-v4.1, got ${solution.searchMetrics.algorithm}`);
 });
 
 // Unit 9: Quality metrics tests
@@ -669,19 +673,20 @@ test('testSolverUsesSharedConfig', async () => {
         `Solver minSteps (${solverConfig.minSteps}) should match INTERSECTION_CONFIG (${INTERSECTION_CONFIG.minSteps})`);
 });
 
-// Unit 13: v4.0 bracket search config tests
+// Unit 13: v4.1 grid-bracket search config tests
 test('testBracketSearchConfigPresent', async () => {
     const { getConfig } = await import('./course-solver.js');
     const config = getConfig();
 
-    assert(Array.isArray(config.reconProbes), 'Should have reconProbes array');
-    assert(config.reconProbes.length >= 7, `Should have >= 7 recon probes, got ${config.reconProbes.length}`);
+    assert(typeof config.reconGridStep === 'number', 'Should have reconGridStep');
+    assert(config.reconGridStep >= 5 && config.reconGridStep <= 15, `reconGridStep should be 5-15°, got ${config.reconGridStep}`);
     assert(typeof config.nmAlpha === 'number', 'Should have Nelder-Mead alpha');
     assert(typeof config.nmGamma === 'number', 'Should have Nelder-Mead gamma');
     assert(Array.isArray(config.precisionTiers), 'Should have precisionTiers');
     assert(Array.isArray(config.deploymentLevels), 'Should have deploymentLevels');
     assert(config.deploymentLevels.length >= 3, 'Should have >= 3 deployment levels');
     assert(typeof config.topHorizonsToSearch === 'number', 'Should have topHorizonsToSearch');
+    assert(config.topHorizonsToSearch >= 3, `Should search >= 3 horizons, got ${config.topHorizonsToSearch}`);
 });
 
 // Unit 14: Legacy backward compatibility tests
@@ -765,7 +770,7 @@ test('testSolveCourseIncludesDeployment', async () => {
 // ============================================================================
 
 export async function runAllTests() {
-    console.log('=== COURSE SOLVER TESTS (v4.0) ===\n');
+    console.log('=== COURSE SOLVER TESTS (v4.1) ===\n');
 
     let passed = 0;
     let failed = 0;
@@ -794,4 +799,4 @@ export async function runAllTests() {
 }
 
 // Run tests if loaded directly
-console.log('[COURSE_SOLVER_TEST] Test module loaded (v4.0). Run runAllTests() to execute.');
+console.log('[COURSE_SOLVER_TEST] Test module loaded (v4.1). Run runAllTests() to execute.');
