@@ -420,21 +420,45 @@ function getOrbitalPlaneNormal(i, Ω) {
  * For navigation, this is what matters: "When I reach Venus's orbital radius,
  * where will Venus actually be?" - not "Did I pierce Venus's tilted plane?"
  *
+ * ECCENTRICITY FIX (2026-02-06):
+ * For eccentric orbits (e > 0.05), also check crossings at perihelion and
+ * aphelion radii. Previously only checked semi-major axis, which meant the
+ * ghost planet was placed at the wrong time for planets like Mars (e=0.094)
+ * whose actual distance ranges from 1.381-1.666 AU but was only checked at
+ * 1.524 AU. This matches the multi-radius logic in evaluate-trajectory.js.
+ *
  * @param {Object} p1 - Start point {x, y, z, time}
  * @param {Object} p2 - End point {x, y, z, time}
  * @param {Object} elements - Body's orbital elements {a, e, i, Ω, ω}
- * @returns {Object|null} Crossing info {t, time, position} or null if no crossing
+ * @returns {Array} Array of crossing info objects {t, time, position}, may be empty
  */
-function findOrbitalPlaneCrossing(p1, p2, elements) {
-    const { a } = elements;
+function findOrbitalPlaneCrossings(p1, p2, elements) {
+    const { a, e } = elements;
 
     // Calculate heliocentric radii
     const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
     const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
 
-    // Use semi-major axis as target radius for all planets
-    // This reliably detects orbital radius crossings regardless of inclination
-    return findRadiusCrossing(p1, p2, r1, r2, a);
+    // Build list of target radii to check
+    // For eccentric orbits, check perihelion and aphelion in addition to semi-major axis
+    // This ensures ghosts appear at the correct time regardless of where the planet
+    // is in its orbit. Matches evaluate-trajectory.js:246-256 logic.
+    const targetRadii = [a];
+    if (e > ECCENTRICITY_THRESHOLD && e < 0.95) {
+        const perihelion = a * (1 - e);
+        const aphelion = a * (1 + e);
+        targetRadii.push(perihelion, aphelion);
+    }
+
+    const crossings = [];
+    for (const radius of targetRadii) {
+        const crossing = findRadiusCrossing(p1, p2, r1, r2, radius);
+        if (crossing) {
+            crossings.push(crossing);
+        }
+    }
+
+    return crossings;
 }
 
 /**
@@ -662,10 +686,11 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
             }
 
             // Use radius crossing detection - reliably finds when trajectory
-            // crosses the planet's orbital distance from the Sun
-            const crossing = findOrbitalPlaneCrossing(p1, p2, body.elements);
+            // crosses the planet's orbital distance from the Sun.
+            // For eccentric orbits, checks perihelion/a/aphelion radii.
+            const crossings = findOrbitalPlaneCrossings(p1, p2, body.elements);
 
-            if (crossing) {
+            for (const crossing of crossings) {
                 // Round time to avoid floating-point duplicates
                 // Use coarser rounding at low zoom (1 day) vs high zoom (0.001 day)
                 const timeRoundFactor = isLowZoom ? 1 : 1000;
@@ -676,12 +701,33 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 crossingTimes.add(timeKey);
 
                 // Get planet's actual position at crossing time
-                const planetPos = getPosition(body.elements, crossing.time);
+                let planetPos = getPosition(body.elements, crossing.time);
+
+                // For moons, convert parent-relative position to heliocentric
+                // getPosition() returns position relative to the parent body for moons,
+                // so we must add the parent's position at the crossing time (NOT current time)
+                if (body.parent && body.parent !== 'SUN') {
+                    const parent = celestialBodies.find(b => b.name === body.parent);
+                    if (parent && parent.elements) {
+                        const parentPos = getPosition(parent.elements, crossing.time);
+                        planetPos = {
+                            x: planetPos.x + parentPos.x,
+                            y: planetPos.y + parentPos.y,
+                            z: planetPos.z + parentPos.z
+                        };
+                    }
+                }
 
                 // Validate position
                 if (!isFinite(planetPos.x) || !isFinite(planetPos.y) || !isFinite(planetPos.z)) {
                     continue;
                 }
+
+                // Calculate actual ship-to-planet distance at crossing point
+                const dx = crossing.position.x - planetPos.x;
+                const dy = crossing.position.y - planetPos.y;
+                const dz = crossing.position.z - planetPos.z;
+                const crossingDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
                 // Add intersection
                 intersections.push({
@@ -689,7 +735,7 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                     time: crossing.time,
                     bodyPosition: planetPos,
                     trajectoryPosition: crossing.position,
-                    distance: 0  // Exact crossing of orbital plane
+                    distance: crossingDistance
                 });
             }
         }
@@ -786,6 +832,15 @@ export function detectClosestApproaches(trajectory, celestialBodies, currentTime
 
         // Only include if we found a valid approach
         if (closestApproach && isFinite(closestApproach.minDistance)) {
+            // Recompute bodyPos with getPosition() at exact closest approach time
+            // instead of using the linearly-interpolated position from segment analysis.
+            // The segment analysis (calculateClosestApproach) finds the minimum accurately,
+            // but returns bodyPos as a linear interpolation between segment endpoints.
+            // Using getPosition() gives the exact orbital position at that time.
+            const exactBodyPos = getPosition(body.elements, closestApproach.time);
+            if (isFinite(exactBodyPos.x) && isFinite(exactBodyPos.y) && isFinite(exactBodyPos.z)) {
+                closestApproach.bodyPos = exactBodyPos;
+            }
             results.push(closestApproach);
         }
     }

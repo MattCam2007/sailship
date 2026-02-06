@@ -1163,23 +1163,14 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
     for (const intersection of encounters) {
         const bodyPos = intersection.bodyPosition;
 
-        // Handle coordinate transformation for body positions
+        // bodyPosition is already in heliocentric coordinates.
+        // The intersection detector converts moon positions to heliocentric
+        // using the parent's position at crossing time (not current time).
+        // The closest approach detector also returns heliocentric positions.
+        // No additional coordinate transform needed here.
         let renderX = bodyPos.x;
         let renderY = bodyPos.y;
         let renderZ = bodyPos.z;
-
-        // CRITICAL: Moons (Phobos, Luna, Ganymede) have positions relative to their parent
-        // We must add the parent's heliocentric position to render them correctly
-        const body = celestialBodies.find(b => b.name === intersection.bodyName);
-        if (body && body.parent && body.parent !== 'SUN') {
-            // This is a moon - add parent body's position
-            const parent = celestialBodies.find(b => b.name === body.parent);
-            if (parent) {
-                renderX += parent.x;
-                renderY += parent.y;
-                renderZ += parent.z;
-            }
-        }
 
         // Project to screen
         const projected = project3D(renderX, renderY, renderZ, centerX, centerY, scale);
