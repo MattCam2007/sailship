@@ -4,7 +4,7 @@
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
 import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
-import { exportGameState, importGameState } from '../core/saveState.js';
+import { exportGameState, importGameState, fetchSaveIndex, loadSaveFile } from '../core/saveState.js';
 import { resizeCanvas } from './renderer.js';
 import {
     setDestination,
@@ -1316,8 +1316,28 @@ function initSaveLoadControls() {
     const saveLoadClose = document.getElementById('saveLoadClose');
     const saveStateBtn = document.getElementById('saveStateBtn');
     const loadStateBtn = document.getElementById('loadStateBtn');
+    const loadFileBtn = document.getElementById('loadFileBtn');
+    const saveFileSelect = document.getElementById('saveFileSelect');
     const saveStateText = document.getElementById('saveStateText');
     const saveLoadStatus = document.getElementById('saveLoadStatus');
+
+    // Populate save file dropdown from index
+    async function refreshSaveFileList() {
+        if (!saveFileSelect) return;
+        try {
+            const files = await fetchSaveIndex();
+            // Clear existing options except the placeholder
+            saveFileSelect.innerHTML = '<option value="">-- Select a save file --</option>';
+            for (const file of files) {
+                const option = document.createElement('option');
+                option.value = file;
+                option.textContent = file.replace(/\.json$/, '');
+                saveFileSelect.appendChild(option);
+            }
+        } catch (error) {
+            console.warn('Could not load save file index:', error.message);
+        }
+    }
 
     // Open modal
     if (saveLoadBtn) {
@@ -1325,6 +1345,7 @@ function initSaveLoadControls() {
             saveLoadModal?.classList.add('active');
             saveLoadStatus.textContent = '';
             saveLoadStatus.className = 'save-load-status';
+            refreshSaveFileList();
         });
     }
 
@@ -1351,6 +1372,34 @@ function initSaveLoadControls() {
         }
     });
 
+    // Load from file dropdown
+    if (loadFileBtn) {
+        loadFileBtn.addEventListener('click', async () => {
+            const filename = saveFileSelect?.value;
+            if (!filename) {
+                saveLoadStatus.textContent = 'Please select a save file first.';
+                saveLoadStatus.className = 'save-load-status error';
+                return;
+            }
+
+            try {
+                await loadSaveFile(filename);
+                saveLoadStatus.textContent = `Loaded: ${filename}`;
+                saveLoadStatus.className = 'save-load-status success';
+
+                populateObjectList();
+
+                setTimeout(() => {
+                    saveLoadModal?.classList.remove('active');
+                }, 1000);
+            } catch (error) {
+                console.error('Load file error:', error);
+                saveLoadStatus.textContent = `Load failed: ${error.message}`;
+                saveLoadStatus.className = 'save-load-status error';
+            }
+        });
+    }
+
     // Export state button
     if (saveStateBtn) {
         saveStateBtn.addEventListener('click', () => {
@@ -1370,7 +1419,7 @@ function initSaveLoadControls() {
         });
     }
 
-    // Import state button
+    // Import from text button
     if (loadStateBtn) {
         loadStateBtn.addEventListener('click', () => {
             const json = saveStateText?.value?.trim();
@@ -1385,10 +1434,8 @@ function initSaveLoadControls() {
                 saveLoadStatus.textContent = 'State loaded successfully!';
                 saveLoadStatus.className = 'save-load-status success';
 
-                // Refresh the object list to update selections
                 populateObjectList();
 
-                // Close modal after brief delay
                 setTimeout(() => {
                     saveLoadModal?.classList.remove('active');
                 }, 1000);

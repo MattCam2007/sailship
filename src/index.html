@@ -384,16 +384,34 @@
                 <button class="save-load-close" id="saveLoadClose" aria-label="Close">&times;</button>
             </div>
             <div class="save-load-body">
-                <div class="save-load-actions">
-                    <button class="save-btn" id="saveStateBtn">EXPORT STATE</button>
-                    <button class="load-btn" id="loadStateBtn">IMPORT STATE</button>
+                <!-- Load from saved files -->
+                <div class="save-load-section">
+                    <label class="save-load-label">Load from saved files:</label>
+                    <div class="save-load-file-row">
+                        <select class="save-load-select" id="saveFileSelect">
+                            <option value="">-- Select a save file --</option>
+                        </select>
+                        <button class="load-btn" id="loadFileBtn">LOAD</button>
+                    </div>
                 </div>
-                <label class="save-load-label" for="saveStateText">
-                    JSON State (copy to save, paste to load):
-                </label>
-                <textarea class="save-load-textarea" id="saveStateText"
-                    placeholder="Click EXPORT STATE to generate JSON, or paste saved JSON and click IMPORT STATE"
-                    spellcheck="false"></textarea>
+
+                <!-- Divider -->
+                <div class="save-load-divider"><span>OR</span></div>
+
+                <!-- Export / Import from text -->
+                <div class="save-load-section">
+                    <div class="save-load-actions">
+                        <button class="save-btn" id="saveStateBtn">EXPORT STATE</button>
+                        <button class="load-btn" id="loadStateBtn">IMPORT TEXT</button>
+                    </div>
+                    <label class="save-load-label" for="saveStateText">
+                        JSON State (copy to save, paste to load):
+                    </label>
+                    <textarea class="save-load-textarea" id="saveStateText"
+                        placeholder="Click EXPORT STATE to generate JSON, or paste saved JSON and click IMPORT TEXT"
+                        spellcheck="false"></textarea>
+                </div>
+
                 <div class="save-load-status" id="saveLoadStatus"></div>
             </div>
         </div>
@@ -545,6 +563,48 @@
         .save-load-textarea:focus {
             outline: none;
             border-color: rgba(76, 158, 232, 0.6);
+        }
+        .save-load-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .save-load-file-row {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+        .save-load-select {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(76, 158, 232, 0.3);
+            color: #ccc;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            padding: 8px 10px;
+            cursor: pointer;
+        }
+        .save-load-select:focus {
+            outline: none;
+            border-color: rgba(76, 158, 232, 0.6);
+        }
+        .save-load-select option {
+            background: #0a1628;
+            color: #ccc;
+        }
+        .save-load-divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #555;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+        }
+        .save-load-divider::before,
+        .save-load-divider::after {
+            content: '';
+            flex: 1;
+            border-top: 1px solid rgba(76, 158, 232, 0.2);
         }
         .save-load-status {
             font-family: 'Share Tech Mono', monospace;
