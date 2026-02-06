@@ -17,6 +17,7 @@ import {
 } from './core/gameState.js';
 import { setCameraFollow, updateCameraTarget } from './core/camera.js';
 import { initRenderer, render, clearGradientCache } from './ui/renderer.js';
+import { clearPlanetTextureCache } from './lib/planetTextures.js';
 import { initUI, updateUI } from './ui/uiUpdater.js';
 import { initControls, updateAutoPilot, initMobileControls } from './ui/controls.js';
 import { initMobilePanels } from './ui/ui-components.js';
@@ -61,6 +62,7 @@ function performMemoryCleanup() {
     clearClosestApproachCache();
     clearNodeCrossingsCache();
     clearGradientCache();
+    clearPlanetTextureCache();
 
     // Get canvas context for state reset
     const ctx = navCanvas.getContext('2d');

@@ -17,9 +17,10 @@ import {
     getNodeCrossingsCache,
     bodyFilters
 } from '../core/gameState.js';
-import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG } from '../config.js';
+import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG, PLANET_TEXTURE_CONFIG } from '../config.js';
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
+import { hasTexture, renderPlanetTexture, clearPlanetTextureCache, initPlanetTextures } from '../lib/planetTextures.js';
 
 let canvas, ctx;
 
@@ -141,12 +142,16 @@ export function initRenderer(canvasElement) {
     // Initialize starfield (loads star catalog asynchronously)
     initStarfield();
 
+    // Initialize planet texture system (WebGL offscreen renderer)
+    initPlanetTextures();
+
     // Debounced resize handler to prevent cache thrashing
     let resizeTimeout;
     window.addEventListener('resize', () => {
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
             resizeCanvas();
+            clearPlanetTextureCache();
         }, 300); // 300ms debounce
     });
 
@@ -154,7 +159,8 @@ export function initRenderer(canvasElement) {
     canvas.addEventListener('webglcontextlost', (e) => {
         e.preventDefault();
         clearGradientCache();
-        console.warn('[RENDERER] WebGL context lost, gradient cache cleared');
+        clearPlanetTextureCache();
+        console.warn('[RENDERER] WebGL context lost, caches cleared');
     });
 
     canvas.addEventListener('webglcontextrestored', () => {
@@ -557,33 +563,89 @@ function drawBody(body, centerX, centerY, scale) {
         ctx.arc(projected.x, projected.y, screenRadius, 0, Math.PI * 2);
         ctx.fill();
     } else {
-        // Enhanced planet rendering with 3D appearance (cached)
-        const planetKey = `radial_planet_${body.name}_${projected.x.toFixed(2)}_${projected.y.toFixed(2)}_${screenRadius.toFixed(1)}`;
-        const gradient = getCachedGradient(planetKey, () => {
-            const grad = ctx.createRadialGradient(
-                projected.x - screenRadius * 0.3,
-                projected.y - screenRadius * 0.3,
-                0,
-                projected.x, projected.y, screenRadius * 1.2
-            );
-            grad.addColorStop(0, lightenColor(display.color, 30));
-            grad.addColorStop(0.5, display.color);
-            grad.addColorStop(1, darkenColor(display.color, 40));
-            return grad;
-        });
+        // Planet rendering: textured sphere (when available and large enough)
+        // or gradient fallback with crossfade transition between the two
+        const { minScreenRadius, crossfadeRange } = PLANET_TEXTURE_CONFIG;
+        const useTexture = hasTexture(body.name) && screenRadius >= minScreenRadius;
+        const inCrossfade = hasTexture(body.name) &&
+            screenRadius >= minScreenRadius &&
+            screenRadius < minScreenRadius + crossfadeRange;
 
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(projected.x, projected.y, screenRadius, 0, Math.PI * 2);
-        ctx.fill();
+        // Calculate texture alpha for crossfade (0 at minScreenRadius, 1 at minScreenRadius + crossfadeRange)
+        const textureAlpha = inCrossfade
+            ? (screenRadius - minScreenRadius) / crossfadeRange
+            : (useTexture ? 1.0 : 0.0);
 
-        // Subtle glow
+        // Draw gradient sphere (always, or as crossfade underlay)
+        if (textureAlpha < 1.0) {
+            const gradAlpha = 1.0 - textureAlpha;
+            ctx.save();
+            if (textureAlpha > 0) ctx.globalAlpha = gradAlpha;
+
+            const planetKey = `radial_planet_${body.name}_${projected.x.toFixed(2)}_${projected.y.toFixed(2)}_${screenRadius.toFixed(1)}`;
+            const gradient = getCachedGradient(planetKey, () => {
+                const grad = ctx.createRadialGradient(
+                    projected.x - screenRadius * 0.3,
+                    projected.y - screenRadius * 0.3,
+                    0,
+                    projected.x, projected.y, screenRadius * 1.2
+                );
+                grad.addColorStop(0, lightenColor(display.color, 30));
+                grad.addColorStop(0.5, display.color);
+                grad.addColorStop(1, darkenColor(display.color, 40));
+                return grad;
+            });
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(projected.x, projected.y, screenRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Draw textured sphere (when texture loaded and planet large enough)
+        if (textureAlpha > 0) {
+            // Calculate sun direction angle in screen space
+            // Sun is at origin (0,0,0), body is at (body.x, body.y, body.z)
+            const sunProjected = project3D(0, 0, 0, centerX, centerY, scale);
+            const dx = sunProjected.x - projected.x;
+            const dy = sunProjected.y - projected.y;
+            const sunAngle = Math.atan2(-dy, dx); // Flip Y for screen coords
+
+            const gameDays = getJulianDate();
+            const texCanvas = renderPlanetTexture(body.name, screenRadius, gameDays, sunAngle);
+
+            if (texCanvas) {
+                ctx.save();
+                if (textureAlpha < 1.0) ctx.globalAlpha = textureAlpha;
+
+                // Draw the rendered sphere centered on the body position
+                const drawSize = screenRadius * 2.2; // Slightly larger to cover sphere + soft edges
+                ctx.drawImage(
+                    texCanvas,
+                    projected.x - drawSize / 2,
+                    projected.y - drawSize / 2,
+                    drawSize,
+                    drawSize
+                );
+
+                ctx.restore();
+            }
+        }
+
+        // Subtle atmospheric glow (always, works with both modes)
+        // Shadow requires a non-transparent fill to cast, so we draw the body color
+        // at very low alpha underneath. The shadowBlur creates the colored halo.
+        ctx.save();
         ctx.shadowColor = display.color;
         ctx.shadowBlur = screenRadius * 0.5;
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = display.color;
         ctx.beginPath();
         ctx.arc(projected.x, projected.y, screenRadius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.restore();
     }
 
     // Label with background pill

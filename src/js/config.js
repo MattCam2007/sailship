@@ -431,6 +431,88 @@ export const DEFAULT_THRUSTER = {
     burnSize: 0.5,           // km/s per button press
 };
 
+// ============================================================================
+// Planet Texture Configuration
+// ============================================================================
+
+/**
+ * Configuration for the offscreen WebGL planet texture renderer.
+ *
+ * Textures sourced from Solar System Scope (CC-BY 4.0).
+ * https://www.solarsystemscope.com/textures/
+ * Based on NASA elevation and imagery data, color-corrected to true-color
+ * photos from Messenger, Viking, Cassini, and Hubble.
+ *
+ * When a planet's screen radius exceeds `minScreenRadius`, the renderer
+ * switches from the simple gradient sphere to a WebGL-textured sphere
+ * composited via drawImage(). Below that threshold, the cheap gradient
+ * rendering is used (looks fine at small sizes).
+ */
+export const PLANET_TEXTURE_CONFIG = {
+    /** Minimum screen radius (px) to activate texture rendering */
+    minScreenRadius: 30,
+
+    /** Screen radius range over which gradient→texture crossfade occurs */
+    crossfadeRange: 20,
+
+    /** Resolution of the offscreen WebGL render target (square) */
+    renderSize: 512,
+
+    /** Base URL for Solar System Scope texture downloads */
+    baseUrl: 'https://www.solarsystemscope.com/textures/download/',
+
+    /**
+     * Per-body texture filenames.
+     * These are appended to baseUrl to form the full URL.
+     * Only bodies with textures listed here will use textured rendering.
+     * Bodies not listed fall back to gradient rendering.
+     */
+    textures: {
+        MERCURY:  '2k_mercury.jpg',
+        VENUS:    '2k_venus_atmosphere.jpg',
+        EARTH:    '2k_earth_daymap.jpg',
+        MARS:     '2k_mars.jpg',
+        JUPITER:  '2k_jupiter.jpg',
+        SATURN:   '2k_saturn.jpg',
+        URANUS:   '2k_uranus.jpg',
+        NEPTUNE:  '2k_neptune.jpg',
+        LUNA:     '2k_moon.jpg',
+    },
+
+    /**
+     * Per-body rotation rates in degrees per game-day.
+     * Used to rotate the texture so the planet visually spins.
+     * Values are 360 / sidereal rotation period in Earth days.
+     */
+    rotationRates: {
+        MERCURY:  6.138,      // 58.646 day period
+        VENUS:    -1.4813,    // 243.025 day retrograde
+        EARTH:    360.9856,   // 0.9973 day period
+        MARS:     350.892,    // 1.026 day period
+        JUPITER:  870.536,    // 0.4135 day period
+        SATURN:   810.794,    // 0.444 day period
+        URANUS:   -501.16,    // 0.718 day retrograde
+        NEPTUNE:  536.312,    // 0.671 day period
+        LUNA:     13.177,     // 27.322 day period (tidally locked)
+    },
+
+    /**
+     * Axial tilt in degrees for each body.
+     * Applied as a rotation around the view-X axis so poles tilt correctly.
+     */
+    axialTilts: {
+        MERCURY:  0.034,
+        VENUS:    177.4,
+        EARTH:    23.44,
+        MARS:     25.19,
+        JUPITER:  3.13,
+        SATURN:   26.73,
+        URANUS:   97.77,
+        NEPTUNE:  28.32,
+        LUNA:     6.68,
+    },
+};
+
 /**
  * Default colors for ships by faction/type.
  */
