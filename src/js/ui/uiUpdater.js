@@ -3,11 +3,12 @@
  */
 
 import { destination, getDestinationInfo, predictClosestApproach } from '../core/navigation.js';
-import { getTime, getCurrentZoom, getClosestApproachForBody } from '../core/gameState.js';
+import { getTime, getCurrentZoom, getScale, getClosestApproachForBody } from '../core/gameState.js';
 import { getBodyByName } from '../data/celestialBodies.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
 import { SOI_RADII } from '../config.js';
+import { camera } from '../core/camera.js';
 
 // Cache DOM elements
 let elements = {};
@@ -36,6 +37,10 @@ export function initUI() {
         soiStatus: document.getElementById('soiStatus'),
         soiBody: document.getElementById('soiBody'),
         relVelocity: document.getElementById('relVelocity'),
+        // Corner label elements
+        viewDisplay: document.getElementById('viewDisplay'),
+        trackingDisplay: document.getElementById('trackingDisplay'),
+        coordDisplay: document.getElementById('coordDisplay'),
         // Orbital plane / inclination elements
         shipInclination: document.getElementById('shipInclination'),
         targetInclination: document.getElementById('targetInclination'),
@@ -53,6 +58,9 @@ export function initUI() {
 export function updateUI() {
     updateTimeDisplay();
     updateScaleDisplay();
+    updateViewDisplay();
+    updateTrackingDisplay();
+    updateCoordDisplay();
     updateDestinationDisplay();
     updateSailDisplay();
     updateThrusterDisplayInternal();
@@ -76,19 +84,108 @@ function updateTimeDisplay() {
 }
 
 /**
- * Update scale display
+ * Round to nearest "nice" number in 1-2-5 series for scale display
+ * @param {number} value - Raw value to round
+ * @returns {number} Nice round number
+ */
+function niceScaleNumber(value) {
+    if (value <= 0) return 1;
+    const pow = Math.pow(10, Math.floor(Math.log10(value)));
+    const normalized = value / pow;
+
+    if (normalized < 1.5) return 1 * pow;
+    if (normalized < 3.5) return 2 * pow;
+    if (normalized < 7.5) return 5 * pow;
+    return 10 * pow;
+}
+
+/**
+ * Update scale display dynamically based on effective zoom (base scale * camera.zoom)
  */
 function updateScaleDisplay() {
-    const scaleText = {
-        system: '1 AU = 50px',
-        inner: '1 AU = 200px',
-        local: '0.1 AU = 80px',
-        tactical: '0.01 AU = 30px'
-    };
-    
-    if (elements.scaleDisplay) {
-        elements.scaleDisplay.textContent = scaleText[getCurrentZoom()];
+    if (!elements.scaleDisplay) return;
+
+    const effectiveScale = getScale() * camera.zoom; // pixels per AU
+    const KM_PER_AU = 149597870.7;
+
+    // Find a nice reference distance that maps to roughly 100 pixels
+    const auForTargetPx = 100 / effectiveScale;
+
+    // Round to a nice 1-2-5 series number
+    const niceAU = niceScaleNumber(auForTargetPx);
+    const nicePx = Math.round(niceAU * effectiveScale);
+
+    if (niceAU >= 0.01) {
+        // Display in AU
+        let auStr;
+        if (niceAU >= 1) {
+            auStr = niceAU.toString();
+        } else {
+            // Show enough decimal places to represent the value
+            const decimals = Math.max(0, -Math.floor(Math.log10(niceAU)));
+            auStr = niceAU.toFixed(decimals);
+        }
+        elements.scaleDisplay.textContent = `${auStr} AU = ${nicePx}px`;
+    } else {
+        // Display in km for very close zoom
+        const km = niceAU * KM_PER_AU;
+        const niceKm = niceScaleNumber(km);
+        const kmPx = Math.round((niceKm / KM_PER_AU) * effectiveScale);
+
+        if (niceKm >= 1000000) {
+            elements.scaleDisplay.textContent = `${niceKm / 1000000}M km = ${kmPx}px`;
+        } else if (niceKm >= 1000) {
+            elements.scaleDisplay.textContent = `${niceKm / 1000}K km = ${kmPx}px`;
+        } else {
+            elements.scaleDisplay.textContent = `${niceKm} km = ${kmPx}px`;
+        }
     }
+}
+
+/**
+ * Update view angle display (camera elevation and rotation)
+ */
+function updateViewDisplay() {
+    if (!elements.viewDisplay) return;
+
+    // Elevation from ecliptic plane: 90° = top-down (angleX=0), 0° = edge-on (angleX=π/2)
+    const elevDeg = Math.round(90 - camera.angleX * 180 / Math.PI);
+
+    // Rotation around Z axis
+    let rotDeg = Math.round(camera.angleZ * 180 / Math.PI);
+    if (rotDeg === 360) rotDeg = 0;
+
+    if (rotDeg === 0) {
+        elements.viewDisplay.textContent = `ECLIPTIC +${elevDeg}°`;
+    } else {
+        elements.viewDisplay.textContent = `+${elevDeg}° EL ${rotDeg}° ROT`;
+    }
+}
+
+/**
+ * Update tracking display (what the camera is following)
+ */
+function updateTrackingDisplay() {
+    if (!elements.trackingDisplay) return;
+
+    if (camera.followTarget) {
+        elements.trackingDisplay.textContent = `TRACKING: ${camera.followTarget}`;
+    } else {
+        elements.trackingDisplay.textContent = 'FREE CAMERA';
+    }
+}
+
+/**
+ * Update coordinate display with player ship position
+ */
+function updateCoordDisplay() {
+    if (!elements.coordDisplay) return;
+
+    const player = getPlayerShip();
+    if (!player) return;
+
+    elements.coordDisplay.textContent =
+        `X: ${player.x.toFixed(3)} Y: ${player.y.toFixed(3)} Z: ${player.z.toFixed(3)} AU`;
 }
 
 /**
