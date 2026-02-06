@@ -17,7 +17,9 @@ import {
     getCachedOptimalCourse,
     applyComputedCourse,
     getCourseComputationState,
-    isRefinementMode
+    isRefinementMode,
+    computeLaunchWindows,
+    getLaunchWindowState
 } from '../core/navigation.js';
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount, setThrusterBurnSize } from '../data/ships.js';
@@ -195,6 +197,7 @@ export function initControls(canvas) {
     initEncounterModeControls();
     initThrusterControls();
     initCoursePlotter();
+    initLaunchWindowFinder();
     initSaveLoadControls();
     initKeyboardShortcuts();
     initMouseControls(canvas);
@@ -1423,6 +1426,158 @@ function displayCourseResult(course, container) {
             <div class="course-quality ${qualityClass}">${course.quality.replace('_', ' ')}</div>
         </div>
     `;
+}
+
+/**
+ * Set up launch window finder controls
+ */
+function initLaunchWindowFinder() {
+    const findBtn = document.getElementById('findWindowsBtn');
+    const resultDiv = document.getElementById('launchWindowResult');
+
+    if (!findBtn || !resultDiv) return;
+
+    findBtn.addEventListener('click', async () => {
+        // Check if already computing
+        const state = getLaunchWindowState();
+        if (state.computing) return;
+
+        // Update button to show computing state
+        findBtn.classList.add('computing');
+        findBtn.querySelector('.course-btn-text').textContent = 'SCANNING...';
+
+        // Clear previous result
+        resultDiv.classList.remove('has-solution');
+        resultDiv.innerHTML = '<div class="course-status">Scanning departure dates...</div>';
+
+        try {
+            const result = await computeLaunchWindows((progress) => {
+                const pct = Math.round((progress.progress || 0) * 100);
+                let statusText;
+                if (progress.phase === 'baseline') {
+                    statusText = 'Evaluating current departure...';
+                } else if (progress.phase === 'scanning') {
+                    statusText = `Scanning departures... (${pct}%)`;
+                } else if (progress.phase === 'verifying') {
+                    const idx = (progress.windowIndex || 0) + 1;
+                    statusText = `Verifying window ${idx}... (${pct}%)`;
+                } else if (progress.phase === 'complete') {
+                    statusText = 'Analysis complete';
+                } else {
+                    statusText = progress.message || 'Computing...';
+                }
+                resultDiv.innerHTML = `<div class="course-status">${statusText}</div>`;
+            });
+
+            // Restore button
+            findBtn.classList.remove('computing');
+            findBtn.querySelector('.course-btn-text').textContent = 'FIND WINDOWS';
+
+            if (result && result.error) {
+                if (result.error === 'EXIT_SOI') {
+                    resultDiv.innerHTML = '<div class="course-status">Exit SOI first</div>';
+                } else {
+                    resultDiv.innerHTML = `<div class="course-status">${result.errorMessage}</div>`;
+                }
+            } else if (result) {
+                displayLaunchWindowResults(result, resultDiv);
+            } else {
+                resultDiv.innerHTML = '<div class="course-status">No results</div>';
+            }
+        } catch (error) {
+            console.error('Launch window computation error:', error);
+            findBtn.classList.remove('computing');
+            findBtn.querySelector('.course-btn-text').textContent = 'FIND WINDOWS';
+            resultDiv.innerHTML = '<div class="course-status">Computation failed</div>';
+        }
+    });
+}
+
+/**
+ * Format days into a readable string (e.g., "320d" or "1.2yr")
+ */
+function formatDays(days) {
+    if (days >= 365) {
+        return (days / 365).toFixed(1) + 'yr';
+    }
+    return Math.round(days) + 'd';
+}
+
+/**
+ * Display launch window analysis results
+ * @param {Object} result - Results from computeLaunchWindows()
+ * @param {HTMLElement} container - Result container element
+ */
+function displayLaunchWindowResults(result, container) {
+    const { windows, baseline, computeTimeMs } = result;
+
+    let html = '<div class="course-settings">';
+
+    // Baseline (depart now)
+    if (baseline) {
+        const baselineStatus = baseline.status || 'NO_INTERCEPT';
+        const statusClass = baselineStatus === 'INTERCEPT' ? 'status-intercept'
+            : baselineStatus === 'NEAR_MISS' ? 'status-miss' : '';
+        html += `
+            <div class="course-row" style="opacity: 0.6">
+                <span class="course-label">NOW</span>
+                <span class="course-value ${statusClass}">${formatDays(baseline.totalDays)} ${baselineStatus.replace('_', ' ')}</span>
+            </div>
+        `;
+    }
+
+    // Separator
+    if (windows.length > 0) {
+        html += `<div class="course-row" style="border-top: 1px solid rgba(76,232,141,0.2); margin: 4px 0; padding-top: 4px;"><span class="course-label" style="font-size: 0.7em; opacity: 0.5">WINDOWS FOUND: ${windows.length}</span><span class="course-value"></span></div>`;
+    }
+
+    // Windows
+    for (let i = 0; i < windows.length; i++) {
+        const w = windows[i];
+        const statusClass = w.status === 'INTERCEPT' ? 'status-intercept'
+            : (w.status === 'NEAR_MISS' || w.status === 'NEAR MISS') ? 'status-miss' : '';
+
+        // Calculate savings vs baseline
+        let savingsText = '';
+        if (baseline && w.totalDays < baseline.totalDays) {
+            const saved = Math.round(baseline.totalDays - w.totalDays);
+            savingsText = ` (−${formatDays(saved)})`;
+        }
+
+        const isBest = i === 0 && windows.length > 1;
+
+        html += `
+            <div class="course-row">
+                <span class="course-label">${isBest ? '★ ' : ''}COAST ${formatDays(w.coastDays)}</span>
+                <span class="course-value ${statusClass}">${formatDays(w.totalDays)} total${savingsText}</span>
+            </div>
+        `;
+
+        // Show sail settings for verified windows
+        if (w.verified && w.yawDeg !== undefined) {
+            html += `
+                <div class="course-row" style="font-size: 0.8em; opacity: 0.7">
+                    <span class="course-label">  SAIL</span>
+                    <span class="course-value">Y${w.yawDeg.toFixed(0)}° P${w.pitchDeg.toFixed(0)}° → ${formatDays(w.flightDays)} flight</span>
+                </div>
+            `;
+        }
+    }
+
+    // Compute time
+    if (computeTimeMs) {
+        html += `
+            <div class="course-row" style="font-size: 0.7em; opacity: 0.4; margin-top: 4px">
+                <span class="course-label">COMPUTED IN</span>
+                <span class="course-value">${(computeTimeMs / 1000).toFixed(1)}s</span>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+
+    container.classList.add('has-solution');
+    container.innerHTML = html;
 }
 
 /**
