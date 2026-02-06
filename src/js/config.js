@@ -9,6 +9,22 @@
 import { J2000 } from './lib/orbital.js';
 
 // ============================================================================
+// Asset Base URL
+// ============================================================================
+
+/**
+ * Base URL prepended to all asset paths (textures, data files, saves).
+ *
+ * Change this single value when the deployment root moves.
+ *
+ * Examples:
+ *   ''                          - relative to index.html (default, works for most setups)
+ *   '/sailship/src/'            - absolute path from domain root
+ *   'https://cdn.example.com/'  - external CDN
+ */
+export const ASSET_BASE_URL = '';
+
+// ============================================================================
 // Time Configuration
 // ============================================================================
 
@@ -458,8 +474,8 @@ export const PLANET_TEXTURE_CONFIG = {
     /** Resolution of the offscreen WebGL render target (square) */
     renderSize: 512,
 
-    /** Base path for locally-stored planet textures */
-    baseUrl: '../textures/',
+    /** Base path for locally-stored planet textures (derived from ASSET_BASE_URL) */
+    baseUrl: ASSET_BASE_URL + 'textures/',
 
     /**
      * Per-body texture filenames.
