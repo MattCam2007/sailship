@@ -315,6 +315,13 @@ function getInterceptThreshold(target) {
  * This function is the core of the solver and is UNCHANGED from v3.7.
  * The optimization is in HOW we choose which candidates to evaluate,
  * not in the evaluation itself.
+ *
+ * @param {number} yawDeg - Sail yaw angle in degrees
+ * @param {number} pitchDeg - Sail pitch angle in degrees
+ * @param {Object} ship - Ship object with orbitalElements and sail
+ * @param {Object} target - Target object with elements
+ * @param {Object} options - Optional parameters (startJulianDate, maxDays, deployment, steps)
+ * @returns {Object} Evaluation result (synchronous for performance)
  */
 export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) {
     const {
@@ -337,7 +344,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         };
     }
 
-    const startTime = getJulianDate();
+    const startTime = options.startJulianDate || getJulianDate();
     const timeStep = maxDays / steps;
 
     // For eccentric targets, compute crossing radii at perihelion, semi-major axis, and aphelion.
