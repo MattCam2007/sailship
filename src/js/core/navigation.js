@@ -13,7 +13,7 @@ import { getPlayerShip } from '../data/ships.js';
 import { getPosition, getVelocity, meanMotion, propagateMeanAnomaly } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
 import { getSOIRadius, getGravitationalParam } from '../lib/soi.js';
-import { solveCourse } from '../lib/course-solver.js';
+import { solveCourse, evaluateCandidate } from '../lib/course-solver.js';
 import { SOI_RADII } from '../config.js';
 
 /**
@@ -1164,6 +1164,11 @@ export function getRefinementSeedSettings() {
 
 /**
  * Apply computed course to ship sail.
+ *
+ * After applying, runs a quick verification using the ship's current orbital elements
+ * to confirm the course will achieve the predicted intercept from the current position.
+ * Stores verification result on the course object for UI access.
+ *
  * @param {Object} course - Course solution from computeOptimalCourse
  * @returns {boolean} True if applied successfully
  */
@@ -1184,6 +1189,36 @@ export function applyComputedCourse(course) {
 
     console.log(`[NAVIGATION] Applied course: yaw=${course.yawDeg.toFixed(1)}°, ` +
                 `pitch=${course.pitchDeg.toFixed(1)}°, deployment=${course.deployment}%`);
+
+    // Post-apply verification: re-evaluate from current ship state
+    // Uses normal resolution (not 2x) to avoid UI blocking (<200ms)
+    const target = getBodyByName(destination);
+    if (player.orbitalElements && target?.elements) {
+        const horizonDays = course.horizonDays || 365;
+        const verifyResult = evaluateCandidate(
+            course.yawDeg, course.pitchDeg, player, target,
+            { maxDays: horizonDays, deployment: course.deployment }
+        );
+
+        if (isFinite(verifyResult.minDistance)) {
+            course.postApplyVerification = {
+                verifiedDistance: verifyResult.minDistance,
+                predictedDistance: course.minDistance,
+                driftAU: Math.abs(verifyResult.minDistance - course.minDistance),
+                status: verifyResult.status,
+                timeToClosest: verifyResult.timeToClosest
+            };
+
+            const drift = course.postApplyVerification.driftAU;
+            if (drift > 0.001) {
+                console.warn(`[NAVIGATION] Post-apply drift detected: predicted=${course.minDistance.toFixed(4)} AU, ` +
+                            `verified=${verifyResult.minDistance.toFixed(4)} AU (drift: ${drift.toFixed(4)} AU)`);
+            } else {
+                console.log(`[NAVIGATION] Post-apply verification OK: ${verifyResult.minDistance.toFixed(4)} AU ` +
+                            `(${verifyResult.status})`);
+            }
+        }
+    }
 
     return true;
 }
