@@ -399,10 +399,15 @@ function deduplicateBodyCrossings(crossings, elements) {
     // Sort by time
     crossings.sort((a, b) => a.time - b.time);
 
-    // Merge window: time for object at orbital speed to traverse perihelion-aphelion band
-    // dt = e * sqrt(a) * 365.25 / pi  (days), minimum 5 days
+    // Merge window: time for ship to traverse the perihelion-aphelion band.
+    // Band width = 2*e*a AU. Ship radial velocity through the band is typically
+    // 0.5-2 AU/year for solar sail trajectories. Using e*a*365.25 gives a
+    // conservative estimate that covers slow transits.
+    //
+    // Examples: Mars (e=0.094, a=1.52) → 52 days, Mercury (e=0.21, a=0.39) → 40 days
+    // Minimum 40 days prevents splitting closely-spaced multi-radius crossings.
     const { a, e } = elements;
-    const mergeWindow = Math.max(5, e * Math.sqrt(a) * 365.25 / Math.PI);
+    const mergeWindow = Math.max(40, e * a * 365.25);
 
     const result = [];
     let group = [crossings[0]];
