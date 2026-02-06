@@ -1,10 +1,10 @@
 # /review [feature]
 
-Orchestrate a four-perspective review of an implementation plan.
+Orchestrate a five-perspective review of an implementation plan.
 
 ## Purpose
 
-The review skill validates an Implementation Plan from multiple specialized perspectives before implementation begins. It invokes subagents for each perspective and aggregates their findings into a unified Review Report.
+The review skill validates an Implementation Plan from multiple specialized perspectives before implementation begins. It invokes subagents for each perspective and aggregates their findings into a unified Review Report. Five perspectives are used, including a dedicated Solar Sailing Expert that catches errors from applying conventional spaceflight assumptions to solar sail propulsion.
 
 ## Invocation
 
@@ -27,21 +27,27 @@ The review skill validates an Implementation Plan from multiple specialized pers
 - Verify both exist and are current
 
 ### Step 2: Invoke Specialized Reviewers
-Dispatch four subagents in parallel:
+Dispatch five subagents in parallel:
 
 1. **Physicist** (`.claude/agents/physicist.md`)
    - Reviews physics/realism aspects
    - Validates formulas, units, real-world accuracy
 
-2. **Architect** (`.claude/agents/architect.md`)
+2. **Solar Sailing Expert** (`.claude/agents/solar-sailing-expert.md`)
+   - Reviews solar sail propulsion assumptions
+   - Catches errors from treating continuous solar thrust like chemical rocket burns
+   - Validates that transfer windows, trajectories, and maneuvers account for constant sunlight-driven thrust
+   - Flags Hohmann transfers, coast phases, impulsive delta-v, and other conventional spaceflight concepts used incorrectly
+
+3. **Architect** (`.claude/agents/architect.md`)
    - Reviews architecture aspects
    - Evaluates patterns, separation of concerns, extensibility
 
-3. **Functional Tester** (`.claude/agents/functional-tester.md`)
+4. **Functional Tester** (`.claude/agents/functional-tester.md`)
    - Reviews functionality aspects
    - Verifies code paths, test coverage, logic
 
-4. **Failure Analyst** (`.claude/agents/failure-analyst.md`)
+5. **Failure Analyst** (`.claude/agents/failure-analyst.md`)
    - Reviews failure modes
    - Identifies edge cases, instability risks, performance issues
 
@@ -92,7 +98,17 @@ Based on findings:
 |----|----------|-------------|----------------|
 | P1 | Critical | ... | ... |
 
-## 2. Functionality
+## 2. Solar Sailing Expert
+
+### Findings
+- ...
+
+### Concerns
+| ID | Severity | Description | Recommendation |
+|----|----------|-------------|----------------|
+| SS1 | Critical | ... | ... |
+
+## 3. Functionality
 
 ### Findings
 - ...
@@ -102,7 +118,7 @@ Based on findings:
 |----|----------|-------------|----------------|
 | F1 | Important | ... | ... |
 
-## 3. Architecture
+## 4. Architecture
 
 ### Findings
 - ...
@@ -112,7 +128,7 @@ Based on findings:
 |----|----------|-------------|----------------|
 | A1 | Nice-to-have | ... | ... |
 
-## 4. Failure Modes
+## 5. Failure Modes
 
 ### Findings
 - ...
@@ -122,7 +138,7 @@ Based on findings:
 |----|----------|-------------|----------------|
 | FM1 | Critical | ... | ... |
 
-## 5. Summary
+## 6. Summary
 
 ### Confidence Rating: X/10
 
@@ -172,6 +188,8 @@ TOP 3 CONCERNS PER CATEGORY:
   Physics/Realism:
     1. [severity] description
     2. ...
+  Solar Sailing Expert:
+    1. ...
   Functionality:
     1. ...
   Architecture:
@@ -200,7 +218,7 @@ This skill primarily uses:
 ## Quality Criteria
 
 A successful review:
-- [ ] Invokes all four perspectives
+- [ ] Invokes all five perspectives
 - [ ] Each perspective provides substantive findings
 - [ ] Concerns are prioritized by severity
 - [ ] Confidence rating reflects actual concerns
@@ -220,7 +238,7 @@ A successful review:
 
 - **Follows:** `/planning [feature]`
 - **Precedes:** `/implement [feature] [unit]`
-- **Invokes:** physicist, architect, functional-tester, failure-analyst subagents
+- **Invokes:** physicist, solar-sailing-expert, architect, functional-tester, failure-analyst subagents
 - **May also invoke:** regression-checker, best-practices for enhanced review
 
 ## Reference

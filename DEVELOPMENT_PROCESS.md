@@ -21,8 +21,9 @@ The process follows a **Plan → Review → Implement → Verify** cycle with at
 │  ├── Break into atomic units of work                                │
 │  └── Identify risks and edge cases                                  │
 ├─────────────────────────────────────────────────────────────────────┤
-│  PHASE 3: REVIEW (4 Perspectives)                                   │
+│  PHASE 3: REVIEW (5 Perspectives)                                   │
 │  ├── Physics/Realism validation                                     │
+│  ├── Solar Sailing expert review                                    │
 │  ├── Functionality verification                                     │
 │  ├── Architecture evaluation                                        │
 │  └── Failure modes analysis                                         │
@@ -249,7 +250,7 @@ Before diving into units of work, identify all files that will be affected:
 
 Location: `reports/[feature]-review-[DATE].md`
 
-### Four Perspectives
+### Five Perspectives
 
 #### 1. Physics/Realism Review
 - Are formulas mathematically correct?
@@ -257,19 +258,29 @@ Location: `reports/[feature]-review-[DATE].md`
 - Does it match real-world behavior (where applicable)?
 - Are there numerical edge cases?
 
-#### 2. Functionality Review
+#### 2. Solar Sailing Expert Review
+- Are any traditional spaceflight assumptions applied incorrectly?
+- Thrust is continuous (from sunlight), not impulsive — no "burn for X minutes then coast"
+- Transfer windows differ from chemical rockets — Hohmann/Lambert windows don't directly apply
+- Trajectories are spirals under constant thrust, not ballistic conic sections
+- Deceleration and orbit capture are gradual sail-orientation maneuvers, not braking burns
+- Delta-v budgets, coast phases, and instantaneous orbit insertion are chemical-rocket concepts
+- Thrust scales with 1/r² and depends on sail attitude, not just on/off state
+- Algorithms and solvers must not assume impulsive maneuvers or arbitrary thrust direction
+
+#### 3. Functionality Review
 - Does the design achieve the stated goals?
 - Are all code paths covered?
 - What's the test coverage?
 - Are there missing features?
 
-#### 3. Architecture Review
+#### 4. Architecture Review
 - Does it follow existing patterns?
 - Is separation of concerns maintained?
 - Is it extensible?
 - Is there code duplication?
 
-#### 4. Failure Modes Review
+#### 5. Failure Modes Review
 - What happens with invalid input?
 - Are there numerical instability risks?
 - What are the performance implications?
@@ -294,7 +305,17 @@ Location: `reports/[feature]-review-[DATE].md`
 |----|----------|-------------|----------------|
 | P1 | Critical | ... | ... |
 
-## 2. Functionality
+## 2. Solar Sailing Expert
+
+### Findings
+- ...
+
+### Concerns
+| ID | Severity | Description | Recommendation |
+|----|----------|-------------|----------------|
+| SS1 | Critical | ... | ... |
+
+## 3. Functionality
 
 ### Findings
 - ...
@@ -304,7 +325,7 @@ Location: `reports/[feature]-review-[DATE].md`
 |----|----------|-------------|----------------|
 | F1 | Important | ... | ... |
 
-## 3. Architecture
+## 4. Architecture
 
 ### Findings
 - ...
@@ -314,7 +335,7 @@ Location: `reports/[feature]-review-[DATE].md`
 |----|----------|-------------|----------------|
 | A1 | Nice-to-have | ... | ... |
 
-## 4. Failure Modes
+## 5. Failure Modes
 
 ### Findings
 - ...
@@ -324,7 +345,7 @@ Location: `reports/[feature]-review-[DATE].md`
 |----|----------|-------------|----------------|
 | FM1 | Critical | ... | ... |
 
-## 5. Summary
+## 6. Summary
 
 ### Confidence Rating: X/10
 
