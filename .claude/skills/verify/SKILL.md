@@ -63,7 +63,28 @@ Check that existing functionality still works:
 - Verify no console errors
 - Check performance hasn't degraded
 
-**Invoke subagent:** regression-checker for systematic coverage
+**Invoke subagent:** regression-checker (`.claude/agents/regression-checker.md`) for systematic coverage
+
+### Step 4.5: Best Practices Audit
+Final compliance check across all feature code:
+- Review all files changed during implementation
+- Verify CLAUDE.md conventions followed throughout
+- Check for any drift from project standards during multi-unit implementation
+
+**Invoke subagent:** best-practices (`.claude/agents/best-practices.md`) for standards compliance
+
+### Step 4.6: Full Agent Verification
+Invoke all applicable agents for final sign-off:
+
+| Agent | Verification Focus |
+|-------|-------------------|
+| `regression-checker` | Full regression suite, all test suites pass |
+| `best-practices` | Code standards compliance across all changes |
+| `functional-tester` | Feature achieves stated goals, all code paths work |
+| `failure-analyst` | Edge cases from review are handled, no new failure modes |
+| `physicist` | Physics calculations produce correct results (if applicable) |
+| `solar-sailing-expert` | Sail-specific behavior is correct (if applicable) |
+| `architect` | Final code structure follows project patterns |
 
 ### Step 5: User Acceptance
 Confirm original requirements are met:
@@ -120,6 +141,26 @@ Confirm original requirements are met:
 | trajectory-predictor.test.js | Pass/Fail | X/Y tests passing |
 | orbital.test.js | Pass/Fail | X/Y tests passing |
 | ... | ... | ... |
+
+## Best Practices Compliance (best-practices agent)
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| Imports | Compliant/Issues | ... |
+| Naming | Compliant/Issues | ... |
+| Code Style | Compliant/Issues | ... |
+
+## Agent Verification Summary
+
+| Agent | Status | Key Findings |
+|-------|--------|-------------|
+| regression-checker | Pass/Fail | ... |
+| best-practices | Pass/Fail | ... |
+| functional-tester | Pass/Fail | ... |
+| failure-analyst | Pass/Fail | ... |
+| physicist | Pass/Fail/N/A | ... |
+| solar-sailing-expert | Pass/Fail/N/A | ... |
+| architect | Pass/Fail | ... |
 
 ## Issues Found
 
@@ -192,7 +233,9 @@ This skill primarily uses:
 A successful verification:
 - [ ] All integration tests pass
 - [ ] Edge cases validated
-- [ ] No regressions detected
+- [ ] No regressions detected (regression-checker agent)
+- [ ] Best practices compliance confirmed (best-practices agent)
+- [ ] All 7 agents provide sign-off
 - [ ] User acceptance criteria met
 - [ ] Issues documented with severity
 - [ ] Clear verdict provided
@@ -210,7 +253,7 @@ A successful verification:
 
 - **Follows:** `/implement [feature] all`
 - **Precedes:** Merge to main branch
-- **May invoke:** regression-checker subagent
+- **Invokes:** All 7 agents (regression-checker, best-practices, functional-tester, failure-analyst, physicist, solar-sailing-expert, architect)
 - **Outputs:** Verification report for record
 
 ## Post-Verification Actions

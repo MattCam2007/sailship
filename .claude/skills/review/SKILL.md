@@ -4,7 +4,7 @@ Orchestrate a five-perspective review of an implementation plan.
 
 ## Purpose
 
-The review skill validates an Implementation Plan from multiple specialized perspectives before implementation begins. It invokes subagents for each perspective and aggregates their findings into a unified Review Report. Five perspectives are used, including a dedicated Solar Sailing Expert that catches errors from applying conventional spaceflight assumptions to solar sail propulsion.
+The review skill validates an Implementation Plan from seven specialized perspectives before implementation begins. It invokes subagents for each perspective and aggregates their findings into a unified Review Report. This includes five domain reviewers (physicist, solar-sailing-expert, architect, functional-tester, failure-analyst) plus two quality reviewers (best-practices, regression-checker).
 
 ## Invocation
 
@@ -27,7 +27,9 @@ The review skill validates an Implementation Plan from multiple specialized pers
 - Verify both exist and are current
 
 ### Step 2: Invoke Specialized Reviewers
-Dispatch five subagents in parallel:
+Dispatch seven subagents in parallel:
+
+**Domain Reviewers:**
 
 1. **Physicist** (`.claude/agents/physicist.md`)
    - Reviews physics/realism aspects
@@ -50,6 +52,19 @@ Dispatch five subagents in parallel:
 5. **Failure Analyst** (`.claude/agents/failure-analyst.md`)
    - Reviews failure modes
    - Identifies edge cases, instability risks, performance issues
+
+**Quality Reviewers:**
+
+6. **Best Practices** (`.claude/agents/best-practices.md`)
+   - Reviews compliance with CLAUDE.md project standards
+   - Checks import conventions, naming, code style, module structure
+   - Flags over-engineering, unnecessary abstractions, or convention violations
+
+7. **Regression Checker** (`.claude/agents/regression-checker.md`)
+   - Assesses regression risk from proposed changes
+   - Identifies which existing features and test suites are affected
+   - Maps file changes to feature impact areas
+   - Recommends specific regression tests to run during implementation
 
 ### Step 3: Aggregate Findings
 - Collect structured outputs from each subagent
@@ -138,7 +153,38 @@ Based on findings:
 |----|----------|-------------|----------------|
 | FM1 | Critical | ... | ... |
 
-## 6. Summary
+## 6. Best Practices
+
+### Compliance Summary
+| Category | Status | Notes |
+|----------|--------|-------|
+| Imports | Compliant/Issues | ... |
+| Naming | Compliant/Issues | ... |
+| Code Style | Compliant/Issues | ... |
+| Architecture | Compliant/Issues | ... |
+
+### Violations
+| ID | Severity | Category | Description | Fix |
+|----|----------|----------|-------------|-----|
+| BP1 | Important | ... | ... | ... |
+
+## 7. Regression Risk
+
+### Impact Analysis
+- Files changed: [list]
+- Features affected: [list]
+- Shared modules touched: [list]
+
+### Risk Assessment
+| Existing Feature | Risk Level | Rationale |
+|------------------|------------|-----------|
+| ... | Low/Med/High | ... |
+
+### Recommended Regression Tests
+- [ ] Test suite 1
+- [ ] Manual verification 1
+
+## 8. Summary
 
 ### Confidence Rating: X/10
 
@@ -196,6 +242,10 @@ TOP 3 CONCERNS PER CATEGORY:
     1. ...
   Failure Modes:
     1. ...
+  Best Practices:
+    1. ...
+  Regression Risk:
+    1. ...
 
 CONFIDENCE RATING: X/10
 
@@ -218,7 +268,7 @@ This skill primarily uses:
 ## Quality Criteria
 
 A successful review:
-- [ ] Invokes all five perspectives
+- [ ] Invokes all seven perspectives (5 domain + 2 quality)
 - [ ] Each perspective provides substantive findings
 - [ ] Concerns are prioritized by severity
 - [ ] Confidence rating reflects actual concerns
@@ -238,8 +288,7 @@ A successful review:
 
 - **Follows:** `/planning [feature]`
 - **Precedes:** `/implement [feature] [unit]`
-- **Invokes:** physicist, solar-sailing-expert, architect, functional-tester, failure-analyst subagents
-- **May also invoke:** regression-checker, best-practices for enhanced review
+- **Invokes:** physicist, solar-sailing-expert, architect, functional-tester, failure-analyst, best-practices, regression-checker subagents (all 7)
 
 ## Reference
 

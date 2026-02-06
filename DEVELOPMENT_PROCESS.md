@@ -21,21 +21,26 @@ The process follows a **Plan → Review → Implement → Verify** cycle with at
 │  ├── Break into atomic units of work                                │
 │  └── Identify risks and edge cases                                  │
 ├─────────────────────────────────────────────────────────────────────┤
-│  PHASE 3: REVIEW (5 Perspectives)                                   │
+│  PHASE 3: REVIEW (7 Perspectives)                                   │
 │  ├── Physics/Realism validation                                     │
 │  ├── Solar Sailing expert review                                    │
 │  ├── Functionality verification                                     │
 │  ├── Architecture evaluation                                        │
-│  └── Failure modes analysis                                         │
+│  ├── Failure modes analysis                                         │
+│  ├── Best practices compliance                                      │
+│  └── Regression risk assessment                                     │
 ├─────────────────────────────────────────────────────────────────────┤
 │  PHASE 4: IMPLEMENTATION                                            │
 │  ├── Execute units sequentially                                     │
-│  ├── Test each unit before proceeding                               │
+│  ├── Best practices check per unit                                  │
+│  ├── Regression check after each unit                               │
 │  └── Atomic commits per unit                                        │
 ├─────────────────────────────────────────────────────────────────────┤
 │  PHASE 5: VERIFICATION                                              │
 │  ├── Integration testing                                            │
 │  ├── Edge case validation                                           │
+│  ├── Full regression check (regression-checker agent)               │
+│  ├── Best practices audit (best-practices agent)                    │
 │  └── User acceptance                                                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -250,7 +255,7 @@ Before diving into units of work, identify all files that will be affected:
 
 Location: `reports/[feature]-review-[DATE].md`
 
-### Five Perspectives
+### Seven Perspectives
 
 #### 1. Physics/Realism Review
 - Are formulas mathematically correct?
@@ -285,6 +290,21 @@ Location: `reports/[feature]-review-[DATE].md`
 - Are there numerical instability risks?
 - What are the performance implications?
 - What player-facing bugs could occur?
+
+#### 6. Best Practices Review
+- Does code follow project conventions from CLAUDE.md?
+- Are imports using `.js` extensions and named exports?
+- Do naming conventions match (camelCase functions, UPPER_SNAKE constants)?
+- Is code minimal and focused, avoiding over-engineering?
+- Are there unnecessary abstractions, error handling, or feature flags?
+- Does the module structure follow one-concept-per-file?
+
+#### 7. Regression Risk Review
+- What existing features could break from these changes?
+- Which test suites are affected?
+- Are there shared modules or state that could cause side effects?
+- What manual verification is needed for adjacent features?
+- Is the change isolated enough to avoid cascading failures?
 
 ### Review Output
 
@@ -345,7 +365,38 @@ Location: `reports/[feature]-review-[DATE].md`
 |----|----------|-------------|----------------|
 | FM1 | Critical | ... | ... |
 
-## 6. Summary
+## 6. Best Practices
+
+### Compliance Summary
+| Category | Status | Notes |
+|----------|--------|-------|
+| Imports | Compliant/Issues | ... |
+| Naming | Compliant/Issues | ... |
+| Code Style | Compliant/Issues | ... |
+| Architecture | Compliant/Issues | ... |
+
+### Violations
+| ID | Severity | Category | Description | Fix |
+|----|----------|----------|-------------|-----|
+| BP1 | Important | ... | ... | ... |
+
+## 7. Regression Risk
+
+### Impact Analysis
+- Files changed: [list]
+- Features affected: [list]
+- Shared modules touched: [list]
+
+### Risk Assessment
+| Existing Feature | Risk Level | Rationale |
+|------------------|------------|-----------|
+| ... | Low/Med/High | ... |
+
+### Recommended Regression Tests
+- [ ] Test suite 1
+- [ ] Manual verification 1
+
+## 8. Summary
 
 ### Confidence Rating: X/10
 
@@ -377,14 +428,27 @@ For each Unit:
   1. Mark as "In Progress"
   2. Implement the changes
   3. Run acceptance criteria tests
-  4. If tests pass:
+  4. Best practices check (best-practices agent)
+     - Verify code follows CLAUDE.md conventions
+     - Check imports, naming, module structure
+  5. Regression check (regression-checker agent)
+     - Run affected test suites
+     - Verify adjacent features still work
+  6. If all checks pass:
      - Commit with message: "[Unit N] Description"
      - Mark as "Complete"
-  5. If tests fail:
+  7. If checks fail:
      - Fix issues
      - Return to step 3
-  6. Proceed to next unit
+  8. Proceed to next unit
 ```
+
+### Agent Validation Per Unit
+
+| Agent | When | Purpose |
+|-------|------|---------|
+| `best-practices` | After code changes, before commit | Verify code style and conventions |
+| `regression-checker` | After code changes, before commit | Verify no existing features broken |
 
 ### Commit Message Format
 
@@ -430,11 +494,39 @@ Verify all identified edge cases from the review:
 - [ ] Edge case 1
 - [ ] Edge case 2
 
+### Full Regression Check
+
+Invoke the **regression-checker** agent (`.claude/agents/regression-checker.md`) for comprehensive coverage:
+- Run all console test suites
+- Verify core functionality (game load, ship rendering, camera, UI panels)
+- Check display toggles and time controls
+- Confirm no regressions from the full feature implementation
+
+### Best Practices Audit
+
+Invoke the **best-practices** agent (`.claude/agents/best-practices.md`) for final quality gate:
+- Review all code changes across the feature
+- Verify compliance with CLAUDE.md conventions
+- Check import patterns, naming, module structure
+- Ensure no over-engineering or unnecessary complexity was introduced
+
 ### User Acceptance
 
 - Does it meet the original requirements?
 - Is the UX acceptable?
 - Are there any surprises?
+
+### Agent Verification Matrix
+
+| Agent | Phase 5 Role |
+|-------|-------------|
+| `regression-checker` | Full regression suite across all modified and adjacent features |
+| `best-practices` | Final compliance audit of all code changes |
+| `functional-tester` | Verify feature achieves stated goals end-to-end |
+| `failure-analyst` | Validate identified edge cases are handled |
+| `physicist` | Confirm physics calculations produce correct results |
+| `solar-sailing-expert` | Verify sail-specific behavior matches expectations |
+| `architect` | Confirm final code structure follows patterns |
 
 ### Deliverable: Verification Report
 
@@ -456,12 +548,32 @@ Verify all identified edge cases from the review:
 |------|--------|-------|
 | ... | Pass/Fail | ... |
 
-## Regressions
+## Regressions (regression-checker agent)
 
 | Feature | Status |
 |---------|--------|
 | Existing Feature 1 | Pass |
 | ... | ... |
+
+## Best Practices Compliance (best-practices agent)
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| Imports | Compliant/Issues | ... |
+| Naming | Compliant/Issues | ... |
+| Code Style | Compliant/Issues | ... |
+
+## Agent Verification Summary
+
+| Agent | Status | Key Findings |
+|-------|--------|-------------|
+| regression-checker | Pass/Fail | ... |
+| best-practices | Pass/Fail | ... |
+| functional-tester | Pass/Fail | ... |
+| failure-analyst | Pass/Fail | ... |
+| physicist | Pass/Fail/N/A | ... |
+| solar-sailing-expert | Pass/Fail/N/A | ... |
+| architect | Pass/Fail | ... |
 
 ## Issues Found
 1. ...
