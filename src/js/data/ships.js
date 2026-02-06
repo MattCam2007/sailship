@@ -47,7 +47,7 @@ function createCircularOrbit(radius, initialAngle = 0) {
  */
 export const ships = [
     {
-        name: 'ROCINANTE',
+        name: 'HELIOS',
         type: 'ship',
         isPlayer: true,
 
@@ -84,22 +84,6 @@ export const ships = [
         burning: false,
         destination: null
     },
-    {
-        name: 'MCRN DONNAGER',
-        type: 'ship',
-        x: 1.4, y: -0.2, z: 0.01,
-        velocity: { x: -0.0005, y: 0.001, z: 0 },
-        color: SHIP_COLORS.mcrn,
-        isPlayer: false
-    },
-    {
-        name: 'UNN AGATHA KING',
-        type: 'ship',
-        x: 0.95, y: 0.15, z: -0.01,
-        velocity: { x: 0.0008, y: -0.0003, z: 0 },
-        color: SHIP_COLORS.unn,
-        isPlayer: false
-    }
 ];
 
 /**

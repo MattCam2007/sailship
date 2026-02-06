@@ -3,7 +3,7 @@
  */
 
 import { updateCelestialPositions, celestialBodies } from './data/celestialBodies.js';
-import { ships, getPlayerShip, updateNPCShips, initializePlayerShip } from './data/ships.js';
+import { ships, getPlayerShip, initializePlayerShip } from './data/ships.js';
 import { generateFlightPath } from './core/navigation.js';
 import {
     advanceTime,
@@ -95,9 +95,6 @@ function updatePositions() {
         updateShipPhysics(player, timeScale);
     }
     
-    // Update NPC ships (drift)
-    updateNPCShips(timeScale);
-
     // Regenerate flight path (for destination info display)
     generateFlightPath();
 

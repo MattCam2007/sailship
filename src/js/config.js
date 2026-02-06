@@ -200,7 +200,7 @@ export const ZOOM_LEVELS = {
     system: 50,       // Whole solar system view
     inner: 200,       // Inner planets
     local: 800,       // Single planet region
-    tactical: 3000,   // Close tactical view
+    tactical: 10000,  // Close tactical view
     approach: 12000,  // Planet approach scale
     orbital: 50000,   // High orbit scale (~50,000-200,000 km altitude)
 };
@@ -523,6 +523,4 @@ export const PLANET_TEXTURE_CONFIG = {
  */
 export const SHIP_COLORS = {
     player: '#4ce88d',
-    mcrn: '#e85d4c',
-    unn: '#4c9ee8',
 };

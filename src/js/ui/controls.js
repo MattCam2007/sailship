@@ -1010,7 +1010,7 @@ function initMouseControls(canvas) {
         e.preventDefault();
         camera.zoom *= e.deltaY > 0 ? 0.9 : 1.1;
         // Increased max zoom to 1000 to support close planetary approaches with scale-based rendering
-        // At tactical (3000 px/AU) with 1000× zoom = 3,000,000 px/AU (very close orbital view)
+        // At tactical (10000 px/AU) with 1000× zoom = 10,000,000 px/AU (very close orbital view)
         camera.zoom = Math.max(0.1, Math.min(1000, camera.zoom));
     });
 
