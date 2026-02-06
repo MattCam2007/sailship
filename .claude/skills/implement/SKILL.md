@@ -61,6 +61,20 @@ If criteria fail:
 - Re-verify
 - Loop until passing
 
+### Step 4.5: Quality Validation
+
+**Best Practices Check** (`.claude/agents/best-practices.md`):
+- Verify code follows CLAUDE.md conventions
+- Check imports use `.js` extensions and named exports
+- Confirm naming conventions (camelCase functions, UPPER_SNAKE constants)
+- Ensure no over-engineering or unnecessary abstractions
+
+**Regression Check** (`.claude/agents/regression-checker.md`):
+- Run affected test suites
+- Verify adjacent features still work
+- Check for side effects in shared modules
+- For high-risk changes, run full regression suite
+
 ### Step 5: Commit Changes
 ```bash
 git add [specific-files]
@@ -165,6 +179,8 @@ A successful unit implementation:
 - [ ] All acceptance criteria pass
 - [ ] Code follows project style
 - [ ] Changes are minimal and focused
+- [ ] Best practices check passes (best-practices agent)
+- [ ] Regression check passes (regression-checker agent)
 - [ ] Commit message is descriptive
 - [ ] No regressions introduced
 
@@ -181,7 +197,7 @@ A successful unit implementation:
 
 - **Follows:** `/review [feature]` (recommended)
 - **Precedes:** `/verify [feature]` (after all units)
-- **May invoke:** regression-checker after each unit
+- **Invokes:** best-practices (per unit), regression-checker (per unit)
 - **Loops:** Repeats for each unit until all complete
 
 ## Unit Types Reference
