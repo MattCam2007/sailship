@@ -8,7 +8,7 @@
  *   import('/js/lib/launch-window.test.js').then(m => m.testScanBasic())
  */
 
-import { scanLaunchWindows, groupIntoWindows, verifyTopWindows, findLaunchWindows, estimateSynodicPeriod, LAUNCH_WINDOW_STRATEGIES } from './launch-window.js';
+import { scanLaunchWindows, groupIntoWindows, verifyTopWindows, findLaunchWindows, estimateSynodicPeriod, computeDepartureSchedule, LAUNCH_WINDOW_STRATEGIES } from './launch-window.js';
 import { MU_SUN, J2000 } from './orbital.js';
 
 // ============================================================================
@@ -115,14 +115,39 @@ const START_JD = J2000 + 7305;
 // ============================================================================
 
 /**
- * Test 1: Strategy set has expected size
+ * Test 1: Strategy grid has expected size (9 yaw × 5 pitch = 45 probes)
  */
 export function testStrategyCount() {
-    console.log('\n--- Test: Strategy Count ---');
+    console.log('\n--- Test: Strategy Grid Count ---');
     return assert(
-        LAUNCH_WINDOW_STRATEGIES.length >= 20 && LAUNCH_WINDOW_STRATEGIES.length <= 30,
-        `Strategy count is ${LAUNCH_WINDOW_STRATEGIES.length} (expected 20-30)`
+        LAUNCH_WINDOW_STRATEGIES.length === 45,
+        `Strategy count is ${LAUNCH_WINDOW_STRATEGIES.length} (expected 45 = 9×5 grid)`
     );
+}
+
+/**
+ * Test 1b: Strategy grid covers the full parameter space systematically
+ */
+export function testGridCoverage() {
+    console.log('\n--- Test: Grid Coverage ---');
+    const yawValues = new Set(LAUNCH_WINDOW_STRATEGIES.map(s => s.yawDeg));
+    const pitchValues = new Set(LAUNCH_WINDOW_STRATEGIES.map(s => s.pitchDeg));
+
+    let pass = true;
+    pass = assert(yawValues.size === 9, `9 unique yaw values (got ${yawValues.size})`) && pass;
+    pass = assert(pitchValues.size === 5, `5 unique pitch values (got ${pitchValues.size})`) && pass;
+    pass = assert(yawValues.has(-60) && yawValues.has(60), 'Covers ±60° yaw') && pass;
+    pass = assert(pitchValues.has(-30) && pitchValues.has(30), 'Covers ±30° pitch') && pass;
+
+    // Check coast baseline exists
+    const coastEntry = LAUNCH_WINDOW_STRATEGIES.find(s => s.yawDeg === 0 && s.pitchDeg === 0);
+    pass = assert(coastEntry && coastEntry.deployment === 0, 'Has coast baseline (0,0) with deployment=0') && pass;
+
+    // Check other entries have deployment=100
+    const thrustEntries = LAUNCH_WINDOW_STRATEGIES.filter(s => !(s.yawDeg === 0 && s.pitchDeg === 0));
+    pass = assert(thrustEntries.every(s => s.deployment === 100), 'All non-coast entries have deployment=100') && pass;
+
+    return pass;
 }
 
 /**
@@ -281,7 +306,44 @@ export async function testOuterPlanet() {
 }
 
 /**
- * Test 10: Grouping with no good results returns best anyway
+ * Test 10: Smart departure scheduling uses synodic period
+ */
+export function testSmartScheduling() {
+    console.log('\n--- Test: Smart Departure Scheduling ---');
+
+    // Venus from Earth: synodic period ~584 days
+    const schedule = computeDepartureSchedule(EARTH_ORBIT, VENUS_ORBIT, START_JD, 1095);
+
+    let pass = true;
+    pass = assert(Array.isArray(schedule), 'Returns array') && pass;
+    pass = assert(schedule.length > 0, `Has departure dates (${schedule.length})`) && pass;
+    pass = assert(schedule[0] === 0, 'First date is day 0 (depart now)') && pass;
+
+    // Should have more than the uniform 37 dates (1095/30) due to dense sampling
+    // but also not be absurdly many
+    pass = assert(schedule.length >= 20, `Enough dates for coverage (${schedule.length} >= 20)`) && pass;
+    pass = assert(schedule.length <= 150, `Not too many dates (${schedule.length} <= 150)`) && pass;
+
+    // Dates should be sorted
+    for (let i = 1; i < schedule.length; i++) {
+        if (schedule[i] <= schedule[i - 1]) {
+            pass = assert(false, `Dates not sorted at index ${i}: ${schedule[i-1]}, ${schedule[i]}`);
+            break;
+        }
+    }
+    if (pass) pass = assert(true, 'Dates are sorted ascending');
+
+    // Last date should be near the max coast days
+    pass = assert(schedule[schedule.length - 1] <= 1095, `Last date within range (${schedule[schedule.length - 1]})`) && pass;
+
+    console.log(`  Schedule: ${schedule.length} departure dates over ${schedule[schedule.length - 1]} days`);
+    console.log(`  Avg interval: ${(schedule[schedule.length - 1] / schedule.length).toFixed(1)} days`);
+
+    return pass;
+}
+
+/**
+ * Test 11: Grouping with no good results returns best anyway
  */
 export function testGroupingNoneGood() {
     console.log('\n--- Test: Grouping No Good Results ---');
@@ -311,8 +373,10 @@ export async function runAllTests() {
 
     const results = [
         testStrategyCount(),
+        testGridCoverage(),
         testSynodicPeriod(),
         testSynodicPeriodVenus(),
+        testSmartScheduling(),
         await testScanBasic(),
         testGrouping(),
         await testSOIGuard(),
@@ -337,8 +401,10 @@ if (typeof window !== 'undefined') {
     window.launchWindowTests = {
         runAllTests,
         testStrategyCount,
+        testGridCoverage,
         testSynodicPeriod,
         testSynodicPeriodVenus,
+        testSmartScheduling,
         testScanBasic,
         testGrouping,
         testSOIGuard,
