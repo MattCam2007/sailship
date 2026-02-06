@@ -131,9 +131,19 @@ const CONFIG = {
     earlyTerminationFactor: 0.5,
 
     // ========================================================================
-    // CROSSING-AWARE SOLVER CONFIGURATION (v3.0)
+    // CROSSING-AWARE SOLVER CONFIGURATION (v3.0, v4.2 phase penalty)
     // ========================================================================
-    maxPhaseAngle: 0.79,  // ~45 degrees
+
+    // Phase angle threshold: crossings within this angle are unpenalized.
+    // Crossings beyond this angle are penalized but NOT discarded (v4.2).
+    phaseAnglePenaltyThreshold: 0.79,  // ~45 degrees — unpenalized zone
+
+    // Phase angle penalty weight (heuristic, not physics-derived).
+    // Crossings beyond the threshold have their effective distance multiplied by:
+    //   (1 + phaseAnglePenaltyWeight * excessAngle / π)
+    // This preserves crossing data while deprioritizing poor timing.
+    phaseAnglePenaltyWeight: 2.0,
+
     minCrossingGap: 5,
     useCrossingAware: true
 };
@@ -435,6 +445,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
 
         let bestCrossing = null;
         let bestDistance = Infinity;
+        let bestRawDistance = Infinity;
         let bestAngularSep = Math.PI;
         let bestCrossingIndex = -1;
 
@@ -446,14 +457,24 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             if (!isFinite(planetPos.x)) continue;
 
             const crossingDistance = distance3D(crossing.position, planetPos);
-            const angularSep = calculateAngularSeparation(crossing.position, planetPos);
+            let angularSep = calculateAngularSeparation(crossing.position, planetPos);
 
-            if (angularSep > CONFIG.maxPhaseAngle) {
-                continue;
+            // NaN guard: treat invalid angular separation as worst case
+            if (!isFinite(angularSep)) {
+                angularSep = Math.PI;
             }
 
-            if (crossingDistance < bestDistance) {
-                bestDistance = crossingDistance;
+            // Phase angle penalty (v4.2): penalize but don't discard crossings beyond threshold.
+            // Within threshold: use raw distance. Beyond: multiply by penalty factor.
+            let effectiveDistance = crossingDistance;
+            if (angularSep > CONFIG.phaseAnglePenaltyThreshold) {
+                const excessAngle = angularSep - CONFIG.phaseAnglePenaltyThreshold;
+                effectiveDistance = crossingDistance * (1 + CONFIG.phaseAnglePenaltyWeight * excessAngle / Math.PI);
+            }
+
+            if (effectiveDistance < bestDistance) {
+                bestDistance = effectiveDistance;
+                bestRawDistance = crossingDistance;
                 bestAngularSep = angularSep;
                 bestCrossingIndex = ci;
                 bestCrossing = crossing;
@@ -463,12 +484,14 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
         if (bestCrossing) {
             const interceptThreshold = getInterceptThreshold(target);
 
+            // Use raw (unpenalized) distance for status classification and reporting.
+            // The penalized distance was only used for ranking which crossing is best.
             let status;
-            if (bestDistance < interceptThreshold) {
+            if (bestRawDistance < interceptThreshold) {
                 status = 'INTERCEPT';
-            } else if (bestDistance < CONFIG.nearMissThreshold) {
+            } else if (bestRawDistance < CONFIG.nearMissThreshold) {
                 status = 'NEAR_MISS';
-            } else if (bestDistance < CONFIG.marginalThreshold) {
+            } else if (bestRawDistance < CONFIG.marginalThreshold) {
                 status = 'MARGINAL';
             } else {
                 status = 'NO_INTERCEPT';
@@ -477,7 +500,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
             return {
                 yawDeg,
                 pitchDeg,
-                minDistance: bestDistance,
+                minDistance: bestRawDistance,
                 timeToClosest: bestCrossing.time - startTime,
                 status,
                 crossingIndex: bestCrossingIndex,
