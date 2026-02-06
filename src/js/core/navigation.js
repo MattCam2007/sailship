@@ -14,6 +14,7 @@ import { getPosition, getVelocity, meanMotion, propagateMeanAnomaly } from '../l
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
 import { getSOIRadius } from '../lib/soi.js';
 import { solveCourse, evaluateCandidate } from '../lib/course-solver.js';
+import { findLaunchWindows } from '../lib/launch-window.js';
 import { SOI_RADII } from '../config.js';
 
 /**
@@ -854,4 +855,114 @@ export function applyComputedCourse(course) {
     }
 
     return true;
+}
+
+// ============================================================================
+// Launch Window Analysis
+// ============================================================================
+
+// Cache for launch window computation
+let launchWindowCache = {
+    result: null,
+    destination: null,
+    computing: false,
+    progress: null
+};
+
+/**
+ * Get the current launch window computation state.
+ * @returns {Object} { computing, progress, result }
+ */
+export function getLaunchWindowState() {
+    return {
+        computing: launchWindowCache.computing,
+        progress: launchWindowCache.progress,
+        result: launchWindowCache.result
+    };
+}
+
+/**
+ * Compute launch windows to current destination.
+ *
+ * Scans future departure dates (coasting at 0% deployment) and finds
+ * ideal windows for beginning a transfer. Uses E+B hybrid: fast strategy
+ * sweep then deep verification of top windows.
+ *
+ * @param {Function} onProgress - Progress callback ({phase, progress, message})
+ * @returns {Promise<Object|null>} Launch window results or null
+ */
+export async function computeLaunchWindows(onProgress = null) {
+    // Prevent concurrent computations
+    if (launchWindowCache.computing) {
+        console.log('[NAVIGATION] Launch window computation already in progress');
+        return null;
+    }
+
+    const player = getPlayerShip();
+    const target = getBodyByName(destination);
+
+    if (!player || !target) {
+        console.warn('[NAVIGATION] Cannot compute launch windows: missing player or target');
+        return null;
+    }
+
+    // SOI guard
+    if (player.soiState?.isInSOI) {
+        console.warn('[NAVIGATION] Cannot compute launch windows: ship is in SOI');
+        return null;
+    }
+
+    // Mark as computing
+    launchWindowCache.computing = true;
+    launchWindowCache.progress = { phase: 'starting', progress: 0, message: 'Starting...' };
+    launchWindowCache.destination = destination;
+
+    // Snapshot Julian date at computation start
+    const snapshotJD = getJulianDate();
+
+    try {
+        const result = await findLaunchWindows(player, target, snapshotJD, {}, (progress) => {
+            launchWindowCache.progress = progress;
+            onProgress?.(progress);
+        });
+
+        // Store result
+        launchWindowCache.result = result;
+        launchWindowCache.computing = false;
+
+        if (result && !result.error) {
+            console.log(`[NAVIGATION] Launch windows computed: ${result.windows.length} windows found ` +
+                        `in ${(result.computeTimeMs / 1000).toFixed(1)}s`);
+        } else if (result?.error) {
+            console.warn(`[NAVIGATION] Launch window error: ${result.errorMessage}`);
+        }
+
+        return result;
+
+    } catch (error) {
+        console.error('[NAVIGATION] Launch window computation failed:', error);
+        launchWindowCache.computing = false;
+        launchWindowCache.result = null;
+        return null;
+    }
+}
+
+/**
+ * Get cached launch window results.
+ * @returns {Object|null} Cached results or null
+ */
+export function getCachedLaunchWindows() {
+    // Invalidate if destination changed
+    if (launchWindowCache.destination !== destination) {
+        launchWindowCache.result = null;
+    }
+    return launchWindowCache.result;
+}
+
+/**
+ * Clear the launch window cache.
+ */
+export function clearLaunchWindowCache() {
+    launchWindowCache.result = null;
+    launchWindowCache.destination = null;
 }
