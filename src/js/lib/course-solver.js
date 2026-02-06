@@ -261,11 +261,15 @@ function distance3D(pos1, pos2) {
 }
 
 // ============================================================================
-// SOI-BASED INTERCEPT THRESHOLD - UNCHANGED
+// SOI-BASED INTERCEPT THRESHOLD
 // ============================================================================
 
 /**
  * Get the effective intercept threshold for a target body.
+ *
+ * Returns SOI/2 to match the gameplay definition in navigation.js:getInterceptThresholds().
+ * The gameplay system classifies distance < SOI/2 as "INTERCEPT", < SOI as "NEAR MISS".
+ * Using SOI/2 here ensures the solver's "INTERCEPT" label matches what the player sees.
  */
 function getInterceptThreshold(target) {
     if (!target?.name) {
@@ -276,7 +280,7 @@ function getInterceptThreshold(target) {
     const soi = SOI_RADII[bodyName];
 
     if (soi && soi > 0) {
-        return soi;
+        return soi / 2;
     }
 
     return CONFIG.interceptThresholdFallback;
