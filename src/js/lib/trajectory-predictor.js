@@ -80,6 +80,7 @@ function hashInputs(params) {
         sailAngle: Math.round(sail.angle * 100) / 100,     // 2 decimal places
         sailPitch: Math.round((sail.pitchAngle || 0) * 100) / 100,
         sailDeploy: Math.round(sail.deploymentPercent),    // Integer
+        sailCount: sail.sailCount || 1,                    // Integer sail count
         mass: Math.round(mass),                            // Integer kg
         startTime: Math.round(startTime * 1000),           // Millisecond precision
         duration,

@@ -251,6 +251,7 @@ export async function strategicReconnaissance(ship, target, options = {}, bounds
                     maxDays: options.maxDays,
                     deployment: options.deployment,
                     steps: options.steps,
+                    sailCount: options.sailCount,
                 }
             }));
 
@@ -917,7 +918,7 @@ export async function solveCourse(ship, target, options = {}, onProgress = null)
 
         const verifiedResult = evaluateCandidate(
             bestResult.yawDeg, bestResult.pitchDeg, ship, target,
-            { maxDays: verifyMaxDays, steps: verifySteps, deployment: verifyDeployment }
+            { maxDays: verifyMaxDays, steps: verifySteps, deployment: verifyDeployment, sailCount: options.sailCount }
         );
         totalEvaluations++;
 
@@ -1027,6 +1028,7 @@ export async function coarseSweep(ship, target, options = {}, onProgress = null)
                     maxDays: options.maxDays,
                     deployment: options.deployment,
                     steps: options.steps,
+                    sailCount: options.sailCount,
                 }
             }));
             const results = await pool.evaluateBatch(items, { ship, target });
