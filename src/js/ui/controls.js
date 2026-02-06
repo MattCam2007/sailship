@@ -3,7 +3,7 @@
  */
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
-import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, setAutoPilotPhase, getAutoPilotPhase, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
+import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, autoPilotState, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, AUTOPILOT_MODES, setAutoPilotPhase, getAutoPilotPhase, setAutoPilotMode, getAutoPilotMode, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
 import { exportGameState, importGameState, fetchSaveIndex, loadSaveFile } from '../core/saveState.js';
 import { resizeCanvas } from './renderer.js';
 import {
@@ -14,6 +14,7 @@ import {
     computeApproachPlan,
     computeCapturePlan,
     computeEscapePlan,
+    computeSlingshotPlan,
     getDestinationInfo,
     computeOptimalCourse,
     getCachedOptimalCourse,
@@ -194,6 +195,7 @@ export function initControls(canvas) {
     initSailControls();
     initFineTuneControls();
     initAutoPilotControls();
+    initEncounterModeControls();
     initThrusterControls();
     initCoursePlotter();
     initSaveLoadControls();
@@ -1081,6 +1083,51 @@ function initAutoPilotControls() {
 }
 
 /**
+ * Set up encounter mode selector buttons
+ */
+function initEncounterModeControls() {
+    const insertionBtn = document.getElementById('modeOrbitalInsertion');
+    const slingshotBtn = document.getElementById('modeGravitySlingshot');
+    const statusText = document.getElementById('encounterModeStatus');
+
+    function updateModeUI(mode) {
+        if (insertionBtn) {
+            insertionBtn.classList.toggle('active', mode === AUTOPILOT_MODES.ORBITAL_INSERTION);
+        }
+        if (slingshotBtn) {
+            slingshotBtn.classList.toggle('active', mode === AUTOPILOT_MODES.GRAVITY_SLINGSHOT);
+        }
+        if (statusText) {
+            const text = statusText.querySelector('.mode-status-text');
+            if (text) {
+                if (mode === AUTOPILOT_MODES.ORBITAL_INSERTION) {
+                    text.textContent = 'Thruster fires retrograde at periapsis to capture';
+                } else {
+                    text.textContent = 'Thruster fires prograde at periapsis to boost exit';
+                }
+            }
+        }
+    }
+
+    if (insertionBtn) {
+        insertionBtn.addEventListener('click', () => {
+            setAutoPilotMode(AUTOPILOT_MODES.ORBITAL_INSERTION);
+            updateModeUI(AUTOPILOT_MODES.ORBITAL_INSERTION);
+        });
+    }
+
+    if (slingshotBtn) {
+        slingshotBtn.addEventListener('click', () => {
+            setAutoPilotMode(AUTOPILOT_MODES.GRAVITY_SLINGSHOT);
+            updateModeUI(AUTOPILOT_MODES.GRAVITY_SLINGSHOT);
+        });
+    }
+
+    // Set initial UI state
+    updateModeUI(getAutoPilotMode());
+}
+
+/**
  * Update the plot button text based on whether refinement mode is active.
  *
  * Shows "REFINE COURSE" when:
@@ -1588,6 +1635,9 @@ function updateAutoPilotStatusText() {
         case AUTOPILOT_PHASES.CAPTURE:
             plan = computeCapturePlan();
             break;
+        case AUTOPILOT_PHASES.SLINGSHOT:
+            plan = computeSlingshotPlan();
+            break;
         case AUTOPILOT_PHASES.ESCAPE:
             plan = computeEscapePlan();
             break;
@@ -1602,18 +1652,28 @@ function updateAutoPilotStatusText() {
         return;
     }
 
-    // Show phase and strategy
+    // Show phase, strategy, and thruster info
     const strategy = plan.strategyName || 'CALCULATING';
-    statusText.textContent = `${phase}: ${strategy}`;
+    let statusMsg = `${phase}: ${strategy}`;
+    if (plan.thrusterAction) {
+        const dir = plan.thrusterAction.direction.toUpperCase();
+        if (plan.thrusterAction.when === 'NOW') {
+            statusMsg += ` [${dir} BURN]`;
+        } else {
+            statusMsg += ` [${dir} @ PERI]`;
+        }
+    }
+    statusText.textContent = statusMsg;
 }
 
 /**
- * Determine the appropriate autopilot phase based on current state.
+ * Determine the appropriate autopilot phase based on current state and encounter mode.
  *
  * Phase transitions:
  * - CRUISE: Far from destination, optimize for intercept
- * - APPROACH: Within 5x SOI radius, optimize for velocity matching
- * - CAPTURE: Inside SOI, circularize orbit
+ * - APPROACH: Within 10x SOI radius, optimize for velocity matching
+ * - CAPTURE: Inside SOI with ORBITAL_INSERTION mode, circularize orbit
+ * - SLINGSHOT: Inside SOI with GRAVITY_SLINGSHOT mode, maximize flyby assist
  * - ESCAPE: Inside SOI but want to leave (manual override)
  *
  * @returns {string} Appropriate phase from AUTOPILOT_PHASES
@@ -1622,12 +1682,17 @@ function determineAutopilotPhase() {
     const player = getPlayerShip();
     if (!player) return AUTOPILOT_PHASES.CRUISE;
 
-    // If inside SOI, we're in capture phase
+    // If inside SOI, phase depends on encounter mode
     if (player.soiState?.isInSOI) {
-        // Could be ESCAPE if user manually sets it, otherwise CAPTURE
         const currentPhase = getAutoPilotPhase();
+        // Respect manual ESCAPE override
         if (currentPhase === AUTOPILOT_PHASES.ESCAPE) {
             return AUTOPILOT_PHASES.ESCAPE;
+        }
+        // Use encounter mode to determine phase
+        const mode = getAutoPilotMode();
+        if (mode === AUTOPILOT_MODES.GRAVITY_SLINGSHOT) {
+            return AUTOPILOT_PHASES.SLINGSHOT;
         }
         return AUTOPILOT_PHASES.CAPTURE;
     }
@@ -1647,13 +1712,18 @@ function determineAutopilotPhase() {
     return AUTOPILOT_PHASES.CRUISE;
 }
 
+// Cooldown for autopilot thruster firing (prevents rapid-fire burns)
+let lastAutopilotThrusterTime = 0;
+const AUTOPILOT_THRUSTER_COOLDOWN = 2000; // ms between auto-fires
+
 /**
  * Update autopilot - call this each frame to adjust sail toward nav computer recommendations.
  *
  * Handles multiple phases:
  * - CRUISE: Use nav computer plan to intercept destination
  * - APPROACH: Use approach plan to match velocity before SOI entry
- * - CAPTURE: Use capture plan to circularize orbit inside SOI
+ * - CAPTURE: Use capture plan to circularize orbit inside SOI (auto-fires retrograde thruster)
+ * - SLINGSHOT: Use slingshot plan to maximize flyby assist (auto-fires prograde thruster)
  * - ESCAPE: Use escape plan to leave SOI
  *
  * @param {number} deltaTime - Time since last frame in days
@@ -1677,6 +1747,9 @@ export function updateAutoPilot(deltaTime) {
         case AUTOPILOT_PHASES.CAPTURE:
             plan = computeCapturePlan();
             break;
+        case AUTOPILOT_PHASES.SLINGSHOT:
+            plan = computeSlingshotPlan();
+            break;
         case AUTOPILOT_PHASES.ESCAPE:
             plan = computeEscapePlan();
             break;
@@ -1687,6 +1760,30 @@ export function updateAutoPilot(deltaTime) {
     }
 
     if (!plan) return;
+
+    // Auto-fire thruster if plan recommends it
+    if (plan.thrusterAction && plan.thrusterAction.when === 'NOW') {
+        const now = Date.now();
+        if (now - lastAutopilotThrusterTime > AUTOPILOT_THRUSTER_COOLDOWN) {
+            const result = fireThruster(player, plan.thrusterAction.direction);
+            if (result.success) {
+                lastAutopilotThrusterTime = now;
+                const label = plan.thrusterAction.direction.toUpperCase();
+                console.log(`[AUTOPILOT] Auto-fired ${label} thruster: ΔV=${result.deltaVApplied.toFixed(2)} km/s, e=${result.newEccentricity.toFixed(4)}`);
+
+                // Update thruster UI
+                const lastBurnDisplay = document.getElementById('thrusterLastBurn');
+                if (lastBurnDisplay) {
+                    lastBurnDisplay.textContent =
+                        `AUTO ${label}: -${result.deltaVApplied.toFixed(2)} km/s | e=${result.newEccentricity.toFixed(4)}`;
+                    lastBurnDisplay.classList.add('success');
+                    lastBurnDisplay.classList.remove('empty');
+                    setTimeout(() => lastBurnDisplay.classList.remove('success'), 2000);
+                }
+                updateSailDisplay();
+            }
+        }
+    }
 
     // Convert deltaTime from days to seconds for rate calculations
     const deltaSeconds = deltaTime * 86400;

@@ -10,7 +10,7 @@
 import { getBodyByName } from '../data/celestialBodies.js';
 import { getJulianDate, setTransitState, clearTransitState, getTransitState, getTrajectoryDuration } from './gameState.js';
 import { getPlayerShip } from '../data/ships.js';
-import { getPosition, getVelocity } from '../lib/orbital.js';
+import { getPosition, getVelocity, meanMotion, propagateMeanAnomaly } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust } from '../lib/orbital-maneuvers.js';
 import { getSOIRadius, getGravitationalParam } from '../lib/soi.js';
 import { solveCourse } from '../lib/course-solver.js';
@@ -573,13 +573,51 @@ export function computeApproachPlan() {
 // ============================================================================
 
 /**
+ * Calculate the current mean anomaly for a ship, accounting for time propagation.
+ * M0 in orbital elements is the mean anomaly at epoch, not at current time.
+ *
+ * @param {Object} orbitalElements - Ship's orbital elements
+ * @returns {Object} { currentM, nearPeriapsis, nearApoapsis, inbound }
+ */
+function getOrbitalPhase(orbitalElements) {
+    const { a, e, M0, epoch, μ } = orbitalElements;
+    const jd = getJulianDate();
+    const deltaTime = jd - epoch;
+    const n = meanMotion(Math.abs(a), μ);
+    const isHyperbolic = e >= 1.0;
+
+    const currentM = propagateMeanAnomaly(M0, n, deltaTime, isHyperbolic);
+
+    if (isHyperbolic) {
+        // For hyperbolic orbits: M near 0 = near periapsis
+        // M < 0 = inbound (approaching periapsis), M > 0 = outbound (past periapsis)
+        const nearPeriapsis = Math.abs(currentM) < 0.5; // within ~30° of periapsis
+        const inbound = currentM < 0;
+        return { currentM, nearPeriapsis, nearApoapsis: false, inbound };
+    } else {
+        // For elliptic orbits: normalize to [0, 2π)
+        const normalizedM = ((currentM % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        const nearPeriapsis = normalizedM < Math.PI / 4 || normalizedM > 7 * Math.PI / 4;
+        const nearApoapsis = normalizedM > 3 * Math.PI / 4 && normalizedM < 5 * Math.PI / 4;
+        const inbound = normalizedM > Math.PI; // approaching periapsis
+        return { currentM: normalizedM, nearPeriapsis, nearApoapsis, inbound };
+    }
+}
+
+/**
  * Compute capture plan for orbit circularization inside a planetary SOI.
  *
  * When inside a planet's SOI with a hyperbolic or highly elliptical orbit,
  * we need to circularize to achieve stable orbit. Strategy:
- * - At periapsis: thrust prograde to raise apoapsis
- * - At apoapsis: thrust retrograde to lower periapsis
+ * - At periapsis: fire retrograde thruster to reduce velocity (Oberth effect: burns are
+ *   most efficient at periapsis where velocity is highest)
+ * - Use sail for continuous braking between burns
  * - Goal: reduce eccentricity toward 0
+ *
+ * Thruster timing: The Oberth effect means a retrograde burn at periapsis removes
+ * more orbital energy than the same burn anywhere else. For hyperbolic arrivals
+ * (e >= 1), a periapsis retrograde burn can convert the orbit to elliptical.
+ * For elliptical orbits, periapsis retrograde burns lower the apoapsis.
  *
  * @returns {Object|null} Capture plan with recommended settings
  */
@@ -590,61 +628,77 @@ export function computeCapturePlan() {
         return null;
     }
 
-    const { a, e, M0 } = player.orbitalElements;
+    const { a, e } = player.orbitalElements;
 
-    // Determine orbital phase from mean anomaly
-    // M0 near 0 or 2π = near periapsis
-    // M0 near π = near apoapsis
-    const normalizedM = M0 % (2 * Math.PI);
-    const nearPeriapsis = normalizedM < Math.PI / 4 || normalizedM > 7 * Math.PI / 4;
-    const nearApoapsis = normalizedM > 3 * Math.PI / 4 && normalizedM < 5 * Math.PI / 4;
+    // Get current orbital phase (properly propagated from epoch)
+    const phase = getOrbitalPhase(player.orbitalElements);
+    const { nearPeriapsis, nearApoapsis } = phase;
 
     let recommendedAngle;
     let recommendedDeployment;
     let strategy;
+    let thrusterAction = null;  // { direction, when } - tells autopilot when to auto-fire
 
-    if (e > 0.9) {
-        // Highly eccentric / nearly hyperbolic - need aggressive braking
-        strategy = 'EMERGENCY BRAKE';
-        recommendedAngle = -55;  // Strong retrograde
+    const hasFuel = player.thruster && player.thruster.deltaVRemaining > 0;
+
+    if (e >= 1.0) {
+        // HYPERBOLIC - must brake immediately or we'll fly right through
+        strategy = 'CAPTURE BURN';
+        recommendedAngle = -55;  // Strong retrograde sail
         recommendedDeployment = 100;
+        // Fire retrograde thruster at periapsis for maximum effect (Oberth)
+        if (hasFuel && nearPeriapsis) {
+            thrusterAction = { direction: 'retrograde', when: 'NOW' };
+        } else if (hasFuel) {
+            thrusterAction = { direction: 'retrograde', when: 'AT_PERIAPSIS' };
+        }
+    } else if (e > 0.9) {
+        // Highly eccentric - aggressive braking, thruster helps
+        strategy = 'EMERGENCY BRAKE';
+        recommendedAngle = -55;
+        recommendedDeployment = 100;
+        if (hasFuel && nearPeriapsis) {
+            thrusterAction = { direction: 'retrograde', when: 'NOW' };
+        } else if (hasFuel) {
+            thrusterAction = { direction: 'retrograde', when: 'AT_PERIAPSIS' };
+        }
     } else if (e > 0.5) {
-        // Elliptical orbit - circularization needed
+        // Elliptical orbit - circularization
         if (nearPeriapsis) {
-            // At periapsis - thrust prograde to raise apoapsis
-            strategy = 'RAISE APOAPSIS';
-            recommendedAngle = 35;
+            // At periapsis - retrograde to lower apoapsis
+            strategy = 'LOWER APOAPSIS';
+            recommendedAngle = -35;
             recommendedDeployment = 100;
+            if (hasFuel && e > 0.7) {
+                thrusterAction = { direction: 'retrograde', when: 'NOW' };
+            }
         } else if (nearApoapsis) {
-            // At apoapsis - thrust retrograde to lower periapsis
-            strategy = 'LOWER PERIAPSIS';
+            // At apoapsis - retrograde to lower periapsis (circularize)
+            strategy = 'CIRCULARIZE';
             recommendedAngle = -35;
             recommendedDeployment = 100;
         } else {
-            // Between - coast or gentle adjustment
-            strategy = 'CIRCULARIZING';
-            recommendedAngle = e > 0.7 ? -25 : 0;
+            strategy = 'BRAKING';
+            recommendedAngle = e > 0.7 ? -35 : -25;
             recommendedDeployment = 75;
         }
     } else if (e > 0.1) {
         // Mildly elliptical - fine-tuning
         strategy = 'FINE TUNING';
-        recommendedAngle = nearPeriapsis ? 15 : -15;
+        recommendedAngle = -15;
         recommendedDeployment = 50;
     } else {
         // Nearly circular - stable orbit achieved!
         strategy = 'STABLE ORBIT';
         recommendedAngle = 0;
-        recommendedDeployment = 0;  // Coast
+        recommendedDeployment = 0;
     }
 
     // Calculate orbit characteristics
     const periapsis = a * (1 - e);
-    const apoapsis = a * (1 + e);
+    const apoapsis = e < 1.0 ? a * (1 + e) : Infinity;
     const parentBody = player.soiState.currentBody;
 
-    // For capture, pitch is typically 0 (circularization is in-plane)
-    // but could be non-zero if we need to match destination inclination
     const recommendedPitch = 0;
 
     return {
@@ -660,6 +714,115 @@ export function computeCapturePlan() {
         isStable: e < 0.1,
         nearPeriapsis: nearPeriapsis,
         nearApoapsis: nearApoapsis,
+        thrusterAction: thrusterAction,
+    };
+}
+
+// ============================================================================
+// Slingshot Phase Planning - Gravity Assist Flyby
+// ============================================================================
+
+/**
+ * Compute slingshot plan for gravity assist inside a planetary SOI.
+ *
+ * When performing a gravity slingshot, we want to:
+ * - Maintain or increase velocity through the flyby
+ * - Fire prograde thruster at periapsis (Oberth effect maximizes energy gain)
+ * - Let gravity bend our trajectory
+ * - Exit SOI with higher heliocentric velocity
+ *
+ * The Oberth effect: A prograde burn at periapsis (closest approach) is
+ * much more effective than the same burn elsewhere because kinetic energy
+ * gain = F * v * dt, and velocity is highest at periapsis.
+ *
+ * @returns {Object|null} Slingshot plan with recommended settings
+ */
+export function computeSlingshotPlan() {
+    const player = getPlayerShip();
+
+    if (!player || !player.orbitalElements || !player.soiState?.isInSOI) {
+        return null;
+    }
+
+    const { a, e } = player.orbitalElements;
+
+    // Get current orbital phase (properly propagated from epoch)
+    const orbPhase = getOrbitalPhase(player.orbitalElements);
+    const { nearPeriapsis, inbound } = orbPhase;
+    const outbound = !inbound && !nearPeriapsis;
+
+    let strategy;
+    let recommendedAngle;
+    let recommendedDeployment;
+    let thrusterAction = null;
+
+    const hasFuel = player.thruster && player.thruster.deltaVRemaining > 0;
+
+    if (e >= 1.0) {
+        // Already on hyperbolic trajectory (flyby in progress)
+        if (nearPeriapsis) {
+            // AT periapsis - this is the optimal burn point!
+            strategy = 'PERIAPSIS BOOST';
+            recommendedAngle = 35;  // Prograde sail
+            recommendedDeployment = 100;
+            if (hasFuel) {
+                thrusterAction = { direction: 'prograde', when: 'NOW' };
+            }
+        } else if (inbound) {
+            // Approaching periapsis - prepare for burn
+            strategy = 'APPROACH PERIAPSIS';
+            recommendedAngle = 0;
+            recommendedDeployment = 0;  // Coast to preserve trajectory
+            if (hasFuel) {
+                thrusterAction = { direction: 'prograde', when: 'AT_PERIAPSIS' };
+            }
+        } else {
+            // Past periapsis - coast out
+            strategy = 'EXITING SOI';
+            recommendedAngle = 35;  // Prograde to maximize exit velocity
+            recommendedDeployment = 100;
+        }
+    } else {
+        // Elliptical orbit during slingshot mode - need to escape
+        // This happens if the ship was captured but player wants to slingshot
+        if (nearPeriapsis) {
+            strategy = 'ESCAPE BOOST';
+            recommendedAngle = 45;
+            recommendedDeployment = 100;
+            if (hasFuel) {
+                thrusterAction = { direction: 'prograde', when: 'NOW' };
+            }
+        } else if (inbound) {
+            strategy = 'APPROACH PERIAPSIS';
+            recommendedAngle = 35;
+            recommendedDeployment = 100;
+            if (hasFuel) {
+                thrusterAction = { direction: 'prograde', when: 'AT_PERIAPSIS' };
+            }
+        } else {
+            strategy = 'RAISING ORBIT';
+            recommendedAngle = 45;
+            recommendedDeployment = 100;
+        }
+    }
+
+    const periapsis = a * (1 - e);
+    const parentBody = player.soiState.currentBody;
+
+    return {
+        strategyName: strategy,
+        recommendedAngle: recommendedAngle,
+        recommendedPitch: 0,
+        recommendedDeployment: recommendedDeployment,
+        eccentricity: e,
+        semiMajorAxis: a,
+        periapsis: periapsis,
+        parentBody: parentBody,
+        nearPeriapsis: nearPeriapsis,
+        inbound: inbound,
+        outbound: outbound,
+        isHyperbolic: e >= 1.0,
+        thrusterAction: thrusterAction,
     };
 }
 

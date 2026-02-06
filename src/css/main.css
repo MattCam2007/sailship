@@ -1920,6 +1920,88 @@ body::after {
 }
 
 /* ============================================================================
+   ENCOUNTER MODE STYLES
+   ============================================================================ */
+
+.encounter-mode-section {
+    margin-bottom: 12px;
+}
+
+.encounter-mode-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.encounter-mode-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    font-size: 11px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.encounter-mode-btn .mode-icon {
+    font-size: 14px;
+    min-width: 18px;
+    text-align: center;
+}
+
+.encounter-mode-btn .mode-label {
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.encounter-mode-btn .mode-desc {
+    display: none;
+}
+
+.encounter-mode-btn:hover {
+    border-color: var(--text-dim);
+    color: var(--text);
+}
+
+.encounter-mode-btn.active {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(76, 232, 141, 0.08);
+}
+
+.encounter-mode-btn.active .mode-icon {
+    text-shadow: 0 0 6px var(--green);
+}
+
+#modeGravitySlingshot.active {
+    border-color: var(--coral);
+    color: var(--coral);
+    background: rgba(232, 93, 76, 0.08);
+}
+
+#modeGravitySlingshot.active .mode-icon {
+    text-shadow: 0 0 6px var(--coral);
+}
+
+.encounter-mode-status {
+    padding: 4px 0;
+}
+
+.mode-status-text {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+/* ============================================================================
    COURSE PLOTTER STYLES
    ============================================================================ */
 
