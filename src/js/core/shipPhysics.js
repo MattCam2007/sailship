@@ -1587,7 +1587,14 @@ export function fireThruster(ship, direction) {
 
     const julianDate = getJulianDate();
 
-    // Apply the burn
+    // For extreme flybys (e > 50 with linear interpolation), we need to apply
+    // the burn directly to the velocity vector rather than going through Keplerian
+    // elements, because the main physics loop uses extremeFlybyState for position.
+    const isExtremeFlyby = ship.extremeFlybyState &&
+        ship.orbitalElements.e > PHYSICS_CONFIG.extremeEccentricityThreshold &&
+        ship.soiState?.isInSOI;
+
+    // Apply the burn to orbital elements (works for all cases)
     const newElements = applyThrusterBurn(
         ship.orbitalElements,
         actualDeltaV,
@@ -1601,6 +1608,46 @@ export function fireThruster(ship, direction) {
     // Update visual elements immediately for responsive feedback
     if (ship.visualOrbitalElements) {
         ship.visualOrbitalElements = { ...newElements };
+    }
+
+    // For extreme flybys, also update the linear interpolation state
+    // so the main physics loop uses the post-burn velocity
+    if (isExtremeFlyby) {
+        const flyby = ship.extremeFlybyState;
+        const oldVel = flyby.entryVel;
+        const vMag = Math.sqrt(oldVel.vx ** 2 + oldVel.vy ** 2 + oldVel.vz ** 2);
+
+        if (vMag > 1e-15) {
+            // Prograde/retrograde unit vector along current velocity
+            const uVx = oldVel.vx / vMag;
+            const uVy = oldVel.vy / vMag;
+            const uVz = oldVel.vz / vMag;
+
+            // Convert delta-V from km/s to AU/day
+            const deltaVAUDay = actualDeltaV / 1731.46;
+            const sign = direction === 'retrograde' ? -1 : 1;
+
+            // Update the extreme flyby velocity
+            flyby.entryVel = {
+                vx: oldVel.vx + sign * deltaVAUDay * uVx,
+                vy: oldVel.vy + sign * deltaVAUDay * uVy,
+                vz: oldVel.vz + sign * deltaVAUDay * uVz
+            };
+
+            // Snap entry position to current position so trajectory continues smoothly
+            const dt = julianDate - flyby.entryTime;
+            flyby.entryPos = {
+                x: flyby.entryPos.x + oldVel.vx * dt,
+                y: flyby.entryPos.y + oldVel.vy * dt,
+                z: flyby.entryPos.z + oldVel.vz * dt
+            };
+            flyby.entryTime = julianDate;
+
+            const newVMagKmS = Math.sqrt(
+                flyby.entryVel.vx ** 2 + flyby.entryVel.vy ** 2 + flyby.entryVel.vz ** 2
+            ) * 1731.46;
+            console.log(`[THRUSTER] Updated extreme flyby state: ${(vMag * 1731.46).toFixed(1)} → ${newVMagKmS.toFixed(1)} km/s`);
+        }
     }
 
     // Update cached position and velocity

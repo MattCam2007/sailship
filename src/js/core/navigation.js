@@ -573,14 +573,66 @@ export function computeApproachPlan() {
 // ============================================================================
 
 /**
- * Calculate the current mean anomaly for a ship, accounting for time propagation.
- * M0 in orbital elements is the mean anomaly at epoch, not at current time.
+ * Determine orbital phase for a ship inside an SOI.
  *
- * @param {Object} orbitalElements - Ship's orbital elements
- * @returns {Object} { currentM, nearPeriapsis, nearApoapsis, inbound }
+ * Two strategies:
+ * 1. For extreme flybys (e > 50) or when extremeFlybyState exists:
+ *    Use distance-based detection. The ship moves in a near-straight line,
+ *    so track whether distance to parent body is increasing or decreasing.
+ * 2. For normal orbits: Propagate mean anomaly from epoch.
+ *
+ * @param {Object} player - The player ship object (needs orbitalElements + soiState)
+ * @returns {Object} { currentM, nearPeriapsis, nearApoapsis, inbound, isExtremeFlyby }
  */
-function getOrbitalPhase(orbitalElements) {
-    const { a, e, M0, epoch, μ } = orbitalElements;
+function getOrbitalPhase(player) {
+    const { a, e, M0, epoch, μ } = player.orbitalElements;
+    const isExtremeFlyby = e > 50 || !!player.extremeFlybyState;
+
+    if (isExtremeFlyby) {
+        // Distance-based approach: compute ship-planet distance and its rate of change
+        // For extreme flybys, Keplerian mean anomaly is numerically unreliable
+        const parent = getBodyByName(player.soiState.currentBody);
+        if (!parent) {
+            return { currentM: 0, nearPeriapsis: true, nearApoapsis: false, inbound: false, isExtremeFlyby: true };
+        }
+
+        // Ship helio position is in player.x/y/z, planet helio position in parent.x/y/z
+        const dx = player.x - parent.x;
+        const dy = player.y - parent.y;
+        const dz = player.z - parent.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        // Use velocity dot position to determine if approaching or receding
+        // If velocity · position < 0, ship is moving toward planet (inbound)
+        // If velocity · position > 0, ship is moving away (outbound)
+        let vx, vy, vz;
+        if (player.extremeFlybyState) {
+            vx = player.extremeFlybyState.entryVel.vx;
+            vy = player.extremeFlybyState.entryVel.vy;
+            vz = player.extremeFlybyState.entryVel.vz;
+        } else {
+            const vel = getVelocity(player.orbitalElements, getJulianDate());
+            vx = vel.vx;
+            vy = vel.vy;
+            vz = vel.vz;
+        }
+
+        // Radial velocity: dot product of relative position and relative velocity
+        const radialVel = dx * vx + dy * vy + dz * vz;
+        const inbound = radialVel < 0;
+
+        // For extreme flybys, periapsis is just the closest approach point.
+        // Since the trajectory is nearly straight, periapsis occurs when radial velocity ≈ 0
+        // (transitioning from inbound to outbound). We'll call it "near periapsis" when
+        // |radialVel| is small relative to total velocity.
+        const vMag = Math.sqrt(vx * vx + vy * vy + vz * vz);
+        const radialFraction = Math.abs(radialVel) / (dist * vMag + 1e-30);
+        const nearPeriapsis = radialFraction < 0.3;
+
+        return { currentM: 0, nearPeriapsis, nearApoapsis: false, inbound, isExtremeFlyby: true };
+    }
+
+    // Normal orbit: propagate mean anomaly from epoch
     const jd = getJulianDate();
     const deltaTime = jd - epoch;
     const n = meanMotion(Math.abs(a), μ);
@@ -589,18 +641,15 @@ function getOrbitalPhase(orbitalElements) {
     const currentM = propagateMeanAnomaly(M0, n, deltaTime, isHyperbolic);
 
     if (isHyperbolic) {
-        // For hyperbolic orbits: M near 0 = near periapsis
-        // M < 0 = inbound (approaching periapsis), M > 0 = outbound (past periapsis)
-        const nearPeriapsis = Math.abs(currentM) < 0.5; // within ~30° of periapsis
+        const nearPeriapsis = Math.abs(currentM) < 0.5;
         const inbound = currentM < 0;
-        return { currentM, nearPeriapsis, nearApoapsis: false, inbound };
+        return { currentM, nearPeriapsis, nearApoapsis: false, inbound, isExtremeFlyby: false };
     } else {
-        // For elliptic orbits: normalize to [0, 2π)
         const normalizedM = ((currentM % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
         const nearPeriapsis = normalizedM < Math.PI / 4 || normalizedM > 7 * Math.PI / 4;
         const nearApoapsis = normalizedM > 3 * Math.PI / 4 && normalizedM < 5 * Math.PI / 4;
-        const inbound = normalizedM > Math.PI; // approaching periapsis
-        return { currentM: normalizedM, nearPeriapsis, nearApoapsis, inbound };
+        const inbound = normalizedM > Math.PI;
+        return { currentM: normalizedM, nearPeriapsis, nearApoapsis, inbound, isExtremeFlyby: false };
     }
 }
 
@@ -630,9 +679,9 @@ export function computeCapturePlan() {
 
     const { a, e } = player.orbitalElements;
 
-    // Get current orbital phase (properly propagated from epoch)
-    const phase = getOrbitalPhase(player.orbitalElements);
-    const { nearPeriapsis, nearApoapsis } = phase;
+    // Get current orbital phase (properly propagated, distance-based for extreme flybys)
+    const phase = getOrbitalPhase(player);
+    const { nearPeriapsis, nearApoapsis, isExtremeFlyby } = phase;
 
     let recommendedAngle;
     let recommendedDeployment;
@@ -642,15 +691,32 @@ export function computeCapturePlan() {
     const hasFuel = player.thruster && player.thruster.deltaVRemaining > 0;
 
     if (e >= 1.0) {
-        // HYPERBOLIC - must brake immediately or we'll fly right through
-        strategy = 'CAPTURE BURN';
-        recommendedAngle = -55;  // Strong retrograde sail
-        recommendedDeployment = 100;
-        // Fire retrograde thruster at periapsis for maximum effect (Oberth)
-        if (hasFuel && nearPeriapsis) {
-            thrusterAction = { direction: 'retrograde', when: 'NOW' };
-        } else if (hasFuel) {
-            thrusterAction = { direction: 'retrograde', when: 'AT_PERIAPSIS' };
+        // HYPERBOLIC - must brake immediately or we'll fly right through.
+        // For extreme flybys (e > 50), the ship traverses the SOI in seconds.
+        // Don't wait for periapsis - fire retrograde NOW every chance we get.
+        // For moderate hyperbolic (1 < e < 50), prefer periapsis for Oberth effect.
+        if (isExtremeFlyby) {
+            strategy = 'EMERGENCY CAPTURE';
+            recommendedAngle = -55;
+            recommendedDeployment = 100;
+            // Fire immediately and continuously - no time to wait
+            if (hasFuel) {
+                thrusterAction = { direction: 'retrograde', when: 'NOW' };
+            }
+        } else if (nearPeriapsis) {
+            strategy = 'CAPTURE BURN';
+            recommendedAngle = -55;
+            recommendedDeployment = 100;
+            if (hasFuel) {
+                thrusterAction = { direction: 'retrograde', when: 'NOW' };
+            }
+        } else {
+            strategy = 'CAPTURE BURN';
+            recommendedAngle = -55;
+            recommendedDeployment = 100;
+            if (hasFuel) {
+                thrusterAction = { direction: 'retrograde', when: 'AT_PERIAPSIS' };
+            }
         }
     } else if (e > 0.9) {
         // Highly eccentric - aggressive braking, thruster helps
@@ -746,9 +812,9 @@ export function computeSlingshotPlan() {
 
     const { a, e } = player.orbitalElements;
 
-    // Get current orbital phase (properly propagated from epoch)
-    const orbPhase = getOrbitalPhase(player.orbitalElements);
-    const { nearPeriapsis, inbound } = orbPhase;
+    // Get current orbital phase (properly propagated, distance-based for extreme flybys)
+    const orbPhase = getOrbitalPhase(player);
+    const { nearPeriapsis, inbound, isExtremeFlyby } = orbPhase;
     const outbound = !inbound && !nearPeriapsis;
 
     let strategy;
@@ -760,26 +826,31 @@ export function computeSlingshotPlan() {
 
     if (e >= 1.0) {
         // Already on hyperbolic trajectory (flyby in progress)
-        if (nearPeriapsis) {
-            // AT periapsis - this is the optimal burn point!
+        if (isExtremeFlyby) {
+            // Extreme flyby: fire prograde NOW for maximum boost
+            strategy = nearPeriapsis ? 'PERIAPSIS BOOST' : (inbound ? 'INBOUND BOOST' : 'OUTBOUND BOOST');
+            recommendedAngle = 35;
+            recommendedDeployment = 100;
+            if (hasFuel) {
+                thrusterAction = { direction: 'prograde', when: 'NOW' };
+            }
+        } else if (nearPeriapsis) {
             strategy = 'PERIAPSIS BOOST';
-            recommendedAngle = 35;  // Prograde sail
+            recommendedAngle = 35;
             recommendedDeployment = 100;
             if (hasFuel) {
                 thrusterAction = { direction: 'prograde', when: 'NOW' };
             }
         } else if (inbound) {
-            // Approaching periapsis - prepare for burn
             strategy = 'APPROACH PERIAPSIS';
             recommendedAngle = 0;
-            recommendedDeployment = 0;  // Coast to preserve trajectory
+            recommendedDeployment = 0;
             if (hasFuel) {
                 thrusterAction = { direction: 'prograde', when: 'AT_PERIAPSIS' };
             }
         } else {
-            // Past periapsis - coast out
             strategy = 'EXITING SOI';
-            recommendedAngle = 35;  // Prograde to maximize exit velocity
+            recommendedAngle = 35;
             recommendedDeployment = 100;
         }
     } else {
