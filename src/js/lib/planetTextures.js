@@ -287,7 +287,6 @@ function loadAllTextures() {
         const url = baseUrl + filename;
 
         const img = new Image();
-        img.crossOrigin = 'anonymous';
 
         img.onload = () => {
             loading.delete(bodyName);
