@@ -599,44 +599,123 @@ function findRadiusCrossing(p1, p2, r1, r2, targetRadius) {
 }
 
 /**
+ * Refine a crossing time using the planet's actual heliocentric radius.
+ *
+ * HYBRID ANCHOR-REFINE ALGORITHM:
+ * The semi-major axis crossing gives a stable detection point (no snapping),
+ * but for eccentric orbits (Mars e=0.094, Mercury e=0.206), the planet's
+ * actual distance from the Sun at crossing time can differ significantly
+ * from the semi-major axis. This refinement step corrects the timing.
+ *
+ * Algorithm:
+ * 1. Start with crossing at semi-major axis at time T_nominal
+ * 2. Look up planet's actual heliocentric radius at T_nominal
+ * 3. Search nearby trajectory segments for crossing at that actual radius
+ * 4. If found, return refined crossing; otherwise return original
+ *
+ * This avoids the multi-radius snapping problem because:
+ * - Detection uses ONE radius (semi-major axis) → no deduplication needed
+ * - Refinement is a single step, not multiple competing radii
+ * - If refinement fails, gracefully falls back to original crossing
+ *
+ * @param {Object} nominalCrossing - Original crossing {time, position, t}
+ * @param {Object} bodyElements - Body's orbital elements
+ * @param {Array} trajectory - Full trajectory array
+ * @param {number} nominalIdx - Trajectory index where nominal crossing was found
+ * @param {number} segmentSkip - Current segment skip factor
+ * @returns {Object} Refined crossing {time, position} or original if refinement not needed
+ */
+function refineCrossingWithActualRadius(nominalCrossing, bodyElements, trajectory, nominalIdx, segmentSkip) {
+    const { a, e } = bodyElements;
+
+    // Only refine for eccentric orbits where the radius difference matters
+    // For near-circular orbits (e < 0.05), semi-major axis is accurate enough
+    if (e < 0.05) {
+        return nominalCrossing;
+    }
+
+    // Get planet's actual heliocentric radius at the nominal crossing time
+    const planetPos = getPosition(bodyElements, nominalCrossing.time);
+    if (!isFinite(planetPos.x) || !isFinite(planetPos.y) || !isFinite(planetPos.z)) {
+        return nominalCrossing;
+    }
+    const actualRadius = Math.sqrt(planetPos.x ** 2 + planetPos.y ** 2 + planetPos.z ** 2);
+
+    // If the actual radius is close to semi-major axis, no refinement needed
+    const radiusDifference = Math.abs(actualRadius - a);
+    if (radiusDifference < 0.01) {  // < 0.01 AU difference (~1.5M km)
+        return nominalCrossing;
+    }
+
+    // Search nearby trajectory segments for a crossing at the actual radius.
+    // Look within a window around the nominal crossing index.
+    // The window size is proportional to how far apart the radii are,
+    // scaled by typical trajectory steps per AU of radial travel.
+    const searchWindow = Math.max(20, Math.ceil(radiusDifference * 200));
+    const startIdx = Math.max(0, nominalIdx - searchWindow);
+    const endIdx = Math.min(trajectory.length - 2, nominalIdx + searchWindow);
+
+    let bestRefinedCrossing = null;
+    let bestTimeDifference = Infinity;
+
+    for (let idx = startIdx; idx <= endIdx; idx++) {
+        const p1 = trajectory[idx];
+        const p2 = trajectory[idx + 1];
+
+        const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
+        const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
+
+        const refined = findRadiusCrossing(p1, p2, r1, r2, actualRadius);
+        if (refined) {
+            // Prefer the crossing closest in time to the nominal crossing
+            const timeDiff = Math.abs(refined.time - nominalCrossing.time);
+            if (timeDiff < bestTimeDifference) {
+                bestTimeDifference = timeDiff;
+                bestRefinedCrossing = refined;
+            }
+        }
+    }
+
+    // If we found a refined crossing, use it; otherwise keep the nominal
+    if (bestRefinedCrossing) {
+        return bestRefinedCrossing;
+    }
+
+    return nominalCrossing;
+}
+
+/**
  * Detect when trajectory crosses orbital paths and show planet positions at those times
  *
- * CROSSING DETECTION ALGORITHM (RADIUS METHOD):
- * A "crossing" occurs when trajectory segment crosses the planet's orbital RADIUS
- * (the semi-major axis distance from the Sun). This is a spherical shell check.
+ * CROSSING DETECTION ALGORITHM (HYBRID ANCHOR-REFINE):
+ * Detection uses the semi-major axis for stable, snap-free crossing identification.
+ * For eccentric orbits, a refinement step corrects the timing using the planet's
+ * actual heliocentric distance at the crossing time.
  *
  * For segment (p1, p2) with heliocentric radii (r1, r2):
  *   1. Check if segment crosses target radius: (r1 < a && r2 > a) || (r1 > a && r2 < a)
  *   2. Solve quadratic equation for exact crossing point (not linear interpolation)
- *   3. Get planet position at crossing time: getPosition(elements, crossingTime)
- *   4. Display ghost at planet's actual position with time offset label
+ *   3. REFINE: For eccentric orbits, find crossing at planet's actual radius near that time
+ *   4. Get planet position at refined crossing time: getPosition(elements, refinedTime)
+ *   5. Compute angular separation between ship crossing point and planet position
+ *   6. Display ghost at planet's actual position with time offset and early/late label
  *
- * WHY RADIUS CROSSING (not orbital plane):
- * The previous orbital plane method required trajectory to pierce the planet's
- * tilted plane AT the correct radius - two independent conditions that rarely
- * coincide. Radius crossing reliably detects when you reach a planet's orbital
- * distance. The ghost shows where the planet ACTUALLY IS at that time.
- *
- * For navigation: "When I reach Venus's orbital radius, where will Venus be?"
- * If the ghost is near your crossing point → good intercept opportunity.
- * If the ghost is far away → Venus will be elsewhere when you arrive.
+ * WHY HYBRID ANCHOR-REFINE:
+ * - Semi-major-axis-only: Stable but wrong timing for eccentric orbits (up to 70 days off)
+ * - Multi-radius: Correct physics but causes ghost snapping from deduplication
+ * - Closest-approach: Produces 4 AU ghosts in empty space
+ * - Hybrid: Stable detection (one radius) + accurate timing (refine with actual radius)
  *
  * ZOOM-ADAPTIVE OPTIMIZATION:
  * - At low zoom: Skip segments (check every Nth), fewer bisection iterations
  * - At high zoom: Full resolution for accurate encounter planning
  * - Pre-filters bodies by radial range to skip impossible crossings
  *
- * EXAMPLE:
- * Ship trajectory crosses Venus's orbital radius (0.72 AU) twice:
- *   1st crossing at day 45 → Venus is at (0.5, 0.5, 0.02) → show ghost there
- *   2nd crossing at day 120 → Venus is at (-0.3, 0.65, -0.01) → show ghost there
- * As you adjust sails, crossing times shift, ghost positions update in real-time.
- *
  * @param {Array} trajectory - Array of {x, y, z, time} points (ship path from trajectory predictor)
  * @param {Array} celestialBodies - Array of body objects with {name, elements, parent}
  * @param {number} currentTime - Current game Julian date (filters out past crossings)
  * @param {string|null} soiBody - Current SOI body name (null = heliocentric mode)
- * @returns {Array} Intersection events sorted by time: [{bodyName, time, bodyPosition, trajectoryPosition, distance}, ...]
+ * @returns {Array} Intersection events sorted by time: [{bodyName, time, bodyPosition, trajectoryPosition, distance, angularSeparation, isAhead}, ...]
  */
 export function detectIntersections(trajectory, celestialBodies, currentTime, soiBody = null) {
     // Guard: Empty or invalid trajectory
@@ -733,10 +812,17 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
 
             // Use radius crossing detection - reliably finds when trajectory
             // crosses the planet's orbital distance from the Sun.
-            // For eccentric orbits, checks perihelion/a/aphelion radii.
+            // For eccentric orbits, refines timing using planet's actual radius.
             const crossings = findOrbitalPlaneCrossings(p1, p2, body.elements);
 
-            for (const crossing of crossings) {
+            for (const nominalCrossing of crossings) {
+                // HYBRID ANCHOR-REFINE: For eccentric orbits, refine the
+                // crossing time using the planet's actual heliocentric radius.
+                // This corrects timing errors of up to 70 days for Mars.
+                const crossing = refineCrossingWithActualRadius(
+                    nominalCrossing, body.elements, trajectorySnapshot, idx, segmentSkip
+                );
+
                 // Round time to avoid floating-point duplicates
                 // Use coarser rounding at low zoom (1 day) vs high zoom (0.001 day)
                 const timeRoundFactor = isLowZoom ? 1 : 1000;
@@ -746,7 +832,7 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 }
                 crossingTimes.add(timeKey);
 
-                // Get planet's actual position at crossing time
+                // Get planet's actual position at (refined) crossing time
                 let planetPos = getPosition(body.elements, crossing.time);
 
                 // For moons, convert parent-relative position to heliocentric
@@ -775,12 +861,39 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 const dz = crossing.position.z - planetPos.z;
                 const crossingDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
+                // Calculate angular separation between ship crossing point
+                // and planet position (viewed from Sun). This tells the player
+                // whether Mars is AHEAD or BEHIND at the crossing time.
+                const shipMag = Math.sqrt(
+                    crossing.position.x ** 2 + crossing.position.y ** 2 + crossing.position.z ** 2
+                );
+                const planetMag = Math.sqrt(
+                    planetPos.x ** 2 + planetPos.y ** 2 + planetPos.z ** 2
+                );
+                let angularSeparation = 0;
+                let isAhead = false;
+                if (shipMag > 1e-10 && planetMag > 1e-10) {
+                    const dotProd = crossing.position.x * planetPos.x +
+                                    crossing.position.y * planetPos.y +
+                                    crossing.position.z * planetPos.z;
+                    const cosAngle = Math.max(-1, Math.min(1, dotProd / (shipMag * planetMag)));
+                    angularSeparation = Math.acos(cosAngle);
+
+                    // Determine if planet is AHEAD or BEHIND ship in its orbit.
+                    // Use 2D cross product in ecliptic plane (z-component of 3D cross product).
+                    // Positive cross product means planet is ahead (counter-clockwise from ship).
+                    const cross = crossing.position.x * planetPos.y - crossing.position.y * planetPos.x;
+                    isAhead = cross > 0;
+                }
+
                 bodyCrossings.push({
                     bodyName: body.name,
                     time: crossing.time,
                     bodyPosition: planetPos,
                     trajectoryPosition: crossing.position,
-                    distance: crossingDistance
+                    distance: crossingDistance,
+                    angularSeparation,
+                    isAhead
                 });
             }
         }
