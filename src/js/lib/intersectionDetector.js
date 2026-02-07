@@ -376,7 +376,6 @@ function refineCrossingBisection(p1, p2, targetRadius, maxIterations = null) {
 
 // Eccentricity threshold for checking perihelion/aphelion
 // Planets with e > this will be checked at both extremes
-const ECCENTRICITY_THRESHOLD = 0.05;
 
 /**
  * Deduplicate multi-radius crossings for a single body.
@@ -492,23 +491,15 @@ function findOrbitalPlaneCrossings(p1, p2, elements) {
     const r1 = Math.sqrt(p1.x ** 2 + p1.y ** 2 + p1.z ** 2);
     const r2 = Math.sqrt(p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
 
-    // Build list of target radii to check
-    // For eccentric orbits, check perihelion and aphelion in addition to semi-major axis
-    // This ensures ghosts appear at the correct time regardless of where the planet
-    // is in its orbit. Matches evaluate-trajectory.js:246-256 logic.
-    const targetRadii = [a];
-    if (e > ECCENTRICITY_THRESHOLD && e < 0.95) {
-        const perihelion = a * (1 - e);
-        const aphelion = a * (1 + e);
-        targetRadii.push(perihelion, aphelion);
-    }
-
+    // Check only the semi-major axis radius.
+    // Multi-radius checking (perihelion/aphelion) was removed because it causes
+    // ghost planet position snapping: small sail adjustments flip which radius
+    // crossing "wins" deduplication, jumping the ghost by 50-100+ days.
+    // See reports/ghost-planet-snapping-investigation-2026-02-07.md
     const crossings = [];
-    for (const radius of targetRadii) {
-        const crossing = findRadiusCrossing(p1, p2, r1, r2, radius);
-        if (crossing) {
-            crossings.push(crossing);
-        }
+    const crossing = findRadiusCrossing(p1, p2, r1, r2, a);
+    if (crossing) {
+        crossings.push(crossing);
     }
 
     return crossings;
