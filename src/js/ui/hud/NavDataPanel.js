@@ -4,7 +4,7 @@
  */
 
 import { AnimatedValue, animationLoop } from '../../lib/animation.js';
-import { navState } from '../../core/navigation.js';
+import { destination, getDestinationInfo, predictClosestApproach } from '../../core/navigation.js';
 import { getPlayerShip } from '../../data/ships.js';
 
 export class NavDataPanel {
@@ -64,22 +64,23 @@ export class NavDataPanel {
 
   update() {
     // Update target name
-    const target = navState.destination;
-    if (target) {
-      this.targetName.textContent = target.name.toUpperCase();
+    if (destination) {
+      this.targetName.textContent = destination.toUpperCase();
     } else {
       this.targetName.textContent = 'NONE';
     }
 
     // Update distance (with animation)
-    const distance = navState.distanceToDestination || 0;
+    const destInfo = getDestinationInfo();
+    const distance = destInfo ? destInfo.distance : 0;
     this.animatedDistance.setTarget(distance);
     this.animatedDistance.update();
     const displayDistance = this.animatedDistance.getValue();
     this.distanceValue.textContent = `${displayDistance.toFixed(3)} AU`;
 
     // Update intercept time
-    const interceptDays = navState.timeToIntercept;
+    const intercept = predictClosestApproach();
+    const interceptDays = intercept ? intercept.timeToClosest : null;
     if (interceptDays !== null && interceptDays !== Infinity) {
       const days = Math.floor(interceptDays);
       const hours = Math.floor((interceptDays - days) * 24);
