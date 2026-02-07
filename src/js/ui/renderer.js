@@ -1229,7 +1229,7 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         if (angSepDeg > 2) {  // Only show when separation is significant (> 2 degrees)
             const direction = intersection.isAhead ? 'EARLY' : 'LATE';
             phaseLabel = isCloseEncounter ? ' CLOSE' : ` ${direction} ${Math.round(angSepDeg)}°`;
-        } else if (angSepDeg <= 2) {
+        } else {
             phaseLabel = ' CLOSE';
         }
 
