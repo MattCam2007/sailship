@@ -269,9 +269,13 @@ export const TRAJECTORY_RENDER_CONFIG = {
     /**
      * Maximum steps regardless of duration (performance cap).
      * For a 2-year trajectory at 12 steps/day, this would be 8760 steps.
-     * Cap at 1500 for reasonable performance.
+     *
+     * MUST match INTERSECTION_CONFIG.maxSteps so both rendering and intersection
+     * detection use the same cached trajectory. Different step counts cause
+     * cache thrashing and trajectory divergence (the displayed green line won't
+     * match the trajectory used for ghost planet positioning).
      */
-    maxSteps: 1500,
+    maxSteps: 8760,
 
     /**
      * Minimum steps regardless of duration (quality floor).
@@ -308,15 +312,15 @@ export const INTERSECTION_CONFIG = {
      * Maximum steps regardless of duration (performance cap).
      * For a 2-year trajectory at 12 steps/day, this would be 8760 steps.
      *
-     * INCREASED to 6000 to ensure adequate resolution for 2-year trajectories.
-     * At 6000 steps / 730 days = ~8.2 steps/day minimum, which gives ~3 hour
-     * segments - adequate for reliable crossing detection.
+     * Set to 8760 to allow full 12 steps/day resolution for 2-year trajectories.
+     * This gives ~2-hour segments for reliable crossing detection with bisection
+     * refinement achieving sub-second precision within each segment.
      *
-     * Performance note: The intersection detector has a 16ms timeout, so
-     * increasing steps doesn't significantly impact frame rate (early
-     * termination protects against runaway computation).
+     * MUST match TRAJECTORY_RENDER_CONFIG.maxSteps so both share the same
+     * cached trajectory data, preventing divergence between the displayed
+     * path and the trajectory used for ghost planet calculations.
      */
-    maxSteps: 6000,
+    maxSteps: 8760,
 
     /**
      * Minimum steps regardless of duration (quality floor).
