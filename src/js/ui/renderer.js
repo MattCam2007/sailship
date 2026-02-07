@@ -1136,6 +1136,7 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         encounters = intersectionCache.results
             .filter(intersection => {
                 if (intersection.bodyName !== destination) return false;
+                if (!isFinite(intersection.distance)) return false;
                 const body = celestialBodies.find(b => b.name === intersection.bodyName);
                 if (body && body.category && !bodyFilters[body.category]) return false;
                 return true;
@@ -1146,18 +1147,6 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
                 time: intersection.time,
                 distance: intersection.distance
             }));
-
-        // NAVIGATION FILTER: Show only the best 2 crossings per body.
-        // A spiral trajectory can cross a planet's orbital zone many times over
-        // a long prediction window, but for navigation you only need the best
-        // intercept opportunities (smallest ship-to-planet distance at crossing).
-        // Sort by distance (best intercept first), keep top 2.
-        if (encounters.length > 2) {
-            encounters.sort((a, b) => a.distance - b.distance);
-            encounters = encounters.slice(0, 2);
-            // Re-sort by time so the earlier encounter renders first
-            encounters.sort((a, b) => a.time - b.time);
-        }
     }
 
     if (encounters.length === 0) return;
@@ -1222,8 +1211,10 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
 
         // Draw time-offset label with distance for navigation feedback
         const timeOffset = formatTimeOffset(julianDate, intersection.time);
+        const KM_PER_AU = 149597870.7;
+        const distKm = intersection.distance * KM_PER_AU;
         const distLabel = intersection.distance < 0.01
-            ? `${(intersection.distance * 149597.87).toFixed(0)} km`
+            ? `${Math.round(distKm).toLocaleString()} km`
             : `${intersection.distance.toFixed(2)} AU`;
         const labelText = `${intersection.bodyName} ${timeOffset} [${distLabel}]`;
 
