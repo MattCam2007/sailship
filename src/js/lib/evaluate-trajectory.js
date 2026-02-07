@@ -244,6 +244,18 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
     const timeStep = maxDays / steps;
 
     // For eccentric targets, compute crossing radii at perihelion, semi-major axis, and aphelion.
+    //
+    // DESIGN NOTE: The course solver intentionally uses multi-radius checking because it
+    // evaluates hundreds of candidates and needs to find the BEST crossing across all
+    // possible radii. This broad search is safe here because the solver picks a single
+    // best crossing per evaluation (no temporal deduplication that could cause snapping).
+    //
+    // The intersection detector (intersectionDetector.js) uses a different approach:
+    // "hybrid anchor-refine" — detect at semi-major axis for stability, then refine
+    // timing using the planet's actual radius. This prevents ghost planet snapping
+    // while still providing accurate timing for eccentric orbits.
+    //
+    // Both approaches converge to similar results for good intercepts.
     const targetA = target.elements.a;
     const targetE = target.elements.e || 0;
     let targetRadii;

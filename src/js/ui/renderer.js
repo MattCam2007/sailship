@@ -1145,7 +1145,9 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
                 bodyName: intersection.bodyName,
                 bodyPosition: intersection.bodyPosition,
                 time: intersection.time,
-                distance: intersection.distance
+                distance: intersection.distance,
+                angularSeparation: intersection.angularSeparation || 0,
+                isAhead: intersection.isAhead || false
             }));
     }
 
@@ -1179,8 +1181,11 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         const julianDate = getJulianDate();
         const deltaDays = intersection.time - julianDate;
 
-        // VISUAL POLISH: Pulsing glow for imminent encounters (< 24 hours)
-        if (deltaDays < 1 && deltaDays > 0) {
+        // VISUAL POLISH: Pulsing glow when within SOI distance (good intercept)
+        // Uses SOI radius for body-appropriate threshold instead of arbitrary 24h
+        const soiRadius = SOI_RADII[intersection.bodyName] || 0.01;
+        const isCloseEncounter = intersection.distance < soiRadius * 2;
+        if (isCloseEncounter) {
             const phase = (Date.now() % 2000) / 2000 * Math.PI * 2;
             const intensity = 0.5 + 0.5 * Math.sin(phase);
 
@@ -1209,14 +1214,26 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
 
         ctx.restore();
 
-        // Draw time-offset label with distance for navigation feedback
+        // Draw time-offset label with distance and early/late indicator
         const timeOffset = formatTimeOffset(julianDate, intersection.time);
         const KM_PER_AU = 149597870.7;
         const distKm = intersection.distance * KM_PER_AU;
         const distLabel = intersection.distance < 0.01
             ? `${Math.round(distKm).toLocaleString()} km`
             : `${intersection.distance.toFixed(2)} AU`;
-        const labelText = `${intersection.bodyName} ${timeOffset} [${distLabel}]`;
+
+        // Early/late indicator: tells player if planet is ahead or behind at crossing
+        // Angular separation in degrees, with direction
+        let phaseLabel = '';
+        const angSepDeg = (intersection.angularSeparation || 0) * (180 / Math.PI);
+        if (angSepDeg > 2) {  // Only show when separation is significant (> 2 degrees)
+            const direction = intersection.isAhead ? 'EARLY' : 'LATE';
+            phaseLabel = isCloseEncounter ? ' CLOSE' : ` ${direction} ${Math.round(angSepDeg)}°`;
+        } else {
+            phaseLabel = ' CLOSE';
+        }
+
+        const labelText = `${intersection.bodyName} ${timeOffset} [${distLabel}]${phaseLabel}`;
 
         ctx.save();
         ctx.globalAlpha = 0.8;

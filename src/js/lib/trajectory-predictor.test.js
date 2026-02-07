@@ -234,8 +234,8 @@ export function testPerformance() {
     console.log(`  Average time: ${avgTime.toFixed(2)}ms`);
     console.log(`  Max time: ${maxTime.toFixed(2)}ms`);
 
-    // Target: < 5ms for 200 steps
-    return assert(avgTime < 5, `Average time < 5ms (got ${avgTime.toFixed(2)}ms)`);
+    // Target: < 10ms for 200 steps (RK2 midpoint integration doubles work per step)
+    return assert(avgTime < 10, `Average time < 10ms (got ${avgTime.toFixed(2)}ms)`);
 }
 
 /**
