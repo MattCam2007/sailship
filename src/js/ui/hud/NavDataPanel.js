@@ -102,11 +102,11 @@ export class NavDataPanel {
 
     // Color based on remaining fuel
     if (percent > 60) {
-      this.dvBarFill.style.background = 'var(--ui-success)';
+      this.dvBarFill.style.background = 'var(--success)';
     } else if (percent > 30) {
-      this.dvBarFill.style.background = 'var(--ui-warning)';
+      this.dvBarFill.style.background = 'var(--warning)';
     } else {
-      this.dvBarFill.style.background = 'var(--ui-danger)';
+      this.dvBarFill.style.background = 'var(--danger)';
     }
 
     // Update text
