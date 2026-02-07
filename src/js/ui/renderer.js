@@ -1136,6 +1136,7 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         encounters = intersectionCache.results
             .filter(intersection => {
                 if (intersection.bodyName !== destination) return false;
+                if (!isFinite(intersection.distance)) return false;
                 const body = celestialBodies.find(b => b.name === intersection.bodyName);
                 if (body && body.category && !bodyFilters[body.category]) return false;
                 return true;
@@ -1208,9 +1209,14 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
 
         ctx.restore();
 
-        // Draw time-offset label
+        // Draw time-offset label with distance for navigation feedback
         const timeOffset = formatTimeOffset(julianDate, intersection.time);
-        const labelText = `${intersection.bodyName} ${timeOffset}`;
+        const KM_PER_AU = 149597870.7;
+        const distKm = intersection.distance * KM_PER_AU;
+        const distLabel = intersection.distance < 0.01
+            ? `${Math.round(distKm).toLocaleString()} km`
+            : `${intersection.distance.toFixed(2)} AU`;
+        const labelText = `${intersection.bodyName} ${timeOffset} [${distLabel}]`;
 
         ctx.save();
         ctx.globalAlpha = 0.8;
