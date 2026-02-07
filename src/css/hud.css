@@ -303,3 +303,83 @@
 .hud-enabled .header-bar {
   display: none;
 }
+
+/* ============================================================================
+   Vertical Slider
+   ============================================================================ */
+
+.vertical-slider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider-label {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.slider-track-container {
+  position: relative;
+  width: 32px;
+  cursor: pointer;
+}
+
+.slider-track {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 100%;
+  background: rgba(var(--ui-primary-rgb), 0.2);
+  border-radius: 2px;
+}
+
+.slider-fill {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: 4px;
+  height: 0%;
+  background: var(--ui-primary);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(var(--ui-primary-rgb), 0.6);
+  transition: height 0.15s ease-out;
+}
+
+.slider-thumb {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  background: var(--ui-primary);
+  border: 2px solid var(--ui-bgDark);
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(var(--ui-primary-rgb), 0.8);
+  cursor: grab;
+  transition: bottom 0.15s ease-out, transform 0.15s ease;
+}
+
+.slider-thumb:hover {
+  transform: translateX(-50%) scale(1.15);
+}
+
+.vertical-slider.dragging .slider-thumb {
+  cursor: grabbing;
+  transform: translateX(-50%) scale(1.25);
+  box-shadow: 0 0 16px rgba(var(--ui-primary-rgb), 1);
+}
+
+.slider-value {
+  font-size: var(--font-sizeMedium);
+  color: var(--ui-textPrimary);
+  font-weight: bold;
+  min-width: 60px;
+  text-align: center;
+}
