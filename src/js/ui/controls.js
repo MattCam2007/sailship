@@ -699,6 +699,15 @@ function initKeyboardShortcuts() {
             return;
         }
 
+        // Theme selector with 't'
+        if (e.key === 't' || e.key === 'T') {
+            // Import themeSelector dynamically to avoid circular dependencies
+            import('./themeSelector.js').then(module => {
+                module.openThemeSelector();
+            });
+            return;
+        }
+
         // Fine-tune control selection with 1, 2, 3
         if (e.key === '1') {
             selectSailControl(SAIL_CONTROLS.DEPLOYMENT);

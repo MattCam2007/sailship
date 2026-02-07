@@ -1,0 +1,133 @@
+{
+  "name": "Default Coral",
+  "version": "1.0.0",
+  "description": "Original coral/dark theme - the first star charts",
+  "author": "Sailship",
+  "tags": ["dark", "coral", "original", "default"],
+
+  "ui": {
+    "primary": "#e85d4c",
+    "primaryDim": "#a83d30",
+    "primaryBright": "#ff6f5e",
+    "accent": "#e8944c",
+    "success": "#4ce88d",
+    "info": "#4c9ee8",
+    "warning": "#e8944c",
+    "danger": "#e85d4c",
+
+    "bgDark": "#0a0a0a",
+    "bgDarker": "#050505",
+    "bgPanel": "#111111",
+    "bgPanelRaised": "#1a1a1a",
+
+    "text": "#e85d4c",
+    "textDim": "rgba(232, 93, 76, 0.6)",
+    "textBright": "#ff6f5e",
+
+    "border": "#a83d30",
+    "borderDim": "rgba(232, 93, 76, 0.3)",
+
+    "cyan": "#00d9ff",
+    "cyanDim": "#0088aa",
+    "purple": "#b53dff"
+  },
+
+  "canvas": {
+    "grid": {
+      "primary": "rgba(232, 93, 76, 0.1)",
+      "secondary": "rgba(232, 93, 76, 0.05)",
+      "fade": "rgba(232, 93, 76, 0.02)"
+    },
+
+    "orbits": {
+      "planet": "rgba(232, 93, 76, 0.3)",
+      "moon": "rgba(232, 93, 76, 0.15)",
+      "shipElliptic": "rgba(76, 232, 141, 0.5)",
+      "shipEllipticSOI": "rgba(76, 141, 232, 0.6)",
+      "shipHyperbolic": "rgba(100, 200, 255, 0.7)"
+    },
+
+    "trajectory": {
+      "predicted": "rgba(200, 100, 255, 0.8)",
+      "predictedFade": "rgba(200, 100, 255, 0.2)",
+      "flightPath": "#4ce88d"
+    },
+
+    "labels": {
+      "default": "rgba(232, 93, 76, 0.8)",
+      "ghost": "rgba(232, 93, 76, 0.7)"
+    },
+
+    "markers": {
+      "destination": "#e85d4c",
+      "encounter": "rgba(200, 100, 255, 0.9)",
+      "nodeAscending": "#4ce88d",
+      "nodeDescending": "#e84c88"
+    },
+
+    "soi": {
+      "boundary": "rgba(232, 93, 76, 0.4)",
+      "label": "rgba(232, 93, 76, 0.53)"
+    },
+
+    "ship": {
+      "player": "#4ce88d",
+      "npc": "#e85d4c"
+    }
+  },
+
+  "bodies": {
+    "SOL": "#ffdd44",
+    "MERCURY": "#b5b5b5",
+    "VENUS": "#e8c44c",
+    "EARTH": "#4c9ee8",
+    "MARS": "#e85d4c",
+    "JUPITER": "#d4a574",
+    "SATURN": "#fad5a5",
+    "URANUS": "#afd5e8",
+    "NEPTUNE": "#5b7fcf",
+    "CERES": "#888888",
+    "PLUTO": "#d4c4a4",
+    "ERIS": "#b4a494",
+    "MAKEMAKE": "#c4b4a4",
+    "HAUMEA": "#a49484",
+    "LUNA": "#c0c0c0",
+    "PHOBOS": "#8c6c5c",
+    "DEIMOS": "#9c7c6c",
+    "IO": "#e8d85c",
+    "EUROPA": "#c4b8a4",
+    "GANYMEDE": "#999999",
+    "CALLISTO": "#787878",
+    "MIMAS": "#d8d4c8",
+    "ENCELADUS": "#f0ece0",
+    "TETHYS": "#e0dcd0",
+    "DIONE": "#d0ccc0",
+    "RHEA": "#c8c4b8",
+    "TITAN": "#e8a85c",
+    "IAPETUS": "#b8b4a8",
+    "MIRANDA": "#b8c4d0",
+    "ARIEL": "#c0ccd8",
+    "UMBRIEL": "#989ca4",
+    "TITANIA": "#d0d8e0",
+    "OBERON": "#c4ccd4",
+    "TRITON": "#d8c4d0",
+    "PROTEUS": "#a0a8b0",
+    "CHARON": "#b4a8a0",
+    "AMALTHEA": "#887860",
+    "THEBE": "#786850",
+    "HIMALIA": "#888878",
+    "ELARA": "#787868",
+    "HYPERION": "#c8c0b4",
+    "PHOEBE": "#685850",
+    "JANUS": "#d0c8bc",
+    "EPIMETHEUS": "#c8c0b4",
+    "PUCK": "#a8b0b8",
+    "NEREID": "#888898",
+    "LARISSA": "#989ca8",
+    "VESTA": "#a89878",
+    "PALLAS": "#988870",
+    "JUNO": "#887860",
+    "HYGIEA": "#786850",
+    "EROS": "#888878"
+  }
+}

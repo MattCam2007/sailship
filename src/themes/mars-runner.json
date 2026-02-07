@@ -1,0 +1,89 @@
+{
+  "name": "Mars Runner",
+  "version": "1.0.0",
+  "author": "MattCam2007",
+  "description": "Rust red inner system theme for Mars-centric operations. Warm terracotta and dusty orange - the aesthetic of Mars orbit traffic control and inner planet shipping lanes. Built for colonists and traders who call the red planet home.",
+  "tags": ["warm", "red", "mars", "inner-system"],
+  "colors": {
+    "ui": {
+      "primary": "#cd5c5c",
+      "primaryDim": "#a04040",
+      "primaryBright": "#e07a7a",
+      "secondary": "#d2691e",
+      "success": "#f4a460",
+      "warning": "#ff8c42",
+      "danger": "#b22222",
+      "bgDark": "#140a08",
+      "bgDarker": "#0a0504",
+      "bgPanel": "#1a0e0c",
+      "bgPanelRaised": "#241612",
+      "textPrimary": "#cd5c5c",
+      "textSecondary": "#f5deb3",
+      "textDim": "#8b4513",
+      "textBright": "#ff9966",
+      "borderPrimary": "#cd5c5c",
+      "borderSecondary": "#d2691e",
+      "cyan": "#ff9966",
+      "cyanDim": "#cd853f",
+      "purple": "#d2691e",
+      "orange": "#ff8c42",
+      "green": "#daa520",
+      "blue": "#cd5c5c"
+    },
+    "canvas": {
+      "grid": "#8b4513",
+      "gridAlpha": 0.15,
+      "orbitPrimary": "#cd5c5c",
+      "orbitPrimaryAlpha": 0.4,
+      "orbitSecondary": "#a04040",
+      "orbitSecondaryAlpha": 0.22,
+      "orbitMoon": "#bc8f8f",
+      "orbitMoonAlpha": 0.25,
+      "shipOrbitElliptic": "#ff8c42",
+      "shipOrbitEllipticAlpha": 0.7,
+      "shipOrbitHyperbolic": "#ff9966",
+      "shipOrbitHyperbolicAlpha": 0.8,
+      "shipOrbitSOI": "#d2691e",
+      "shipOrbitSOIAlpha": 0.65,
+      "trajectory": "#ff8c42",
+      "trajectoryAlpha": 0.85,
+      "trajectoryPoint": "#ff9966",
+      "label": "#cd5c5c",
+      "labelAlpha": 0.9,
+      "labelBg": "#140a08",
+      "labelBgAlpha": 0.75,
+      "intersectionMarker": "#cd5c5c",
+      "intersectionMarkerAlpha": 0.4,
+      "intersectionLabel": "#d2691e",
+      "soiBoundary": "#ff8c42",
+      "soiBoundaryAlpha": 0.3,
+      "shipIcon": "#ff8c42"
+    },
+    "bodies": {
+      "SOL": "#ffd966",
+      "EARTH": "#4d9ee8",
+      "MARS": "#e07d4c",
+      "JUPITER": "#d4a574",
+      "SATURN": "#e8c896",
+      "NEPTUNE": "#5680c0",
+      "URANUS": "#80b8d0"
+    },
+    "ships": {
+      "player": "#ff8c42"
+    }
+  },
+  "fonts": {
+    "primary": "'Share Tech Mono', monospace",
+    "header": "'Orbitron', sans-serif",
+    "sizeBase": "11px",
+    "sizeSmall": "10px",
+    "sizeMedium": "12px",
+    "sizeHeader": "14px"
+  },
+  "effects": {
+    "glowSm": "0 0 6px",
+    "glowMd": "0 0 12px",
+    "glowLg": "0 0 24px",
+    "glowXl": "0 0 48px"
+  }
+}
