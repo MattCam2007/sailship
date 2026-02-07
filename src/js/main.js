@@ -39,6 +39,11 @@ import { getBodyByName } from './data/celestialBodies.js';
 import { INTERSECTION_CONFIG } from './config.js';
 import { initThemeEngine } from './core/themeEngine.js';
 import { initThemeSelector } from './ui/themeSelector.js';
+import { initSailControl } from './ui/hud/SailControl.js';
+import { initTimeSpeedControl, updateTimeSpeedControl } from './ui/hud/TimeSpeedControl.js';
+import { initLayersPanel } from './ui/hud/LayersPanel.js';
+import { initNavDataPanel } from './ui/hud/NavDataPanel.js';
+import { initTooltip } from './ui/hud/Tooltip.js';
 
 // Get canvas element
 const navCanvas = document.getElementById('navCanvas');
@@ -207,6 +212,7 @@ function gameLoop() {
     updatePositions();
     updateCameraTarget(celestialBodies, ships);
     render();
+    updateTimeSpeedControl();
     updateUI();
     requestAnimationFrame(gameLoop);
 }
@@ -220,6 +226,13 @@ async function init() {
 
     // Initialize theme selector UI
     initThemeSelector();
+
+    // Initialize HUD components
+    initSailControl();
+    initTimeSpeedControl();
+    initLayersPanel();
+    initNavDataPanel();
+    initTooltip();
 
     // Load body filter state from localStorage
     loadBodyFilters();
