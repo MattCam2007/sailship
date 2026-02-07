@@ -383,3 +383,363 @@
   min-width: 60px;
   text-align: center;
 }
+
+/* ============================================================================
+   Rotary Control
+   ============================================================================ */
+
+.rotary-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.rotary-label {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rotary-dial {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rotary-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.rotary-track {
+  fill: none;
+  stroke: rgba(var(--ui-primary-rgb), 0.2);
+  stroke-width: 3;
+}
+
+.rotary-progress {
+  fill: none;
+  stroke: var(--ui-primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(var(--ui-primary-rgb), 0.8));
+  transition: stroke-dashoffset 0.15s ease-out;
+}
+
+.rotary-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  height: 2px;
+  background: var(--ui-primary);
+  transform-origin: left center;
+  box-shadow: 0 0 8px rgba(var(--ui-primary-rgb), 0.8);
+  transition: transform 0.15s ease-out;
+}
+
+.rotary-indicator::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  background: var(--ui-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(var(--ui-primary-rgb), 1);
+}
+
+.rotary-value {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textPrimary);
+  font-weight: bold;
+  pointer-events: none;
+}
+
+.rotary-control.dragging .rotary-dial {
+  cursor: grabbing;
+}
+
+.rotary-control.dragging .rotary-indicator {
+  box-shadow: 0 0 12px rgba(var(--ui-primary-rgb), 1);
+}
+
+.rotary-dial:hover .rotary-indicator {
+  box-shadow: 0 0 12px rgba(var(--ui-primary-rgb), 1);
+}
+
+/* ============================================================================
+   Sail Control Panel
+   ============================================================================ */
+
+#hudSailControl {
+  min-width: 240px;
+}
+
+.sail-controls-grid {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.thrust-visualization {
+  border-top: 1px solid rgba(var(--ui-primary-rgb), 0.3);
+  padding-top: 12px;
+}
+
+.thrust-label {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.thrust-display {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thrust-arrow {
+  width: 60px;
+  height: 60px;
+  transition: transform 0.2s ease-out;
+}
+
+.thrust-line {
+  stroke: var(--ui-success);
+  stroke-width: 2;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(var(--ui-success-rgb), 0.8));
+}
+
+.thrust-head {
+  fill: var(--ui-success);
+  filter: drop-shadow(0 0 4px rgba(var(--ui-success-rgb), 0.8));
+}
+
+.thrust-magnitude {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.data-label {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+}
+
+.data-value {
+  font-size: var(--font-sizeMedium);
+  font-weight: bold;
+}
+
+/* ============================================================================
+   Time/Speed Control Panel
+   ============================================================================ */
+
+#hudTimeSpeed {
+  min-width: 200px;
+}
+
+.time-display {
+  margin-bottom: 12px;
+}
+
+.time-label {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.time-value {
+  font-size: var(--font-sizeMedium);
+  color: var(--ui-textPrimary);
+  font-weight: bold;
+  font-family: var(--font-primary);
+}
+
+.speed-presets {
+  border-top: 1px solid rgba(var(--ui-primary-rgb), 0.3);
+  padding-top: 8px;
+}
+
+.speed-label {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.speed-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.speed-btn {
+  background: rgba(var(--ui-primary-rgb), 0.1);
+  border: 1px solid rgba(var(--ui-primary-rgb), 0.3);
+  color: var(--ui-textPrimary);
+  padding: 6px 8px;
+  font-size: var(--font-sizeSmall);
+  font-family: var(--font-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.speed-btn:hover {
+  background: rgba(var(--ui-primary-rgb), 0.2);
+  border-color: var(--ui-primary);
+}
+
+.speed-btn.active {
+  background: var(--ui-primary);
+  color: var(--ui-bgDark);
+  box-shadow: 0 0 8px rgba(var(--ui-primary-rgb), 0.6);
+}
+
+.speed-indicator {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textPrimary);
+  text-align: center;
+  font-weight: bold;
+}
+
+/* ============================================================================
+   Display Layers Panel
+   ============================================================================ */
+
+#hudLayers {
+  min-width: 200px;
+}
+
+.layers-header {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.layers-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.layer-toggle {
+  width: 40px;
+  height: 40px;
+  background: rgba(var(--ui-primary-rgb), 0.1);
+  border: 1px solid rgba(var(--ui-primary-rgb), 0.3);
+  color: var(--ui-textDim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.layer-toggle:hover {
+  background: rgba(var(--ui-primary-rgb), 0.2);
+  border-color: var(--ui-primary);
+  color: var(--ui-textPrimary);
+}
+
+.layer-toggle.active {
+  background: rgba(var(--ui-primary-rgb), 0.3);
+  border-color: var(--ui-primary);
+  color: var(--ui-textPrimary);
+  box-shadow:
+    inset 0 0 8px rgba(var(--ui-primary-rgb), 0.4),
+    0 0 12px rgba(var(--ui-primary-rgb), 0.3);
+}
+
+.layer-toggle.active .layer-icon {
+  filter: drop-shadow(0 0 4px rgba(var(--ui-primary-rgb), 0.8));
+}
+
+.layer-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ============================================================================
+   Navigation Data Panel
+   ============================================================================ */
+
+#hudNavData {
+  min-width: 220px;
+}
+
+.nav-target {
+  margin-bottom: 12px;
+}
+
+.target-label {
+  font-size: var(--font-sizeSmall);
+  color: var(--ui-textDim);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.target-name {
+  font-size: var(--font-sizeMedium);
+  color: var(--ui-textPrimary);
+  font-weight: bold;
+  text-shadow: 0 0 8px rgba(var(--ui-primary-rgb), 0.5);
+}
+
+.nav-data-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid rgba(var(--ui-primary-rgb), 0.3);
+  padding-top: 12px;
+}
+
+.nav-data-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.dv-bar-container {
+  display: inline-block;
+  width: 60px;
+  height: 4px;
+  background: rgba(var(--ui-primary-rgb), 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+.dv-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--ui-success);
+  border-radius: 2px;
+  transition: width 0.3s ease, background 0.3s ease;
+  box-shadow: 0 0 4px currentColor;
+}
