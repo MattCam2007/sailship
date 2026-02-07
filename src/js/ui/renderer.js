@@ -382,7 +382,7 @@ function drawOrbit(body, centerX, centerY, scale) {
     // Target ~20 pixels per segment for smooth appearance, min 64, max 512
     const segments = Math.max(64, Math.min(512, Math.ceil(orbitCircumPixels / 20)));
 
-    ctx.strokeStyle = body.type === 'moon' ? 'rgba(232, 93, 76, 0.15)' : 'rgba(232, 93, 76, 0.3)';
+    ctx.strokeStyle = body.type === 'moon' ? getColor('canvas.orbitMoon') : getColor('canvas.orbitPrimary');
     ctx.lineWidth = body.type === 'moon' ? 0.5 : 1;
     ctx.setLineDash([]);
     
@@ -669,7 +669,7 @@ function drawLabel(text, x, y, color, isPlayer = false) {
     const metrics = ctx.measureText(text);
 
     // Background pill
-    ctx.fillStyle = 'rgba(10, 10, 10, 0.7)';
+    ctx.fillStyle = getColor('canvas.labelBg');
     const padding = 3;
     const pillHeight = 14;
     ctx.fillRect(
@@ -679,8 +679,8 @@ function drawLabel(text, x, y, color, isPlayer = false) {
         pillHeight
     );
 
-    // Text
-    ctx.fillStyle = color;
+    // Text (use provided color or default to theme label color)
+    ctx.fillStyle = color || getColor('canvas.label');
     ctx.fillText(text, x, y);
 }
 
@@ -979,7 +979,7 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
         const alpha = 0.8 - progress * 0.6;  // Fade from 0.8 to 0.2
 
         // Magenta/purple color to distinguish from green Keplerian orbit
-        ctx.strokeStyle = `rgba(200, 100, 255, ${alpha})`;
+        ctx.strokeStyle = getColor('canvas.trajectory', alpha);
 
         const p1 = trajectory[i];
         const p2 = trajectory[i + 1];
@@ -1023,15 +1023,15 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
             startProj.x, startProj.y, 0,
             startProj.x, startProj.y, 6
         );
-        glowGradient.addColorStop(0, `rgba(200, 100, 255, ${0.6 * pulseIntensity})`);
-        glowGradient.addColorStop(1, 'rgba(200, 100, 255, 0)');
+        glowGradient.addColorStop(0, getColor('canvas.trajectoryPoint', 0.6 * pulseIntensity));
+        glowGradient.addColorStop(1, getColor('canvas.trajectoryPoint', 0));
         ctx.fillStyle = glowGradient;
         ctx.beginPath();
         ctx.arc(startProj.x, startProj.y, 6, 0, Math.PI * 2);
         ctx.fill();
 
         // Core marker
-        ctx.fillStyle = 'rgba(200, 100, 255, 0.9)';
+        ctx.fillStyle = getColor('canvas.trajectoryPoint', 0.9);
         ctx.beginPath();
         ctx.arc(startProj.x, startProj.y, 3, 0, Math.PI * 2);
         ctx.fill();
