@@ -657,3 +657,27 @@ export function getApoapsis(elements) {
     return a * (1 + e);
 }
 
+// ============================================================================
+// Date Conversion Utilities
+// ============================================================================
+
+/**
+ * Convert Julian Date to JavaScript Date object
+ *
+ * @param {number} jd - Julian Date
+ * @returns {Date} JavaScript Date object
+ */
+export function julianToDate(jd) {
+    // J2000 = JD 2451545.0 = January 1, 2000, 12:00 UTC
+    // Calculate days from J2000
+    const daysFromJ2000 = jd - J2000;
+
+    // J2000 as JavaScript Date (January 1, 2000, 12:00 UTC)
+    const j2000Ms = Date.UTC(2000, 0, 1, 12, 0, 0);
+
+    // Convert days to milliseconds and add to J2000
+    const ms = j2000Ms + (daysFromJ2000 * 24 * 60 * 60 * 1000);
+
+    return new Date(ms);
+}
+
