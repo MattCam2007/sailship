@@ -6,7 +6,7 @@
 import { VerticalSlider } from './VerticalSlider.js';
 import { RotaryControl } from './RotaryControl.js';
 import { AnimatedValue, animationLoop } from '../../lib/animation.js';
-import { getPlayerShip } from '../../data/ships.js';
+import { getPlayerShip, setSailAngle, setSailPitch, setSailDeployment } from '../../data/ships.js';
 
 export class SailControl {
   constructor() {
@@ -40,37 +40,37 @@ export class SailControl {
       label: 'DEPLOY',
       min: 0,
       max: 100,
-      value: ship.sailDeployment * 100,
+      value: ship.sail.deploymentPercent,
       unit: '%',
       height: 120,
       onChange: (value) => {
-        ship.sailDeployment = value / 100;
+        setSailDeployment(ship, value);
       },
     });
 
-    // Yaw rotary control
+    // Yaw rotary control (convert radians to degrees for display)
     this.yawControl = new RotaryControl({
       container: controlsDiv,
       label: 'YAW',
       min: -90,
       max: 90,
-      value: ship.sailAngle,
+      value: ship.sail.angle * (180 / Math.PI),
       size: 70,
-      onChange: (value) => {
-        ship.sailAngle = value;
+      onChange: (degrees) => {
+        setSailAngle(ship, degrees * (Math.PI / 180));
       },
     });
 
-    // Pitch rotary control
+    // Pitch rotary control (convert radians to degrees for display)
     this.pitchControl = new RotaryControl({
       container: controlsDiv,
       label: 'PITCH',
       min: -90,
       max: 90,
-      value: ship.sailPitch,
+      value: ship.sail.pitchAngle * (180 / Math.PI),
       size: 70,
-      onChange: (value) => {
-        ship.sailPitch = value;
+      onChange: (degrees) => {
+        setSailPitch(ship, degrees * (Math.PI / 180));
       },
     });
 
@@ -117,13 +117,14 @@ export class SailControl {
     const ship = getPlayerShip();
 
     // Calculate thrust direction from yaw/pitch
-    // Simplified: use yaw as rotation angle
-    const targetRotation = ship.sailAngle;
+    // Convert radians to degrees for rotation CSS property
+    const targetRotation = ship.sail.angle * (180 / Math.PI);
     this.thrustArrowRotation.setTarget(targetRotation);
     this.thrustArrowRotation.update();
 
-    // Calculate thrust magnitude
-    const thrust = ship.sailDeployment * Math.cos(ship.sailAngle * Math.PI / 180);
+    // Calculate thrust magnitude (deployment is 0-100, angle is in radians)
+    const deployment = ship.sail.deploymentPercent / 100;
+    const thrust = deployment * Math.cos(ship.sail.angle);
     const targetLength = Math.abs(thrust) * 30; // Scale for visualization
     this.thrustArrowLength.setTarget(targetLength);
     this.thrustArrowLength.update();
@@ -137,8 +138,8 @@ export class SailControl {
     const thrustAccel = 0.5; // Placeholder - get from shipPhysics
     this.thrustValue.textContent = `${thrustAccel.toFixed(2)} mm/s²`;
 
-    // Color based on efficiency
-    const efficiency = Math.abs(Math.cos(ship.sailAngle * Math.PI / 180));
+    // Color based on efficiency (angle is in radians)
+    const efficiency = Math.abs(Math.cos(ship.sail.angle));
     if (efficiency > 0.8) {
       this.thrustValue.className = 'data-value highlight';
     } else if (efficiency > 0.5) {
