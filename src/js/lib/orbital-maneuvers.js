@@ -218,8 +218,11 @@ export function calculateSailThrust(sailState, shipPosition, shipVelocity, dista
         pitchAngle = 0,     // Pitch angle (out-of-plane), default 0 for backward compatibility
         deploymentPercent,
         condition,
-        sailCount = 1       // Number of sails (thrust multiplier), default 1
+        sailCount: rawSailCount = 1  // Number of sails (thrust multiplier), default 1
     } = sailState;
+
+    // Clamp sail count to non-negative (can't have negative sails)
+    const sailCount = Math.max(0, rawSailCount);
 
     // Calculate effective sail area
     const effectiveArea = area * (deploymentPercent / 100) * (condition / 100);
@@ -454,6 +457,14 @@ export function applyThrust(elements, thrust, deltaTime, julianDate) {
     if (!elementsValid) {
         // Elements are degenerate - return original to prevent error propagation
         return { ...elements };
+    }
+
+    // Clamp semi-major axis to minimum 0.01 AU for numerical stability.
+    // Prevents extreme solar pressure and orbital period calculations near the sun.
+    // Also catches hyperbolic orbits (a < 0) from extreme thrust, which would
+    // produce degenerate simulation states.
+    if (newElements.a < 0.01) {
+        newElements.a = 0.01;
     }
 
     // Debug logging for thrust application

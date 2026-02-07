@@ -334,17 +334,13 @@ describe('sailCount edge cases in calculateSailThrust', () => {
         assert.ok(approxEqual(magLarge, mag1 * ratio, 1e-8));
     });
 
-    it('handles negative sailCount (should produce negative thrust)', () => {
+    it('handles negative sailCount (clamped to zero, produces zero thrust)', () => {
         baseSailState.sailCount = -5;
-        const thrustNegative = calculateSailThrust(baseSailState, position, velocity, 1.0, 10000);
+        const thrust = calculateSailThrust(baseSailState, position, velocity, 1.0, 10000);
+        const magnitude = vectorMagnitude(thrust);
 
-        baseSailState.sailCount = 5;
-        const thrustPositive = calculateSailThrust(baseSailState, position, velocity, 1.0, 10000);
-
-        // Should be opposite direction
-        assert.ok(approxEqual(thrustNegative.x, -thrustPositive.x, 1e-10));
-        assert.ok(approxEqual(thrustNegative.y, -thrustPositive.y, 1e-10));
-        assert.ok(approxEqual(thrustNegative.z, -thrustPositive.z, 1e-10));
+        // Negative sail count is clamped to 0, producing zero thrust
+        assert.strictEqual(magnitude, 0);
     });
 
     it('maintains precision with maximum realistic sail count', () => {
