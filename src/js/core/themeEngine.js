@@ -5,6 +5,8 @@
  * Single source of truth for all color and font definitions.
  */
 
+import { ASSET_BASE_URL } from '../config.js';
+
 // Theme format version for compatibility
 const THEME_FORMAT_VERSION = '1.0.0';
 
@@ -431,7 +433,7 @@ async function loadThemeFromStorage(themeName) {
   // Load built-in theme from /themes/
   // Fetch theme index to get filename
   try {
-    const indexResponse = await fetch('/themes/index.json');
+    const indexResponse = await fetch(ASSET_BASE_URL + 'themes/index.json');
     if (!indexResponse.ok) {
       throw new Error(`Failed to fetch theme index: ${indexResponse.status}`);
     }
@@ -442,7 +444,7 @@ async function loadThemeFromStorage(themeName) {
       throw new Error(`Theme not found: ${themeName}`);
     }
 
-    const themeResponse = await fetch(`/themes/${themeEntry.file}`);
+    const themeResponse = await fetch(ASSET_BASE_URL + `themes/${themeEntry.file}`);
     if (!themeResponse.ok) {
       throw new Error(`Failed to fetch theme file: ${themeEntry.file}`);
     }
@@ -464,7 +466,7 @@ export async function getAvailableThemes() {
 
   // Load built-in themes from index
   try {
-    const indexResponse = await fetch('/themes/index.json');
+    const indexResponse = await fetch(ASSET_BASE_URL + 'themes/index.json');
     if (indexResponse.ok) {
       const index = await indexResponse.json();
       index.themes.forEach(entry => {
@@ -652,7 +654,7 @@ export async function initThemeEngine() {
   try {
     // Load default theme as fallback
     try {
-      const response = await fetch('/themes/default.json');
+      const response = await fetch(ASSET_BASE_URL + 'themes/default.json');
       if (response.ok) {
         defaultTheme = await response.json();
       }
