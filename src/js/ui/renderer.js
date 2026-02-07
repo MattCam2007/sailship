@@ -971,10 +971,16 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
     ctx.lineWidth = 2;
     ctx.setLineDash([]);  // Solid line (not dashed like Keplerian)
 
-    // Draw in segments with decreasing alpha for time direction indication
+    // Draw in segments with decreasing alpha for time direction indication.
+    // For high-resolution trajectories (>2000 points), skip points for rendering
+    // while keeping the full data for intersection detection accuracy.
     const segmentCount = trajectory.length - 1;
+    const MAX_VISUAL_SEGMENTS = 1500;
+    const drawSkip = segmentCount > MAX_VISUAL_SEGMENTS
+        ? Math.ceil(segmentCount / MAX_VISUAL_SEGMENTS)
+        : 1;
 
-    for (let i = 0; i < segmentCount; i++) {
+    for (let i = 0; i < segmentCount; i += drawSkip) {
         const progress = i / segmentCount;
         const alpha = 0.8 - progress * 0.6;  // Fade from 0.8 to 0.2
 
@@ -982,7 +988,8 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
         ctx.strokeStyle = getColor('canvas.trajectory', alpha);
 
         const p1 = trajectory[i];
-        const p2 = trajectory[i + 1];
+        const nextIdx = Math.min(i + drawSkip, segmentCount);
+        const p2 = trajectory[nextIdx];
 
         // Trajectory positions are already heliocentric (no offset needed)
         const x1 = p1.x;

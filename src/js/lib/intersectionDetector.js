@@ -24,7 +24,7 @@
  * - Shows where planet WILL BE when you cross its orbit, even if far away
  * - Real-time updates as you adjust sail angles/deployment
  * - Moon coordinate transformation (parent-relative → heliocentric)
- * - ZOOM-ADAPTIVE: Reduces precision at low zoom for performance
+ * - Full precision at all zoom levels for accurate navigation
  * - Stable detection: Consistent results prevent flickering
  *
  * USAGE:
@@ -34,8 +34,6 @@
 
 import { getPosition } from './orbital.js';
 import { SOI_RADII } from '../config.js';
-import { camera } from '../core/camera.js';
-import { isCourseRecentlyApplied } from '../core/gameState.js';
 
 // ============================================================================
 // CROSSING REFINEMENT CONFIGURATION
@@ -45,9 +43,7 @@ import { isCourseRecentlyApplied } from '../core/gameState.js';
  * Configuration for crossing point refinement.
  * Sub-segment bisection improves accuracy of crossing time detection.
  *
- * ZOOM-ADAPTIVE: These values are scaled based on camera zoom level.
- * At low zoom (system view): Less precision needed, faster computation.
- * At high zoom (fine-tuning): Full precision for accurate encounter planning.
+ * Always uses maximum precision for accurate encounter planning.
  */
 const REFINEMENT_CONFIG = {
     /**
@@ -87,26 +83,15 @@ const REFINEMENT_CONFIG = {
 };
 
 /**
- * Get the number of bisection iterations based on current zoom level.
- * Higher zoom = more precision needed = more iterations.
+ * Get the number of bisection iterations.
+ * Always returns the maximum precision value for accurate crossing detection.
  *
- * FIX #5: Force high precision after course application.
- * When user applies a computed course and then zooms in to verify the intercept,
- * we want stable ghost planet positions. Without this fix, zooming in would
- * change precision from low (4 iterations, ~27min) to high (10 iterations, ~25sec),
- * causing ghost positions to "jump" as the more precise crossing time is calculated.
+ * Previously zoom-adaptive (fewer iterations at low zoom), but this caused
+ * ghost position "jumping" when zooming and reduced accuracy for navigation.
+ * The performance cost of max iterations is negligible (~12 iterations of
+ * simple arithmetic per crossing).
  */
 function getBisectionIterations() {
-    // Fix #5: Force high precision after course application
-    // This prevents ghost position "jumping" when user zooms in to verify intercept
-    if (isCourseRecentlyApplied()) {
-        return REFINEMENT_CONFIG.bisectionIterationsHigh;
-    }
-
-    const zoom = camera?.zoom ?? 1;
-    if (zoom < REFINEMENT_CONFIG.zoomThreshold) {
-        return REFINEMENT_CONFIG.bisectionIterationsLow;
-    }
     return REFINEMENT_CONFIG.bisectionIterationsHigh;
 }
 
@@ -648,10 +633,20 @@ function refineCrossingWithActualRadius(nominalCrossing, bodyElements, trajector
     }
 
     // Search nearby trajectory segments for a crossing at the actual radius.
-    // Look within a window around the nominal crossing index.
-    // The window size is proportional to how far apart the radii are,
-    // scaled by typical trajectory steps per AU of radial travel.
-    const searchWindow = Math.max(20, Math.ceil(radiusDifference * 200));
+    // The window must be large enough to cover the radial distance between
+    // semi-major axis and actual radius. For Mars (e=0.094), this can be
+    // up to 0.142 AU, which at typical solar sail speeds (~0.3-0.5 AU/year)
+    // takes 100+ days to traverse.
+    //
+    // Calculate window based on actual trajectory step density:
+    // stepsPerDay ≈ trajectory.length / totalDurationDays
+    // traverseTime ≈ radiusDifference / radialVelocity (conservative 0.2 AU/year)
+    const totalDuration = trajectory.length > 1
+        ? trajectory[trajectory.length - 1].time - trajectory[0].time
+        : 1;
+    const stepsPerDay = trajectory.length / Math.max(totalDuration, 1);
+    const traverseDays = radiusDifference / 0.2 * 365.25;  // Conservative: 0.2 AU/year radial speed
+    const searchWindow = Math.max(50, Math.ceil(traverseDays * stepsPerDay * 1.5));
     const startIdx = Math.max(0, nominalIdx - searchWindow);
     const endIdx = Math.min(trajectory.length - 2, nominalIdx + searchWindow);
 
@@ -727,23 +722,13 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
     const intersections = [];
 
     // ========================================================================
-    // ZOOM-ADAPTIVE OPTIMIZATION
+    // FULL RESOLUTION - NO SEGMENT SKIPPING
     // ========================================================================
-    // At low zoom (viewing entire system), we don't need to check every segment.
-    // Skip segments to reduce computation while still catching all crossings.
-    const zoom = camera?.zoom ?? 1;
-    const isLowZoom = zoom < REFINEMENT_CONFIG.zoomThreshold;
-
-    // Segment skip factor: check every Nth segment at low zoom
-    // At zoom < 0.5: check every 4th segment
-    // At zoom 0.5-2: check every 2nd segment
-    // At zoom >= 2: check every segment
-    let segmentSkip = 1;
-    if (zoom < 0.5) {
-        segmentSkip = 4;
-    } else if (zoom < 2) {
-        segmentSkip = 2;
-    }
+    // Always check every segment for crossing detection. Previously used
+    // zoom-adaptive skipping (every 2nd-4th segment at low zoom) but this
+    // reduced accuracy and could miss crossings entirely for long trajectories.
+    // The performance cost of checking all segments is negligible (<5ms).
+    const segmentSkip = 1;
 
     // ========================================================================
     // PRE-FILTER: Calculate trajectory radial range
@@ -824,8 +809,8 @@ export function detectIntersections(trajectory, celestialBodies, currentTime, so
                 );
 
                 // Round time to avoid floating-point duplicates
-                // Use coarser rounding at low zoom (1 day) vs high zoom (0.001 day)
-                const timeRoundFactor = isLowZoom ? 1 : 1000;
+                // Always use high precision (0.001 day ≈ 86 seconds)
+                const timeRoundFactor = 1000;
                 const timeKey = Math.round(crossing.time * timeRoundFactor);
                 if (crossingTimes.has(timeKey)) {
                     continue;  // Skip duplicate crossing
