@@ -1,0 +1,89 @@
+{
+  "name": "Solar Wind",
+  "version": "1.0.0",
+  "author": "MattCam2007",
+  "description": "Warm yellows and oranges for solar-centric operations. Ride the solar wind close to the sun. Warm, bright, optimistic. The colors of inner system traders who dance with sunlight.",
+  "tags": ["warm", "yellow", "solar", "inner-system"],
+  "colors": {
+    "ui": {
+      "primary": "#ffaa00",
+      "primaryDim": "#cc8800",
+      "primaryBright": "#ffcc33",
+      "secondary": "#ff8c00",
+      "success": "#d4ff00",
+      "warning": "#ff8c00",
+      "danger": "#ff4400",
+      "bgDark": "#1a1410",
+      "bgDarker": "#0f0c08",
+      "bgPanel": "#221c16",
+      "bgPanelRaised": "#2a2418",
+      "textPrimary": "#ffcc33",
+      "textSecondary": "#ffe4b3",
+      "textDim": "#996600",
+      "textBright": "#ffee66",
+      "borderPrimary": "#ffaa00",
+      "borderSecondary": "#ff8c00",
+      "cyan": "#ffcc33",
+      "cyanDim": "#ffaa00",
+      "purple": "#ff9944",
+      "orange": "#ff8c00",
+      "green": "#d4ff00",
+      "blue": "#ffaa00"
+    },
+    "canvas": {
+      "grid": "#ffaa00",
+      "gridAlpha": 0.08,
+      "orbitPrimary": "#ffaa00",
+      "orbitPrimaryAlpha": 0.3,
+      "orbitSecondary": "#cc8800",
+      "orbitSecondaryAlpha": 0.18,
+      "orbitMoon": "#ff9944",
+      "orbitMoonAlpha": 0.2,
+      "shipOrbitElliptic": "#ffcc33",
+      "shipOrbitEllipticAlpha": 0.6,
+      "shipOrbitHyperbolic": "#ffee66",
+      "shipOrbitHyperbolicAlpha": 0.75,
+      "shipOrbitSOI": "#ff8c00",
+      "shipOrbitSOIAlpha": 0.65,
+      "trajectory": "#ffee66",
+      "trajectoryAlpha": 0.85,
+      "trajectoryPoint": "#ffcc33",
+      "label": "#ffcc33",
+      "labelAlpha": 0.85,
+      "labelBg": "#1a1410",
+      "labelBgAlpha": 0.75,
+      "intersectionMarker": "#ffaa00",
+      "intersectionMarkerAlpha": 0.35,
+      "intersectionLabel": "#ff8c00",
+      "soiBoundary": "#ffcc33",
+      "soiBoundaryAlpha": 0.25,
+      "shipIcon": "#ffcc33"
+    },
+    "bodies": {
+      "SOL": "#ffffee",
+      "EARTH": "#4d9ee8",
+      "MARS": "#e07d4c",
+      "JUPITER": "#d4a574",
+      "SATURN": "#e8c896",
+      "NEPTUNE": "#5680c0",
+      "URANUS": "#80b8d0"
+    },
+    "ships": {
+      "player": "#ffcc33"
+    }
+  },
+  "fonts": {
+    "primary": "'Share Tech Mono', monospace",
+    "header": "'Orbitron', sans-serif",
+    "sizeBase": "11px",
+    "sizeSmall": "10px",
+    "sizeMedium": "12px",
+    "sizeHeader": "14px"
+  },
+  "effects": {
+    "glowSm": "0 0 6px",
+    "glowMd": "0 0 12px",
+    "glowLg": "0 0 24px",
+    "glowXl": "0 0 48px"
+  }
+}

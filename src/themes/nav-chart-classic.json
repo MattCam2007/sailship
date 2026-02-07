@@ -1,0 +1,89 @@
+{
+  "name": "Nav Chart Classic",
+  "version": "1.0.0",
+  "author": "MattCam2007",
+  "description": "Vintage navigation chart aesthetic. Aged parchment, sepia tones, and old paper nautical charts. For traditionalists who navigate by the old ways.",
+  "tags": ["warm", "vintage", "classic", "sepia"],
+  "colors": {
+    "ui": {
+      "primary": "#d2b48c",
+      "primaryDim": "#a68a6a",
+      "primaryBright": "#e8d4b4",
+      "secondary": "#8b4513",
+      "success": "#6b7c3f",
+      "warning": "#c87137",
+      "danger": "#8b3a3a",
+      "bgDark": "#1a1612",
+      "bgDarker": "#0f0d0a",
+      "bgPanel": "#2a2520",
+      "bgPanelRaised": "#3a3228",
+      "textPrimary": "#d2b48c",
+      "textSecondary": "#e8d4b4",
+      "textDim": "#8b7355",
+      "textBright": "#f0e0c8",
+      "borderPrimary": "#8b4513",
+      "borderSecondary": "#654321",
+      "cyan": "#8b7355",
+      "cyanDim": "#6b5a45",
+      "purple": "#9b7a5f",
+      "orange": "#c87137",
+      "green": "#6b7c3f",
+      "blue": "#7a6f5f"
+    },
+    "canvas": {
+      "grid": "#8b4513",
+      "gridAlpha": 0.15,
+      "orbitPrimary": "#a68a6a",
+      "orbitPrimaryAlpha": 0.4,
+      "orbitSecondary": "#8b7355",
+      "orbitSecondaryAlpha": 0.25,
+      "orbitMoon": "#9b7a5f",
+      "orbitMoonAlpha": 0.3,
+      "shipOrbitElliptic": "#d2b48c",
+      "shipOrbitEllipticAlpha": 0.65,
+      "shipOrbitHyperbolic": "#e8d4b4",
+      "shipOrbitHyperbolicAlpha": 0.75,
+      "shipOrbitSOI": "#c8a882",
+      "shipOrbitSOIAlpha": 0.7,
+      "trajectory": "#8b4513",
+      "trajectoryAlpha": 0.85,
+      "trajectoryPoint": "#654321",
+      "label": "#654321",
+      "labelAlpha": 0.9,
+      "labelBg": "#2a2520",
+      "labelBgAlpha": 0.8,
+      "intersectionMarker": "#8b7355",
+      "intersectionMarkerAlpha": 0.4,
+      "intersectionLabel": "#8b4513",
+      "soiBoundary": "#a68a6a",
+      "soiBoundaryAlpha": 0.3,
+      "shipIcon": "#d2b48c"
+    },
+    "bodies": {
+      "SOL": "#daa520",
+      "EARTH": "#6b8e9f",
+      "MARS": "#b5651d",
+      "JUPITER": "#c8a882",
+      "SATURN": "#d4b896",
+      "NEPTUNE": "#7a8c9f",
+      "URANUS": "#8fa8b0"
+    },
+    "ships": {
+      "player": "#d2b48c"
+    }
+  },
+  "fonts": {
+    "primary": "'Share Tech Mono', monospace",
+    "header": "'Orbitron', sans-serif",
+    "sizeBase": "11px",
+    "sizeSmall": "10px",
+    "sizeMedium": "12px",
+    "sizeHeader": "14px"
+  },
+  "effects": {
+    "glowSm": "0 0 6px",
+    "glowMd": "0 0 12px",
+    "glowLg": "0 0 24px",
+    "glowXl": "0 0 48px"
+  }
+}

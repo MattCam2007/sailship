@@ -1,0 +1,81 @@
+{
+  "name": "Wing Commander",
+  "version": "1.0.0",
+  "author": "MattCam2007",
+  "description": "Military HUD inspired by Wing Commander - carrier-based fighter operations with tactical orange/amber and green displays. High-contrast readouts for combat pilots who need clear information fast.",
+  "tags": ["dark", "orange", "military", "tactical"],
+  "colors": {
+    "ui": {
+      "primary": "#ff8c00",
+      "primaryDim": "#b36300",
+      "primaryBright": "#ffaa33",
+      "secondary": "#00d900",
+      "success": "#00ff00",
+      "warning": "#ffaa00",
+      "danger": "#ff0000",
+      "bgDark": "#0a0a0a",
+      "bgDarker": "#000000",
+      "bgPanel": "#0d0d0d",
+      "bgPanelRaised": "#151515",
+      "textPrimary": "#ff8c00",
+      "textSecondary": "#00d900",
+      "textDim": "#b36300",
+      "textBright": "#ffaa33",
+      "borderPrimary": "#ff8c00",
+      "borderSecondary": "#00d900",
+      "cyan": "#00d9ff",
+      "cyanDim": "#0088aa",
+      "purple": "#ff8c00",
+      "orange": "#ff8c00",
+      "green": "#00ff00",
+      "blue": "#0088ff"
+    },
+    "canvas": {
+      "grid": "#ff8c00",
+      "gridAlpha": 0.15,
+      "orbitPrimary": "#ff8c00",
+      "orbitPrimaryAlpha": 0.4,
+      "orbitSecondary": "#ff8c00",
+      "orbitSecondaryAlpha": 0.2,
+      "orbitMoon": "#ff8c00",
+      "orbitMoonAlpha": 0.2,
+      "shipOrbitElliptic": "#00ff00",
+      "shipOrbitEllipticAlpha": 0.7,
+      "shipOrbitHyperbolic": "#00d900",
+      "shipOrbitHyperbolicAlpha": 0.8,
+      "shipOrbitSOI": "#00d900",
+      "shipOrbitSOIAlpha": 0.6,
+      "trajectory": "#00ff00",
+      "trajectoryAlpha": 0.9,
+      "trajectoryPoint": "#00ff00",
+      "label": "#ff8c00",
+      "labelAlpha": 0.9,
+      "labelBg": "#000000",
+      "labelBgAlpha": 0.8,
+      "intersectionMarker": "#ff8c00",
+      "intersectionMarkerAlpha": 0.4,
+      "intersectionLabel": "#ff8c00",
+      "soiBoundary": "#00d900",
+      "soiBoundaryAlpha": 0.3,
+      "shipIcon": "#00ff00"
+    },
+    "bodies": {},
+    "ships": {
+      "player": "#00ff00"
+    }
+  },
+  "fonts": {
+    "primary": "'Share Tech Mono', monospace",
+    "header": "'Orbitron', sans-serif",
+    "sizeBase": "11px",
+    "sizeSmall": "10px",
+    "sizeMedium": "12px",
+    "sizeHeader": "14px"
+  },
+  "effects": {
+    "glowSm": "0 0 5px",
+    "glowMd": "0 0 10px",
+    "glowLg": "0 0 20px",
+    "glowXl": "0 0 40px"
+  }
+}

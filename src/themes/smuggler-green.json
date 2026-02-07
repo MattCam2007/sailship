@@ -1,0 +1,89 @@
+{
+  "name": "Smuggler Green",
+  "version": "1.0.0",
+  "author": "MattCam2007",
+  "description": "Low-light green tactical. Old submarine/military night vision phosphor displays. The aesthetic of smugglers running quiet with minimal power signatures, navigating by instruments in the dark.",
+  "tags": ["dark", "green", "tactical", "monochrome", "night-vision", "military"],
+  "colors": {
+    "ui": {
+      "primary": "#39ff14",
+      "primaryDim": "#1a6600",
+      "primaryBright": "#66ff44",
+      "secondary": "#00cc00",
+      "success": "#39ff14",
+      "warning": "#88ff00",
+      "danger": "#cc3333",
+      "bgDark": "#0a140a",
+      "bgDarker": "#050a05",
+      "bgPanel": "#0f1f0f",
+      "bgPanelRaised": "#152815",
+      "textPrimary": "#39ff14",
+      "textSecondary": "#00ff00",
+      "textDim": "#336633",
+      "textBright": "#66ff44",
+      "borderPrimary": "#1a6600",
+      "borderSecondary": "#00cc00",
+      "cyan": "#00ff88",
+      "cyanDim": "#00cc66",
+      "purple": "#66ff88",
+      "orange": "#88ff00",
+      "green": "#39ff14",
+      "blue": "#00cc88"
+    },
+    "canvas": {
+      "grid": "#1a6600",
+      "gridAlpha": 0.15,
+      "orbitPrimary": "#00cc00",
+      "orbitPrimaryAlpha": 0.3,
+      "orbitSecondary": "#1a6600",
+      "orbitSecondaryAlpha": 0.2,
+      "orbitMoon": "#336633",
+      "orbitMoonAlpha": 0.25,
+      "shipOrbitElliptic": "#39ff14",
+      "shipOrbitEllipticAlpha": 0.65,
+      "shipOrbitHyperbolic": "#66ff44",
+      "shipOrbitHyperbolicAlpha": 0.75,
+      "shipOrbitSOI": "#00ff00",
+      "shipOrbitSOIAlpha": 0.6,
+      "trajectory": "#39ff14",
+      "trajectoryAlpha": 0.9,
+      "trajectoryPoint": "#66ff44",
+      "label": "#39ff14",
+      "labelAlpha": 0.85,
+      "labelBg": "#0a140a",
+      "labelBgAlpha": 0.8,
+      "intersectionMarker": "#00cc00",
+      "intersectionMarkerAlpha": 0.4,
+      "intersectionLabel": "#39ff14",
+      "soiBoundary": "#00ff00",
+      "soiBoundaryAlpha": 0.3,
+      "shipIcon": "#39ff14"
+    },
+    "bodies": {
+      "SOL": "#ffff66",
+      "EARTH": "#00ff88",
+      "MARS": "#ff8844",
+      "JUPITER": "#66ff66",
+      "SATURN": "#88ff88",
+      "NEPTUNE": "#00cc88",
+      "URANUS": "#00ffaa"
+    },
+    "ships": {
+      "player": "#39ff14"
+    }
+  },
+  "fonts": {
+    "primary": "'Share Tech Mono', monospace",
+    "header": "'Orbitron', sans-serif",
+    "sizeBase": "11px",
+    "sizeSmall": "10px",
+    "sizeMedium": "12px",
+    "sizeHeader": "14px"
+  },
+  "effects": {
+    "glowSm": "0 0 8px",
+    "glowMd": "0 0 16px",
+    "glowLg": "0 0 32px",
+    "glowXl": "0 0 64px"
+  }
+}
