@@ -246,6 +246,33 @@ while **Orbital Paths** shows the instantaneous Keplerian orbit (where ship woul
 - Performance: ~5,000 stars rendered at 60 FPS with view frustum culling
 - Date range: Stars support 500-3500 AD (IAU 1976 precession)
 
+## Glass Cockpit HUD
+
+**NEW**: Glassmorphic HUD replaces old panel-based UI.
+
+**Four-Zone Layout:**
+- Top-left: Time/Speed Control
+- Top-right: Sail Control (premium vertical/rotary sliders)
+- Bottom-left: Display Layers (icon grid)
+- Bottom-right: Navigation Data
+
+**Feature Flag:** Add `hud-enabled` class to `<body>` to enable HUD.
+
+**Components:** `src/js/ui/hud/`
+- `SailControl.js` - Premium sail trimming interface
+- `TimeSpeedControl.js` - Date and speed presets
+- `LayersPanel.js` - Display layer toggles
+- `NavDataPanel.js` - Target telemetry
+- `VerticalSlider.js` - Reusable vertical slider
+- `RotaryControl.js` - Reusable rotary dial
+- `Tooltip.js` - Contextual help system
+
+**Styling:** `src/css/hud.css` - Glassmorphic panels, scan lines, animations
+
+**State:** `src/js/core/hudState.js` - UI-specific state, layer overrides
+
+**Animation:** `src/js/lib/animation.js` - Smooth value transitions, easing
+
 ## UI Components
 
 ### Expandable Panels
