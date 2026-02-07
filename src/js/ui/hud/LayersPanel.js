@@ -30,10 +30,28 @@ export class LayersPanel {
   }
 
   createPanel() {
+    const isCollapsed = localStorage.getItem('hud-layers-collapsed') === 'true';
+
     this.container.innerHTML = `
-      <div class="layers-header">LAYERS</div>
-      <div class="layers-grid" id="layersGrid"></div>
+      <div class="hud-panel-header">
+        <span class="hud-panel-title">LAYERS</span>
+        <button class="hud-panel-collapse-btn" title="Collapse/Expand">▼</button>
+      </div>
+      <div class="hud-panel-content">
+        <div class="layers-grid" id="layersGrid"></div>
+      </div>
     `;
+
+    if (isCollapsed) {
+      this.container.classList.add('collapsed');
+    }
+
+    // Add collapse handler
+    const header = this.container.querySelector('.hud-panel-header');
+    header.addEventListener('click', () => {
+      this.container.classList.toggle('collapsed');
+      localStorage.setItem('hud-layers-collapsed', this.container.classList.contains('collapsed'));
+    });
 
     this.grid = this.container.querySelector('#layersGrid');
 

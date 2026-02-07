@@ -23,31 +23,50 @@ export class NavDataPanel {
   }
 
   createPanel() {
+    const isCollapsed = localStorage.getItem('hud-nav-data-collapsed') === 'true';
+
     this.container.innerHTML = `
-      <div class="nav-target">
-        <div class="target-label">TARGET</div>
-        <div class="target-name" id="targetName">NONE</div>
+      <div class="hud-panel-header">
+        <span class="hud-panel-title">NAVIGATION</span>
+        <button class="hud-panel-collapse-btn" title="Collapse/Expand">▼</button>
       </div>
-      <div class="nav-data-grid">
-        <div class="nav-data-row">
-          <span class="data-label">DISTANCE</span>
-          <span class="data-value" id="distanceValue">-- AU</span>
+      <div class="hud-panel-content">
+        <div class="nav-target">
+          <div class="target-label">TARGET</div>
+          <div class="target-name" id="targetName">NONE</div>
         </div>
-        <div class="nav-data-row">
-          <span class="data-label">INTERCEPT</span>
-          <span class="data-value" id="interceptValue">--</span>
-        </div>
-        <div class="nav-data-row">
-          <span class="data-label">DELTA-V</span>
-          <span class="data-value" id="deltaVValue">
-            <span class="dv-bar-container">
-              <span class="dv-bar-fill" id="dvBarFill" style="width: 100%"></span>
+        <div class="nav-data-grid">
+          <div class="nav-data-row">
+            <span class="data-label">DISTANCE</span>
+            <span class="data-value" id="distanceValue">-- AU</span>
+          </div>
+          <div class="nav-data-row">
+            <span class="data-label">INTERCEPT</span>
+            <span class="data-value" id="interceptValue">--</span>
+          </div>
+          <div class="nav-data-row">
+            <span class="data-label">DELTA-V</span>
+            <span class="data-value" id="deltaVValue">
+              <span class="dv-bar-container">
+                <span class="dv-bar-fill" id="dvBarFill" style="width: 100%"></span>
+              </span>
+              5.0 km/s
             </span>
-            5.0 km/s
-          </span>
+          </div>
         </div>
       </div>
     `;
+
+    if (isCollapsed) {
+      this.container.classList.add('collapsed');
+    }
+
+    // Add collapse handler
+    const header = this.container.querySelector('.hud-panel-header');
+    header.addEventListener('click', () => {
+      this.container.classList.toggle('collapsed');
+      localStorage.setItem('hud-nav-data-collapsed', this.container.classList.contains('collapsed'));
+    });
 
     this.targetName = this.container.querySelector('#targetName');
     this.distanceValue = this.container.querySelector('#distanceValue');

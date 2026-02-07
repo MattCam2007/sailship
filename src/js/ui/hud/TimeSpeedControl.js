@@ -19,24 +19,44 @@ export class TimeSpeedControl {
   }
 
   createPanel() {
+    // Check localStorage for collapsed state
+    const isCollapsed = localStorage.getItem('hud-time-speed-collapsed') === 'true';
+
     this.container.innerHTML = `
-      <div class="time-display">
-        <div class="time-label">DATE</div>
-        <div class="time-value" id="hudDateValue">2020-01-01</div>
+      <div class="hud-panel-header">
+        <span class="hud-panel-title">TIME/SPEED</span>
+        <button class="hud-panel-collapse-btn" title="Collapse/Expand">▼</button>
       </div>
-      <div class="speed-presets">
-        <div class="speed-label">SPEED</div>
-        <div class="speed-grid" id="speedGrid">
-          <button class="speed-btn" data-speed="pause">⏸</button>
-          <button class="speed-btn active" data-speed="1x">1x</button>
-          <button class="speed-btn" data-speed="100x">100x</button>
-          <button class="speed-btn" data-speed="10000x">10K</button>
-          <button class="speed-btn" data-speed="100000x">100K</button>
-          <button class="speed-btn" data-speed="1000000x">1M</button>
+      <div class="hud-panel-content">
+        <div class="time-display">
+          <div class="time-label">DATE</div>
+          <div class="time-value" id="hudDateValue">2020-01-01</div>
         </div>
-        <div class="speed-indicator" id="speedIndicator">1x</div>
+        <div class="speed-presets">
+          <div class="speed-label">SPEED</div>
+          <div class="speed-grid" id="speedGrid">
+            <button class="speed-btn" data-speed="pause">⏸</button>
+            <button class="speed-btn active" data-speed="1x">1x</button>
+            <button class="speed-btn" data-speed="100x">100x</button>
+            <button class="speed-btn" data-speed="10000x">10K</button>
+            <button class="speed-btn" data-speed="100000x">100K</button>
+            <button class="speed-btn" data-speed="1000000x">1M</button>
+          </div>
+          <div class="speed-indicator" id="speedIndicator">1x</div>
+        </div>
       </div>
     `;
+
+    if (isCollapsed) {
+      this.container.classList.add('collapsed');
+    }
+
+    // Add collapse/expand handler
+    const header = this.container.querySelector('.hud-panel-header');
+    header.addEventListener('click', () => {
+      this.container.classList.toggle('collapsed');
+      localStorage.setItem('hud-time-speed-collapsed', this.container.classList.contains('collapsed'));
+    });
 
     this.dateValue = this.container.querySelector('#hudDateValue');
     this.speedIndicator = this.container.querySelector('#speedIndicator');

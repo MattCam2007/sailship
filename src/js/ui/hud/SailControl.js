@@ -24,13 +24,40 @@ export class SailControl {
   }
 
   createControls() {
+    // Check localStorage for collapsed state
+    const isCollapsed = localStorage.getItem('hud-sail-control-collapsed') === 'true';
+
     // Clear container
     this.container.innerHTML = '';
+
+    // Add header
+    const header = document.createElement('div');
+    header.className = 'hud-panel-header';
+    header.innerHTML = `
+      <span class="hud-panel-title">SAIL CONTROL</span>
+      <button class="hud-panel-collapse-btn" title="Collapse/Expand">▼</button>
+    `;
+    this.container.appendChild(header);
+
+    // Add collapse handler
+    header.addEventListener('click', () => {
+      this.container.classList.toggle('collapsed');
+      localStorage.setItem('hud-sail-control-collapsed', this.container.classList.contains('collapsed'));
+    });
+
+    // Create content wrapper
+    const content = document.createElement('div');
+    content.className = 'hud-panel-content';
+    this.container.appendChild(content);
+
+    if (isCollapsed) {
+      this.container.classList.add('collapsed');
+    }
 
     // Create controls container
     const controlsDiv = document.createElement('div');
     controlsDiv.className = 'sail-controls-grid';
-    this.container.appendChild(controlsDiv);
+    content.appendChild(controlsDiv);
 
     const ship = getPlayerShip();
 
@@ -90,7 +117,7 @@ export class SailControl {
         <span class="data-value highlight" id="thrustValue">0.00 mm/s²</span>
       </div>
     `;
-    this.container.appendChild(thrustViz);
+    content.appendChild(thrustViz);
 
     this.thrustArrow = thrustViz.querySelector('.thrust-arrow');
     this.thrustValue = thrustViz.querySelector('#thrustValue');
