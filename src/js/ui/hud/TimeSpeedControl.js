@@ -3,7 +3,7 @@
  * Compact time display and speed presets - top-left position
  */
 
-import { julianDate, timeScale, speedPresets, setTimeScale } from '../../core/gameState.js';
+import { julianDate, speedPresets, setSpeed } from '../../core/gameState.js';
 import { julianToDate } from '../../lib/orbital.js';
 
 export class TimeSpeedControl {
@@ -48,14 +48,8 @@ export class TimeSpeedControl {
       btn.addEventListener('click', () => {
         const speedKey = btn.dataset.speed;
 
-        if (speedKey === 'pause') {
-          setTimeScale(0);
-        } else {
-          const scale = speedPresets[speedKey];
-          if (scale !== undefined) {
-            setTimeScale(scale);
-          }
-        }
+        // Use setSpeed which accepts preset names like 'pause', '1x', '100x', etc.
+        setSpeed(speedKey);
 
         this.updateSpeedIndicator(speedKey);
       });
