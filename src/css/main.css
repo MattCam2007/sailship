@@ -7,30 +7,41 @@
 }
 
 :root {
-    /* Primary Colors */
-    --coral: #e85d4c;
-    --coral-dim: #a83d30;
-    --coral-bright: #ff6f5e;
-    --orange: #e8944c;
-    --green: #4ce88d;
-    --blue: #4c9ee8;
+    /* Theme variables injected by themeEngine.js */
+    /* Default values here are fallbacks only */
 
-    /* Background Colors */
+    /* UI Colors (from theme.colors.ui) */
+    --primary: #e85d4c;
+    --primary-dim: #a83d30;
+    --primary-bright: #ff6f5e;
+    --primary-rgb: 232, 93, 76;
+    --secondary: #4c9ee8;
+    --success: #4ce88d;
+    --warning: #e8944c;
+    --danger: #e84c4c;
     --bg-dark: #0a0a0a;
     --bg-darker: #050505;
     --bg-panel: #111111;
     --bg-panel-raised: #1a1a1a;
-
-    /* Utility Colors */
-    --grid-line: rgba(232, 93, 76, 0.1);
-    --text-dim: rgba(232, 93, 76, 0.6);
-
-    /* New Sci-Fi Colors */
+    --text-primary: #e85d4c;
+    --text-secondary: #ffffff;
+    --text-dim: #a83d30;
+    --text-bright: #ff6f5e;
+    --border-primary: #e85d4c;
+    --border-secondary: #4c9ee8;
     --cyan: #00d9ff;
     --cyan-dim: #0088aa;
     --purple: #b53dff;
+    --orange: #e8944c;
+    --green: #4ce88d;
+    --blue: #4c9ee8;
 
-    /* Glow Intensities */
+    /* Legacy aliases for backward compatibility */
+    --coral: var(--primary);
+    --coral-dim: var(--primary-dim);
+    --coral-bright: var(--primary-bright);
+
+    /* Glow effects (from theme.effects) */
     --glow-sm: 0 0 5px;
     --glow-md: 0 0 10px;
     --glow-lg: 0 0 20px;
@@ -82,8 +93,8 @@ body::after {
         0deg,
         transparent 0px,
         transparent 2px,
-        rgba(232, 93, 76, 0.02) 2px,
-        rgba(232, 93, 76, 0.02) 4px
+        rgba(var(--primary-rgb), 0.02) 2px,
+        rgba(var(--primary-rgb), 0.02) 4px
     );
     pointer-events: none;
     z-index: 9999;

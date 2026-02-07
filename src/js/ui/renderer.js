@@ -20,6 +20,7 @@ import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONF
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
 import { hasTexture, renderPlanetTexture, clearPlanetTextureCache, initPlanetTextures } from '../lib/planetTextures.js';
+import { getColor, onThemeChange } from '../core/themeEngine.js';
 
 let canvas, ctx;
 
@@ -164,6 +165,13 @@ export function initRenderer(canvasElement) {
 
     canvas.addEventListener('webglcontextrestored', () => {
         console.log('[RENDERER] WebGL context restored');
+    });
+
+    // Subscribe to theme changes - clear gradient cache when theme changes
+    onThemeChange(() => {
+        clearGradientCache();
+        clearPlanetTextureCache();
+        console.log('[RENDERER] Theme changed, caches cleared');
     });
 }
 
@@ -310,7 +318,7 @@ function drawGrid(centerX, centerY, scale) {
         const is1AU = (ringCount % 1 === 0 && r === scale);
         const finalAlpha = is1AU ? alpha * 1.5 : alpha;
 
-        ctx.strokeStyle = `rgba(232, 93, 76, ${finalAlpha})`;
+        ctx.strokeStyle = getColor('canvas.grid', finalAlpha);
         ctx.beginPath();
         ctx.arc(sunProjected.x, sunProjected.y, pixelRadius, 0, Math.PI * 2);
         ctx.stroke();
@@ -330,10 +338,10 @@ function drawGrid(centerX, centerY, scale) {
                 sunProjected.x, sunProjected.y,
                 endX, endY
             );
-            grad.addColorStop(0, 'rgba(232, 93, 76, 0.1)');
-            grad.addColorStop(fadeStart / maxRadius, 'rgba(232, 93, 76, 0.1)');
-            grad.addColorStop(fadeEnd / maxRadius, 'rgba(232, 93, 76, 0.02)');
-            grad.addColorStop(1, 'rgba(232, 93, 76, 0)');
+            grad.addColorStop(0, getColor('canvas.grid', 0.1));
+            grad.addColorStop(fadeStart / maxRadius, getColor('canvas.grid', 0.1));
+            grad.addColorStop(fadeEnd / maxRadius, getColor('canvas.grid', 0.02));
+            grad.addColorStop(1, getColor('canvas.grid', 0));
             return grad;
         });
 
@@ -750,13 +758,13 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
     // Set visual style based on orbit type
     if (isHyperbolic) {
         // Hyperbolic: cyan dashed line to indicate escape trajectory
-        ctx.strokeStyle = ship.isPlayer ? 'rgba(100, 200, 255, 0.7)' : 'rgba(100, 200, 255, 0.4)';
+        ctx.strokeStyle = ship.isPlayer ? getColor('canvas.shipOrbitHyperbolic') : getColor('canvas.shipOrbitHyperbolic', 0.4);
         ctx.setLineDash([5, 5]);
     } else if (ship.isPlayer) {
-        ctx.strokeStyle = isInSOI ? 'rgba(76, 141, 232, 0.6)' : 'rgba(76, 232, 141, 0.5)';
+        ctx.strokeStyle = isInSOI ? getColor('canvas.shipOrbitSOI') : getColor('canvas.shipOrbitElliptic');
         ctx.setLineDash([4, 4]);
     } else {
-        ctx.strokeStyle = 'rgba(232, 93, 76, 0.3)';
+        ctx.strokeStyle = getColor('canvas.orbitPrimary');
         ctx.setLineDash([4, 4]);
     }
     ctx.lineWidth = ship.isPlayer ? 1.5 : 1;

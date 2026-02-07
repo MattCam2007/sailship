@@ -37,6 +37,8 @@ import {
 import { destination } from './core/navigation.js';
 import { getBodyByName } from './data/celestialBodies.js';
 import { INTERSECTION_CONFIG } from './config.js';
+import { initThemeEngine } from './core/themeEngine.js';
+import { initThemeSelector } from './ui/themeSelector.js';
 
 // Get canvas element
 const navCanvas = document.getElementById('navCanvas');
@@ -212,7 +214,13 @@ function gameLoop() {
 /**
  * Initialize the game
  */
-function init() {
+async function init() {
+    // Initialize theme engine first (loads saved theme)
+    await initThemeEngine();
+
+    // Initialize theme selector UI
+    initThemeSelector();
+
     // Load body filter state from localStorage
     loadBodyFilters();
 
