@@ -4,6 +4,20 @@
  */
 
 /* ============================================================================
+   HUD Container
+   ============================================================================ */
+
+.hud-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* Allow clicks through to canvas */
+  z-index: 50;
+}
+
+/* ============================================================================
    Base HUD Panel
    ============================================================================ */
 
@@ -208,27 +222,39 @@
    ============================================================================ */
 
 .hud-top-left {
-  top: 20px;
-  left: 20px;
+  top: 20px !important;
+  left: 20px !important;
+  right: auto !important;
+  bottom: auto !important;
   max-width: 300px;
+  z-index: 100;
 }
 
 .hud-top-right {
-  top: 20px;
-  right: 20px;
+  top: 20px !important;
+  right: 20px !important;
+  left: auto !important;
+  bottom: auto !important;
   max-width: 400px;
+  z-index: 101;
 }
 
 .hud-bottom-left {
-  bottom: 50px;
-  left: 20px;
+  bottom: 50px !important;
+  left: 20px !important;
+  right: auto !important;
+  top: auto !important;
   max-width: 250px;
+  z-index: 102;
 }
 
 .hud-bottom-right {
-  bottom: 50px;
-  right: 20px;
+  bottom: 50px !important;
+  right: 20px !important;
+  left: auto !important;
+  top: auto !important;
   max-width: 300px;
+  z-index: 103;
 }
 
 /* ============================================================================
