@@ -115,17 +115,18 @@ const touchState = {
  * Each mode defines step sizes for angles and deployment
  */
 export const RESOLUTION_MODES = {
-    COARSE: { name: 'COARSE', angleStep: 10, deployStep: 25 },
-    NORMAL: { name: 'NORMAL', angleStep: 5, deployStep: 10 },
-    FINE:   { name: 'FINE',   angleStep: 1, deployStep: 1 },
-    ULTRA:  { name: 'ULTRA',  angleStep: 0.1, deployStep: 0.1 },
-    UBER:   { name: 'UBER',   angleStep: 0.01, deployStep: 0.01 }  // v3.6: "last mile" precision
+    COARSE: { name: 'COARSE', angleStep: 10, deployStep: 25, sailCountStep: 5 },
+    NORMAL: { name: 'NORMAL', angleStep: 5, deployStep: 10, sailCountStep: 1 },
+    FINE:   { name: 'FINE',   angleStep: 1, deployStep: 1, sailCountStep: 1 },
+    ULTRA:  { name: 'ULTRA',  angleStep: 0.1, deployStep: 0.1, sailCountStep: 1 },
+    UBER:   { name: 'UBER',   angleStep: 0.01, deployStep: 0.01, sailCountStep: 1 }  // v3.6: "last mile" precision
 };
 
 /**
  * Available sail controls that can be selected for keyboard adjustment
  */
 export const SAIL_CONTROLS = {
+    SAIL_COUNT: 'sailCount',
     DEPLOYMENT: 'deployment',
     YAW: 'yaw',
     PITCH: 'pitch'
@@ -174,9 +175,10 @@ export function updateFineTuneUI() {
     }
 
     // Update selected control highlight
-    const controls = ['deployment', 'yaw', 'pitch'];
+    const controls = ['sailCount', 'deployment', 'yaw', 'pitch'];
     controls.forEach(control => {
-        const row = document.getElementById(`sailControl${control.charAt(0).toUpperCase() + control.slice(1)}`);
+        const capitalised = control.charAt(0).toUpperCase() + control.slice(1);
+        const row = document.getElementById(`sailControl${capitalised}`);
         if (row) {
             row.classList.toggle('selected', fineTuneState.selectedControl === control);
         }
@@ -186,10 +188,17 @@ export function updateFineTuneUI() {
     const hintDisplay = document.getElementById('fineTuneHint');
     if (hintDisplay) {
         const mode = fineTuneState.resolutionMode;
-        const controlName = fineTuneState.selectedControl.toUpperCase();
-        const step = fineTuneState.selectedControl === SAIL_CONTROLS.DEPLOYMENT
-            ? `${mode.deployStep}%`
-            : `${mode.angleStep}°`;
+        const controlName = fineTuneState.selectedControl === SAIL_CONTROLS.SAIL_COUNT
+            ? 'SAIL COUNT'
+            : fineTuneState.selectedControl.toUpperCase();
+        let step;
+        if (fineTuneState.selectedControl === SAIL_CONTROLS.SAIL_COUNT) {
+            step = `${mode.sailCountStep}`;
+        } else if (fineTuneState.selectedControl === SAIL_CONTROLS.DEPLOYMENT) {
+            step = `${mode.deployStep}%`;
+        } else {
+            step = `${mode.angleStep}°`;
+        }
         hintDisplay.textContent = `↑/↓: ${controlName} ±${step}`;
     }
 }
@@ -204,6 +213,7 @@ function initFineTuneControls() {
 
     // Add click handlers to sail control rows for mouse/touch selection
     const controlRows = [
+        { id: 'sailControlSailCount', control: SAIL_CONTROLS.SAIL_COUNT },
         { id: 'sailControlDeployment', control: SAIL_CONTROLS.DEPLOYMENT },
         { id: 'sailControlYaw', control: SAIL_CONTROLS.YAW },
         { id: 'sailControlPitch', control: SAIL_CONTROLS.PITCH }
@@ -644,6 +654,7 @@ function initSailControls() {
  * Set up keyboard shortcuts
  */
 function initKeyboardShortcuts() {
+    const sailCountSlider = document.getElementById('sailCount');
     const deploySlider = document.getElementById('sailDeployment');
     const angleSlider = document.getElementById('sailAngle');
     const pitchSlider = document.getElementById('sailPitch');
@@ -711,7 +722,11 @@ function initKeyboardShortcuts() {
             return;
         }
 
-        // Fine-tune control selection with 1, 2, 3
+        // Fine-tune control selection with 0, 1, 2, 3
+        if (e.key === '0') {
+            selectSailControl(SAIL_CONTROLS.SAIL_COUNT);
+            return;
+        }
         if (e.key === '1') {
             selectSailControl(SAIL_CONTROLS.DEPLOYMENT);
             return;
@@ -738,6 +753,14 @@ function initKeyboardShortcuts() {
             const mode = fineTuneState.resolutionMode;
 
             switch (fineTuneState.selectedControl) {
+                case SAIL_CONTROLS.SAIL_COUNT:
+                    if (sailCountSlider) {
+                        const currentCount = parseInt(sailCountSlider.value, 10);
+                        const newCount = Math.max(1, Math.min(20, currentCount + direction * mode.sailCountStep));
+                        sailCountSlider.value = newCount;
+                        sailCountSlider.dispatchEvent(new Event('input'));
+                    }
+                    break;
                 case SAIL_CONTROLS.DEPLOYMENT:
                     if (deploySlider) {
                         const currentDeploy = parseFloat(deploySlider.value);
