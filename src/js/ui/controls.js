@@ -572,8 +572,9 @@ function initSailControls() {
                 setSailDeployment(player, value);
             }
             if (deployValue) {
-                // Show decimal only if not a whole number
-                const displayValue = Number.isInteger(value) ? value : value.toFixed(1);
+                // Show decimal only if not a whole number (support up to 2 decimals for UBER resolution)
+                const rounded = Math.round(value * 100) / 100;
+                const displayValue = Number.isInteger(rounded) ? rounded : parseFloat(rounded.toFixed(2));
                 deployValue.textContent = displayValue + '%';
             }
             updateSailDisplay();
@@ -603,8 +604,9 @@ function initSailControls() {
                 }
             }
             if (angleValue) {
-                // Show decimal only if not a whole number
-                const displayValue = Number.isInteger(degrees) ? degrees : degrees.toFixed(1);
+                // Show decimal only if not a whole number (support up to 2 decimals for UBER resolution)
+                const rounded = Math.round(degrees * 100) / 100;
+                const displayValue = Number.isInteger(rounded) ? rounded : parseFloat(rounded.toFixed(2));
                 angleValue.textContent = displayValue + '°';
             }
             updateSailDisplay();
@@ -628,8 +630,9 @@ function initSailControls() {
                 }
             }
             if (pitchValue) {
-                // Show decimal only if not a whole number
-                const displayValue = Number.isInteger(degrees) ? degrees : degrees.toFixed(1);
+                // Show decimal only if not a whole number (support up to 2 decimals for UBER resolution)
+                const rounded = Math.round(degrees * 100) / 100;
+                const displayValue = Number.isInteger(rounded) ? rounded : parseFloat(rounded.toFixed(2));
                 pitchValue.textContent = displayValue + '°';
             }
             updateSailDisplay();
