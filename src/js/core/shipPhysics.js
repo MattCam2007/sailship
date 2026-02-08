@@ -11,7 +11,7 @@
  * - Physics updates use the appropriate gravitational parameter
  */
 
-import { getPosition, getVelocity, MU_SUN } from '../lib/orbital.js';
+import { getPosition, getVelocity, meanMotion, MU_SUN } from '../lib/orbital.js';
 import { calculateSailThrust, applyThrust, applyThrusterBurn } from '../lib/orbital-maneuvers.js';
 import { getJulianDate, clearTransitState, getTransitState } from './gameState.js';
 import { celestialBodies, getBodyByName } from '../data/celestialBodies.js';
@@ -1699,6 +1699,101 @@ function require_consumeFuel(ship) {
             return actual;
         }
     };
+}
+
+// ============================================================================
+// Cheat Codes: Orbit Nudge
+// ============================================================================
+
+/**
+ * Nudge the ship forward or backward along its current orbit.
+ *
+ * This is a debug/cheat function that repositions the ship along its orbit
+ * by modifying the mean anomaly (M0) and resetting the epoch. The orbit
+ * shape (a, e, i, Omega, omega) is unchanged - only position along the
+ * orbit changes.
+ *
+ * Requires sails to be fully retracted (deploymentPercent === 0).
+ *
+ * @param {Object} ship - Ship object with orbitalElements and sail state
+ * @param {number} daysToNudge - Days of orbital travel to nudge (positive = forward, negative = backward)
+ * @returns {boolean} True if nudge was applied, false if blocked
+ */
+export function nudgeShipAlongOrbit(ship, daysToNudge) {
+    if (!ship || !ship.orbitalElements) {
+        console.warn('[CHEAT] No ship or orbital elements');
+        return false;
+    }
+
+    // Guard: sails must be fully retracted
+    if (ship.sail && ship.sail.deploymentPercent > 0) {
+        console.warn('[CHEAT] Sails must be fully retracted (0% deployment) to nudge orbit');
+        return false;
+    }
+
+    const elements = ship.orbitalElements;
+    const julianDate = getJulianDate();
+
+    // Calculate mean motion (rad/day)
+    const n = meanMotion(elements.a, elements.μ);
+
+    // Calculate current mean anomaly at this instant
+    const deltaTime = julianDate - elements.epoch;
+    const currentM = elements.M0 + n * deltaTime;
+
+    // Add nudge amount (days of orbital travel converted to radians)
+    const nudgeAngle = n * daysToNudge;
+    let newM = currentM + nudgeAngle;
+
+    // Normalize for elliptic orbits (keep in [0, 2PI))
+    const isHyperbolic = elements.e >= 1;
+    if (!isHyperbolic) {
+        const TWO_PI = 2 * Math.PI;
+        newM = ((newM % TWO_PI) + TWO_PI) % TWO_PI;
+    }
+
+    // Update orbital elements: reset epoch to now with new M0
+    elements.M0 = newM;
+    elements.epoch = julianDate;
+
+    // Update cached position/velocity
+    const newPosition = getPosition(elements, julianDate);
+    const newVelocity = getVelocity(elements, julianDate);
+
+    if (ship.soiState && ship.soiState.isInSOI) {
+        // In SOI: position is planetocentric, need heliocentric for rendering
+        const parent = getBodyByName(ship.soiState.currentBody);
+        if (parent) {
+            ship.x = newPosition.x + parent.x;
+            ship.y = newPosition.y + parent.y;
+            ship.z = newPosition.z + parent.z;
+
+            if (parent.elements) {
+                const planetVel = getVelocity(parent.elements, julianDate);
+                ship.velocity = {
+                    x: newVelocity.vx + planetVel.vx,
+                    y: newVelocity.vy + planetVel.vy,
+                    z: newVelocity.vz + planetVel.vz
+                };
+            } else {
+                ship.velocity = { x: newVelocity.vx, y: newVelocity.vy, z: newVelocity.vz };
+            }
+        }
+    } else {
+        // Heliocentric
+        ship.x = newPosition.x;
+        ship.y = newPosition.y;
+        ship.z = newPosition.z;
+        ship.velocity = { x: newVelocity.vx, y: newVelocity.vy, z: newVelocity.vz };
+    }
+
+    // Snap visual orbital elements for immediate feedback (no lerp lag)
+    if (ship.visualOrbitalElements) {
+        ship.visualOrbitalElements = { ...elements };
+    }
+
+    console.log(`[CHEAT] Nudged ship ${daysToNudge > 0 ? 'forward' : 'backward'} ${Math.abs(daysToNudge)} days along orbit`);
+    return true;
 }
 
 /**
