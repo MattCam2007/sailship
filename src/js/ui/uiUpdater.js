@@ -315,9 +315,9 @@ export function updateSailDisplay() {
     if (player.sail) {
         // Helper to format values - show decimal only if not a whole number
         const formatValue = (val, suffix) => {
-            // Round to 1 decimal place to avoid floating point noise
-            const rounded = Math.round(val * 10) / 10;
-            const display = Number.isInteger(rounded) ? rounded : rounded.toFixed(1);
+            // Round to 2 decimal places to support UBER resolution (0.01)
+            const rounded = Math.round(val * 100) / 100;
+            const display = Number.isInteger(rounded) ? rounded : parseFloat(rounded.toFixed(2));
             return display + suffix;
         };
 
