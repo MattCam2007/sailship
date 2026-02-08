@@ -24,7 +24,7 @@ import {
 } from '../core/navigation.js';
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount, setThrusterBurnSize } from '../data/ships.js';
-import { fireThruster } from '../core/shipPhysics.js';
+import { fireThruster, nudgeShipAlongOrbit } from '../core/shipPhysics.js';
 import { setDestinationName, updateSailDisplay } from './uiUpdater.js';
 import { initExpandablePanel, loadPanelState, initTabGroup, isMobileView } from './ui-components.js';
 
@@ -258,6 +258,7 @@ export function initControls(canvas) {
     initCoursePlotter();
     initLaunchWindowFinder();
     initSaveLoadControls();
+    initCheatCodes();
     initKeyboardShortcuts();
     initMouseControls(canvas);
     initTouchControls(canvas);
@@ -503,7 +504,7 @@ function formatDuration(days) {
  * Initialize expandable panels with state persistence
  */
 function initExpandablePanels() {
-    const panels = ['zoomPanel', 'speedPanel', 'orbitPanel', 'displayPanel', 'bodyFiltersSection', 'trajectoryConfigPanel'];
+    const panels = ['zoomPanel', 'speedPanel', 'orbitPanel', 'displayPanel', 'bodyFiltersSection', 'cheatCodesPanel', 'trajectoryConfigPanel'];
 
     panels.forEach(id => {
         const savedState = loadPanelState(id);
@@ -650,6 +651,80 @@ function initSailControls() {
     }
 }
 
+// ============================================================================
+// CHEAT CODES
+// ============================================================================
+
+/**
+ * Update cheat codes panel enabled/disabled state based on sail deployment.
+ */
+export function updateCheatCodesUI() {
+    const player = getPlayerShip();
+    const statusEl = document.getElementById('cheatCodesStatus');
+    const controlsEl = document.getElementById('cheatCodesControls');
+    if (!statusEl || !controlsEl || !player) return;
+
+    const sailsFurled = player.sail && player.sail.deploymentPercent === 0;
+
+    if (sailsFurled) {
+        statusEl.textContent = 'ACTIVE';
+        statusEl.classList.add('active');
+        controlsEl.classList.remove('disabled');
+    } else {
+        statusEl.textContent = 'FURL SAILS TO ENABLE';
+        statusEl.classList.remove('active');
+        controlsEl.classList.add('disabled');
+    }
+}
+
+/**
+ * Perform an orbit nudge and update UI.
+ * @param {number} days - Days to nudge (positive = forward, negative = backward)
+ */
+function performOrbitNudge(days) {
+    const player = getPlayerShip();
+    if (!player) return;
+
+    const success = nudgeShipAlongOrbit(player, days);
+    if (!success) {
+        updateCheatCodesUI();
+    }
+}
+
+/**
+ * Set up cheat codes panel button handlers.
+ */
+function initCheatCodes() {
+    const nudgeButtons = [
+        { id: 'cheatNudgeBack30', days: -30 },
+        { id: 'cheatNudgeBack10', days: -10 },
+        { id: 'cheatNudgeBack1', days: -1 },
+        { id: 'cheatNudgeFwd1', days: 1 },
+        { id: 'cheatNudgeFwd10', days: 10 },
+        { id: 'cheatNudgeFwd30', days: 30 },
+    ];
+
+    nudgeButtons.forEach(({ id, days }) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener('click', () => performOrbitNudge(days));
+        }
+    });
+
+    // Update enabled state whenever sail deployment changes
+    // We hook into the sail deployment slider's input event
+    const deploySlider = document.getElementById('sailDeployment');
+    if (deploySlider) {
+        deploySlider.addEventListener('input', () => {
+            // Defer to next tick so sail state is updated first
+            requestAnimationFrame(updateCheatCodesUI);
+        });
+    }
+
+    // Set initial state
+    updateCheatCodesUI();
+}
+
 /**
  * Set up keyboard shortcuts
  */
@@ -719,6 +794,24 @@ function initKeyboardShortcuts() {
             import('./themeSelector.js').then(module => {
                 module.openThemeSelector();
             });
+            return;
+        }
+
+        // Cheat codes: orbit nudge with , / . (1 day) and < / > (10 days)
+        if (e.key === ',') {
+            performOrbitNudge(-1);
+            return;
+        }
+        if (e.key === '.') {
+            performOrbitNudge(1);
+            return;
+        }
+        if (e.key === '<') {
+            performOrbitNudge(-10);
+            return;
+        }
+        if (e.key === '>') {
+            performOrbitNudge(10);
             return;
         }
 

@@ -300,6 +300,10 @@ The selected control is highlighted in the SAIL panel. Click control rows or the
 - `Ctrl+2` / `Cmd+2` - Switch to NAV tab
 - `Ctrl+3` / `Cmd+3` - Switch to AUTO tab
 
+### Cheat Codes (requires sails at 0% deployment)
+- `,` / `.` - Nudge ship backward/forward 1 day along orbit
+- `<` / `>` - Nudge ship backward/forward 10 days along orbit
+
 ## Console Tests
 
 Run test suites in browser console. The path depends on your environment:

@@ -1358,6 +1358,81 @@ body::after {
 }
 
 /* ============================================================================
+   CHEAT CODES
+   ============================================================================ */
+
+.cheat-codes-section .panel-header {
+    color: #e8a84c;
+}
+
+.cheat-codes-status {
+    font-size: 10px;
+    text-align: center;
+    padding: 4px 6px;
+    color: #e85d4c;
+    opacity: 0.7;
+    letter-spacing: 1px;
+}
+
+.cheat-codes-status.active {
+    color: #e8a84c;
+    opacity: 1;
+}
+
+.cheat-codes-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cheat-codes-controls.disabled {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.cheat-label {
+    font-size: 9px;
+    color: #e8a84c;
+    letter-spacing: 1px;
+    text-align: center;
+}
+
+.cheat-button-row {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+}
+
+.cheat-btn {
+    background: rgba(232, 168, 76, 0.1);
+    border: 1px solid rgba(232, 168, 76, 0.3);
+    color: #e8a84c;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    padding: 4px 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    letter-spacing: 0.5px;
+    min-width: 36px;
+}
+
+.cheat-btn:hover {
+    background: rgba(232, 168, 76, 0.25);
+    border-color: rgba(232, 168, 76, 0.6);
+}
+
+.cheat-btn:active {
+    background: rgba(232, 168, 76, 0.4);
+}
+
+.cheat-hint {
+    font-size: 8px;
+    color: rgba(232, 168, 76, 0.4);
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+/* ============================================================================
    TRAJECTORY CONFIGURATION
    ============================================================================ */
 
