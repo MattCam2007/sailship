@@ -48,7 +48,33 @@ let trajectoryCache = {
 };
 
 /**
- * Generate a hash of inputs for cache invalidation.
+ * Fast numeric hash combining function (FNV-1a inspired).
+ * Mixes a new numeric value into an existing hash.
+ * Uses multiply-XOR with a large prime for good distribution.
+ *
+ * Note: operates on JS doubles, not 32-bit ints. The bitwise OR
+ * truncates to 32-bit int after each mix to keep values bounded.
+ *
+ * @param {number} hash - Current hash value
+ * @param {number} value - Value to mix in
+ * @returns {number} Updated hash
+ */
+function hashMix(hash, value) {
+    // Convert value to integer bits for mixing
+    // Multiply by large prime to spread floating-point values across int range
+    const bits = (value * 2654435761) | 0;
+    // XOR and multiply (FNV-1a style)
+    hash = (hash ^ bits) | 0;
+    hash = Math.imul(hash, 16777619);
+    return hash;
+}
+
+/**
+ * Generate a numeric hash of inputs for cache invalidation.
+ *
+ * Uses FNV-1a inspired numeric hashing instead of JSON.stringify for
+ * performance — eliminates string allocation and JSON serialization
+ * overhead on every frame.
  *
  * IMPORTANT: Orbital elements are rounded to prevent cache thrashing from
  * tiny floating-point variations that occur every frame due to thrust application.
@@ -60,37 +86,59 @@ let trajectoryCache = {
  * - Angles (i, Ω, ω, M0): 4 decimals (~0.0001 rad ≈ 0.006°) - visual precision
  * - Sail angle/pitch: 2 decimals (0.01 rad ≈ 0.6°) - slider precision
  * - Deployment: Integer percent - slider precision
+ *
+ * IMPORTANT: If new fields are added to the prediction inputs, they MUST
+ * be included here or the cache may return stale results.
  */
 function hashInputs(params) {
     const { orbitalElements, sail, mass, startTime, duration, steps, soiState, extremeFlybyState } = params;
 
-    // Round orbital elements to prevent floating-point drift from invalidating cache
-    // These small variations (<1e-10) occur every frame due to thrust calculations
-    const roundedElements = {
-        a: Math.round(orbitalElements.a * 1e6) / 1e6,      // 6 decimal places
-        e: Math.round(orbitalElements.e * 1e6) / 1e6,      // 6 decimal places
-        i: Math.round(orbitalElements.i * 1e4) / 1e4,      // 4 decimal places
-        Ω: Math.round(orbitalElements.Ω * 1e4) / 1e4,      // 4 decimal places
-        ω: Math.round(orbitalElements.ω * 1e4) / 1e4,      // 4 decimal places
-        M0: Math.round(orbitalElements.M0 * 1e4) / 1e4,    // 4 decimal places
-    };
+    // FNV offset basis
+    let h = 2166136261;
 
-    return JSON.stringify({
-        ...roundedElements,
-        sailAngle: Math.round(sail.angle * 100) / 100,     // 2 decimal places
-        sailPitch: Math.round((sail.pitchAngle || 0) * 100) / 100,
-        sailDeploy: Math.round(sail.deploymentPercent),    // Integer
-        sailCount: sail.sailCount || 1,                    // Integer sail count
-        mass: Math.round(mass),                            // Integer kg
-        startTime: Math.round(startTime * 1000),           // Millisecond precision
-        duration,
-        steps,
-        soiBody: soiState?.currentBody || 'SUN',
-        isInSOI: soiState?.isInSOI || false,
-        // Include extremeFlybyState in hash for cache invalidation
-        hasExtremeFlyby: !!extremeFlybyState,
-        extremeFlybyTime: extremeFlybyState?.entryTime || 0
-    });
+    // Orbital elements (rounded to prevent floating-point drift)
+    h = hashMix(h, Math.round(orbitalElements.a * 1e6));    // 6 decimal places
+    h = hashMix(h, Math.round(orbitalElements.e * 1e6));    // 6 decimal places
+    h = hashMix(h, Math.round(orbitalElements.i * 1e4));    // 4 decimal places
+    h = hashMix(h, Math.round(orbitalElements.Ω * 1e4));    // 4 decimal places
+    h = hashMix(h, Math.round(orbitalElements.ω * 1e4));    // 4 decimal places
+    h = hashMix(h, Math.round(orbitalElements.M0 * 1e4));   // 4 decimal places
+
+    // Sail parameters
+    h = hashMix(h, Math.round(sail.angle * 100));            // 2 decimal places
+    h = hashMix(h, Math.round((sail.pitchAngle || 0) * 100));
+    h = hashMix(h, Math.round(sail.deploymentPercent));      // Integer
+    h = hashMix(h, sail.sailCount || 1);                     // Integer sail count
+
+    // Ship and time parameters
+    h = hashMix(h, Math.round(mass));                        // Integer kg
+    h = hashMix(h, Math.round(startTime * 1000));            // Millisecond precision
+    h = hashMix(h, duration);
+    h = hashMix(h, steps);
+
+    // SOI state — convert body name to a stable numeric code
+    const soiBody = soiState?.currentBody || 'SUN';
+    h = hashMix(h, soiBodyCode(soiBody));
+    h = hashMix(h, soiState?.isInSOI ? 1 : 0);
+
+    // Extreme flyby state
+    h = hashMix(h, extremeFlybyState ? 1 : 0);
+    h = hashMix(h, Math.round((extremeFlybyState?.entryTime || 0) * 1000));
+
+    return h;
+}
+
+/**
+ * Convert SOI body name to a stable numeric code for hashing.
+ * Uses character code sum — simple but sufficient for cache keys
+ * since body names are short and distinct.
+ */
+function soiBodyCode(name) {
+    let code = 0;
+    for (let i = 0; i < name.length; i++) {
+        code = code * 31 + name.charCodeAt(i);
+    }
+    return code | 0;
 }
 
 /**
