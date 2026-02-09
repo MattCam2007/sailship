@@ -599,20 +599,7 @@ function initSailControls() {
             const radians = degrees * Math.PI / 180;
             const player = getPlayerShip();
             if (player) {
-                const oldAngle = player.sail?.angle || 0;
                 setSailAngle(player, radians);
-                console.log(`[SAIL] Yaw changed: ${(oldAngle * 180 / Math.PI).toFixed(1)}° → ${degrees.toFixed(1)}°`);
-                // Log current orbital state for correlation
-                if (player.velocity && player.orbitalElements) {
-                    const vMag = Math.sqrt(player.velocity.x**2 + player.velocity.y**2 + player.velocity.z**2);
-                    const { a, e, i } = player.orbitalElements;
-                    console.log(`[SAIL] Orbit: a=${a.toFixed(4)} AU, e=${e.toFixed(4)}, i=${(i * 180 / Math.PI).toFixed(2)}°`);
-                    console.log(`[SAIL] Velocity: (${player.velocity.x.toFixed(4)}, ${player.velocity.y.toFixed(4)}, ${player.velocity.z.toFixed(4)}) |v|=${(vMag * 1731.46).toFixed(1)} km/s`);
-                    // Check if orbit is hyperbolic
-                    if (e >= 1.0) {
-                        console.error(`[SAIL] ⚠️ HYPERBOLIC ORBIT! e=${e.toFixed(4)}`);
-                    }
-                }
             }
             if (angleValue) {
                 // Show decimal only if not a whole number (support up to 2 decimals for UBER resolution)
@@ -631,14 +618,7 @@ function initSailControls() {
             const radians = degrees * Math.PI / 180;
             const player = getPlayerShip();
             if (player) {
-                const oldPitch = player.sail?.pitchAngle || 0;
                 setSailPitch(player, radians);
-                console.log(`[SAIL] Pitch changed: ${(oldPitch * 180 / Math.PI).toFixed(1)}° → ${degrees.toFixed(1)}°`);
-                // Log current orbital state for correlation
-                if (player.velocity) {
-                    const vMag = Math.sqrt(player.velocity.x**2 + player.velocity.y**2 + player.velocity.z**2);
-                    console.log(`[SAIL] Current velocity: (${player.velocity.x.toFixed(4)}, ${player.velocity.y.toFixed(4)}, ${player.velocity.z.toFixed(4)}) |v|=${(vMag * 1731.46).toFixed(1)} km/s`);
-                }
             }
             if (pitchValue) {
                 // Show decimal only if not a whole number (support up to 2 decimals for UBER resolution)
