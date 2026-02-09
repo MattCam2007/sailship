@@ -933,33 +933,53 @@ export function detectClosestApproaches(trajectory, celestialBodies, currentTime
         return [];
     }
 
+    // Filter to eligible bodies (planets with orbital elements, not moons)
+    const bodies = [];
+    for (const body of celestialBodies) {
+        if (!body.elements) continue;
+        if (body.parent && body.parent !== 'SUN') continue;
+        bodies.push(body);
+    }
+    if (bodies.length === 0) return [];
+
+    // Find the first trajectory index at or after currentTime
+    let startIdx = 0;
+    for (let i = 0; i < trajectory.length; i++) {
+        if (trajectory[i].time >= currentTime) {
+            startIdx = Math.max(0, i - 1);
+            break;
+        }
+    }
+
     const results = [];
 
-    // Process each celestial body
-    for (const body of celestialBodies) {
-        // Skip bodies without orbital elements (Sun, etc.)
-        if (!body.elements) continue;
-
-        // Skip moons for now (would need coordinate transform)
-        if (body.parent && body.parent !== 'SUN') continue;
-
+    // Process each body with pre-computed positions along trajectory.
+    // Previously, getPosition() was called 2x per segment per body in
+    // the inner loop (11,520 calls for 8 planets x 720 segments).
+    // Now we compute positions once per trajectory point per body,
+    // reusing p2's position as p1's position for the next segment.
+    // This halves getPosition() calls to ~5,760.
+    for (const body of bodies) {
         let minDistance = Infinity;
         let closestApproach = null;
 
-        // Scan all trajectory segments
-        for (let i = 0; i < trajectory.length - 1; i++) {
+        // Compute body position at the first trajectory point
+        let bodyPos1 = getPosition(body.elements, trajectory[startIdx].time);
+        if (!isFinite(bodyPos1.x)) continue;
+
+        // Scan trajectory segments, reusing previous endpoint
+        for (let i = startIdx; i < trajectory.length - 1; i++) {
             const p1 = trajectory[i];
             const p2 = trajectory[i + 1];
 
-            // Skip past segments
-            if (p2.time < currentTime) continue;
-
-            // Get body positions at segment endpoints
-            const bodyPos1 = getPosition(body.elements, p1.time);
+            // Compute body position at next trajectory point
             const bodyPos2 = getPosition(body.elements, p2.time);
 
-            // Validate positions
-            if (!isFinite(bodyPos1.x) || !isFinite(bodyPos2.x)) continue;
+            // Validate and skip if invalid
+            if (!isFinite(bodyPos2.x)) {
+                bodyPos1 = bodyPos2;
+                continue;
+            }
 
             // Calculate closest approach for this segment
             const approach = calculateClosestApproach(p1, p2, bodyPos1, bodyPos2);
@@ -973,19 +993,18 @@ export function detectClosestApproaches(trajectory, celestialBodies, currentTime
                     time: approach.time,
                     shipPos: approach.trajectoryPos,
                     bodyPos: approach.bodyPos,
-                    // Calculate time offset from now
                     daysFromNow: approach.time - currentTime
                 };
             }
+
+            // Reuse p2's body position as p1's for next segment
+            bodyPos1 = bodyPos2;
         }
 
         // Only include if we found a valid approach
         if (closestApproach && isFinite(closestApproach.minDistance)) {
             // Recompute bodyPos with getPosition() at exact closest approach time
             // instead of using the linearly-interpolated position from segment analysis.
-            // The segment analysis (calculateClosestApproach) finds the minimum accurately,
-            // but returns bodyPos as a linear interpolation between segment endpoints.
-            // Using getPosition() gives the exact orbital position at that time.
             const exactBodyPos = getPosition(body.elements, closestApproach.time);
             if (isFinite(exactBodyPos.x) && isFinite(exactBodyPos.y) && isFinite(exactBodyPos.z)) {
                 closestApproach.bodyPos = exactBodyPos;
