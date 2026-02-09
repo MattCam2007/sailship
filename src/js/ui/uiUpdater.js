@@ -14,7 +14,20 @@ import { camera } from '../core/camera.js';
 let elements = {};
 
 /**
- * Initialize UI element references
+ * Set textContent only if the value has actually changed.
+ * Skips the DOM write (and potential reflow) when the text is the same.
+ * @param {HTMLElement|null} el - DOM element
+ * @param {string} text - New text content
+ */
+function setTextIfChanged(el, text) {
+    if (el && el.textContent !== text) {
+        el.textContent = text;
+    }
+}
+
+/**
+ * Initialize UI element references.
+ * All DOM lookups are done once here and cached for the lifetime of the session.
  */
 export function initUI() {
     elements = {
@@ -45,7 +58,21 @@ export function initUI() {
         shipInclination: document.getElementById('shipInclination'),
         targetInclination: document.getElementById('targetInclination'),
         deltaInclination: document.getElementById('deltaInclination'),
-        planeChangeDirection: document.getElementById('planeChangeDirection')
+        planeChangeDirection: document.getElementById('planeChangeDirection'),
+        // Mobile sail widget elements (cached to avoid getElementById per frame)
+        mobileSailDeployValue: document.getElementById('mobileSailDeployValue'),
+        mobileSailYawValue: document.getElementById('mobileSailYawValue'),
+        mobileSailPitchValue: document.getElementById('mobileSailPitchValue'),
+        mobileSailThrust: document.getElementById('mobileSailThrust'),
+        mobileSailDeployment: document.getElementById('mobileSailDeployment'),
+        mobileSailYaw: document.getElementById('mobileSailYaw'),
+        mobileSailPitch: document.getElementById('mobileSailPitch'),
+        // Thruster elements (cached to avoid getElementById per frame)
+        thrusterDeltaV: document.getElementById('thrusterDeltaV'),
+        thrusterFuelFill: document.getElementById('thrusterFuelFill'),
+        thrusterRetrograde: document.getElementById('thrusterRetrograde'),
+        thrusterPrograde: document.getElementById('thrusterPrograde'),
+        fuelIndicator: document.getElementById('fuelIndicator'),
     };
 
     // Initialize sail display with current values
@@ -76,11 +103,9 @@ function updateTimeDisplay() {
     const days = Math.floor(time);
     const hours = Math.floor((time % 1) * 24);
     const mins = Math.floor(((time % 1) * 24 % 1) * 60);
-    
-    if (elements.timeDisplay) {
-        elements.timeDisplay.textContent = 
-            `2351.${String(127 + days).padStart(3, '0')} // ${String(14 + hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:07 UTC`;
-    }
+
+    setTextIfChanged(elements.timeDisplay,
+        `2351.${String(127 + days).padStart(3, '0')} // ${String(14 + hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:07 UTC`);
 }
 
 /**
@@ -99,6 +124,9 @@ function niceScaleNumber(value) {
     return 10 * pow;
 }
 
+/** Track last effective scale to skip redundant updateScaleDisplay calculations */
+let lastEffectiveScale = -1;
+
 /**
  * Update scale display dynamically based on effective zoom (base scale * camera.zoom)
  */
@@ -106,6 +134,10 @@ function updateScaleDisplay() {
     if (!elements.scaleDisplay) return;
 
     const effectiveScale = getScale() * camera.zoom; // pixels per AU
+
+    // Skip expensive log/pow calculations when zoom hasn't changed
+    if (effectiveScale === lastEffectiveScale) return;
+    lastEffectiveScale = effectiveScale;
     const KM_PER_AU = 149597870.7;
 
     // Find a nice reference distance that maps to roughly 100 pixels
@@ -155,11 +187,10 @@ function updateViewDisplay() {
     let rotDeg = Math.round(camera.angleZ * 180 / Math.PI);
     if (rotDeg === 360) rotDeg = 0;
 
-    if (rotDeg === 0) {
-        elements.viewDisplay.textContent = `ECLIPTIC +${elevDeg}°`;
-    } else {
-        elements.viewDisplay.textContent = `+${elevDeg}° EL ${rotDeg}° ROT`;
-    }
+    const text = rotDeg === 0
+        ? `ECLIPTIC +${elevDeg}°`
+        : `+${elevDeg}° EL ${rotDeg}° ROT`;
+    setTextIfChanged(elements.viewDisplay, text);
 }
 
 /**
@@ -168,11 +199,8 @@ function updateViewDisplay() {
 function updateTrackingDisplay() {
     if (!elements.trackingDisplay) return;
 
-    if (camera.followTarget) {
-        elements.trackingDisplay.textContent = `TRACKING: ${camera.followTarget}`;
-    } else {
-        elements.trackingDisplay.textContent = 'FREE CAMERA';
-    }
+    setTextIfChanged(elements.trackingDisplay,
+        camera.followTarget ? `TRACKING: ${camera.followTarget}` : 'FREE CAMERA');
 }
 
 /**
@@ -184,8 +212,8 @@ function updateCoordDisplay() {
     const player = getPlayerShip();
     if (!player) return;
 
-    elements.coordDisplay.textContent =
-        `X: ${player.x.toFixed(3)} Y: ${player.y.toFixed(3)} Z: ${player.z.toFixed(3)} AU`;
+    setTextIfChanged(elements.coordDisplay,
+        `X: ${player.x.toFixed(3)} Y: ${player.y.toFixed(3)} Z: ${player.z.toFixed(3)} AU`);
 }
 
 /**
@@ -195,13 +223,11 @@ function updateDestinationDisplay() {
     const info = getDestinationInfo();
 
     if (info) {
-        if (elements.destDist) {
-            elements.destDist.textContent = info.distance.toFixed(3) + ' AU';
-        }
+        setTextIfChanged(elements.destDist, info.distance.toFixed(3) + ' AU');
 
         // Show relative velocity to target (important for capture)
         if (elements.relVelocity && info.relativeVelocity !== null) {
-            elements.relVelocity.textContent = info.relativeVelocity.toFixed(1) + ' km/s';
+            setTextIfChanged(elements.relVelocity, info.relativeVelocity.toFixed(1) + ' km/s');
             // Color code: green if capture-ready, red if too fast
             elements.relVelocity.classList.remove('capture-ready', 'too-fast');
             if (info.captureReady) {
@@ -253,16 +279,14 @@ function updateDestinationDisplay() {
     }
 
     if (closestDistance !== undefined) {
-        if (elements.closestDist) {
-            elements.closestDist.textContent = closestDistance.toFixed(3) + ' AU';
-        }
+        setTextIfChanged(elements.closestDist, closestDistance.toFixed(3) + ' AU');
         if (elements.timeToClosest) {
             const days = Math.floor(timeToClosest);
             const hours = Math.floor((timeToClosest % 1) * 24);
-            elements.timeToClosest.textContent = `${days}d ${hours}h`;
+            setTextIfChanged(elements.timeToClosest, `${days}d ${hours}h`);
         }
         if (elements.interceptStatus) {
-            elements.interceptStatus.textContent = status;
+            setTextIfChanged(elements.interceptStatus, status);
             // Add color coding based on status
             elements.interceptStatus.classList.remove('status-intercept', 'status-near', 'status-wide', 'status-miss');
             if (status === 'INTERCEPT') {
@@ -293,22 +317,14 @@ export function updateSailDisplay() {
 
     if (thrustInfo) {
         // Update thrust display (convert to mm/s² for readability)
-        if (elements.sailThrust) {
-            elements.sailThrust.textContent = thrustText;
-        }
+        setTextIfChanged(elements.sailThrust, thrustText);
 
         // Update g-force display
-        if (elements.sailAccelG) {
-            elements.sailAccelG.textContent = thrustInfo.accelerationG.toFixed(6) + ' g';
-        }
+        setTextIfChanged(elements.sailAccelG, thrustInfo.accelerationG.toFixed(6) + ' g');
     } else {
         // No thrust info available
-        if (elements.sailThrust) {
-            elements.sailThrust.textContent = '0.000 mm/s²';
-        }
-        if (elements.sailAccelG) {
-            elements.sailAccelG.textContent = '0.000000 g';
-        }
+        setTextIfChanged(elements.sailThrust, '0.000 mm/s²');
+        setTextIfChanged(elements.sailAccelG, '0.000000 g');
     }
 
     // Update slider value displays if sail exists
@@ -321,49 +337,31 @@ export function updateSailDisplay() {
             return display + suffix;
         };
 
-        if (elements.sailDeployValue) {
-            elements.sailDeployValue.textContent = formatValue(player.sail.deploymentPercent, '%');
-        }
+        setTextIfChanged(elements.sailDeployValue, formatValue(player.sail.deploymentPercent, '%'));
         if (elements.sailAngleValue) {
             const degrees = player.sail.angle * 180 / Math.PI;
-            elements.sailAngleValue.textContent = formatValue(degrees, '°');
+            setTextIfChanged(elements.sailAngleValue, formatValue(degrees, '°'));
         }
 
-        // Update mobile sail widget values
-        const mobileDeployValue = document.getElementById('mobileSailDeployValue');
-        const mobileYawValue = document.getElementById('mobileSailYawValue');
-        const mobilePitchValue = document.getElementById('mobileSailPitchValue');
-        const mobileThrustValue = document.getElementById('mobileSailThrust');
-        const mobileDeploySlider = document.getElementById('mobileSailDeployment');
-        const mobileYawSlider = document.getElementById('mobileSailYaw');
-        const mobilePitchSlider = document.getElementById('mobileSailPitch');
-
-        if (mobileDeployValue) {
-            mobileDeployValue.textContent = formatValue(player.sail.deploymentPercent, '%');
-        }
-        if (mobileDeploySlider) {
-            mobileDeploySlider.value = player.sail.deploymentPercent;
+        // Update mobile sail widget values (using cached elements from initUI)
+        setTextIfChanged(elements.mobileSailDeployValue, formatValue(player.sail.deploymentPercent, '%'));
+        if (elements.mobileSailDeployment) {
+            elements.mobileSailDeployment.value = player.sail.deploymentPercent;
         }
 
         const yawDeg = player.sail.angle * 180 / Math.PI;
-        if (mobileYawValue) {
-            mobileYawValue.textContent = formatValue(yawDeg, '°');
-        }
-        if (mobileYawSlider) {
-            mobileYawSlider.value = yawDeg;
+        setTextIfChanged(elements.mobileSailYawValue, formatValue(yawDeg, '°'));
+        if (elements.mobileSailYaw) {
+            elements.mobileSailYaw.value = yawDeg;
         }
 
         const pitchDeg = (player.sail.pitchAngle || 0) * 180 / Math.PI;
-        if (mobilePitchValue) {
-            mobilePitchValue.textContent = formatValue(pitchDeg, '°');
-        }
-        if (mobilePitchSlider) {
-            mobilePitchSlider.value = pitchDeg;
+        setTextIfChanged(elements.mobileSailPitchValue, formatValue(pitchDeg, '°'));
+        if (elements.mobileSailPitch) {
+            elements.mobileSailPitch.value = pitchDeg;
         }
 
-        if (mobileThrustValue) {
-            mobileThrustValue.textContent = thrustText;
-        }
+        setTextIfChanged(elements.mobileSailThrust, thrustText);
     }
 }
 
@@ -377,41 +375,34 @@ function updateThrusterDisplayInternal() {
 
     const { deltaVRemaining, deltaVMax } = player.thruster;
 
-    const deltaVDisplay = document.getElementById('thrusterDeltaV');
-    const fuelFill = document.getElementById('thrusterFuelFill');
+    setTextIfChanged(elements.thrusterDeltaV, deltaVRemaining.toFixed(1) + ' km/s');
 
-    if (deltaVDisplay) {
-        deltaVDisplay.textContent = deltaVRemaining.toFixed(1) + ' km/s';
-    }
-
-    if (fuelFill) {
+    if (elements.thrusterFuelFill) {
         const pct = (deltaVRemaining / deltaVMax) * 100;
-        fuelFill.style.width = pct + '%';
+        const pctStr = pct + '%';
+        if (elements.thrusterFuelFill.style.width !== pctStr) {
+            elements.thrusterFuelFill.style.width = pctStr;
+        }
         if (pct < 20) {
-            fuelFill.classList.add('low');
+            elements.thrusterFuelFill.classList.add('low');
         } else {
-            fuelFill.classList.remove('low');
+            elements.thrusterFuelFill.classList.remove('low');
         }
     }
 
-    // Disable buttons if no fuel
+    // Disable buttons if no fuel (using cached elements)
     const hasFuel = deltaVRemaining > 0;
-    const retroBtn = document.getElementById('thrusterRetrograde');
-    const proBtn = document.getElementById('thrusterPrograde');
-    if (retroBtn) retroBtn.disabled = !hasFuel;
-    if (proBtn) proBtn.disabled = !hasFuel;
+    if (elements.thrusterRetrograde) elements.thrusterRetrograde.disabled = !hasFuel;
+    if (elements.thrusterPrograde) elements.thrusterPrograde.disabled = !hasFuel;
 
-    // Update header fuel indicator
-    const fuelIndicator = document.getElementById('fuelIndicator');
-    if (fuelIndicator) {
+    // Update header fuel indicator (using cached element)
+    if (elements.fuelIndicator) {
         const pct = (deltaVRemaining / deltaVMax) * 100;
-        fuelIndicator.classList.remove('warning', 'active');
-        if (pct <= 0) {
-            fuelIndicator.classList.add('warning');
-        } else if (pct < 30) {
-            fuelIndicator.classList.add('warning');
+        elements.fuelIndicator.classList.remove('warning', 'active');
+        if (pct < 30) {
+            elements.fuelIndicator.classList.add('warning');
         } else {
-            fuelIndicator.classList.add('active');
+            elements.fuelIndicator.classList.add('active');
         }
     }
 }
@@ -438,21 +429,19 @@ function updateSOIStatus() {
 
     // Update SOI status indicator
     if (elements.soiStatus) {
+        const statusText = isInSOI ? 'IN SOI' : 'HELIOCENTRIC';
+        setTextIfChanged(elements.soiStatus, statusText);
         if (isInSOI) {
-            elements.soiStatus.textContent = 'IN SOI';
             elements.soiStatus.classList.add('in-soi');
             elements.soiStatus.classList.remove('heliocentric');
         } else {
-            elements.soiStatus.textContent = 'HELIOCENTRIC';
             elements.soiStatus.classList.remove('in-soi');
             elements.soiStatus.classList.add('heliocentric');
         }
     }
 
     // Update current parent body
-    if (elements.soiBody) {
-        elements.soiBody.textContent = currentBody;
-    }
+    setTextIfChanged(elements.soiBody, currentBody);
 }
 
 /**
@@ -488,16 +477,11 @@ function updateInclinationDisplay() {
     }
 
     // Update display elements
-    if (elements.shipInclination) {
-        elements.shipInclination.textContent = shipIncDeg.toFixed(2) + '°';
-    }
-
-    if (elements.targetInclination) {
-        elements.targetInclination.textContent = targetIncDeg.toFixed(2) + '°';
-    }
+    setTextIfChanged(elements.shipInclination, shipIncDeg.toFixed(2) + '°');
+    setTextIfChanged(elements.targetInclination, targetIncDeg.toFixed(2) + '°');
 
     if (elements.deltaInclination) {
-        elements.deltaInclination.textContent = deltaIncDeg.toFixed(2) + '°';
+        setTextIfChanged(elements.deltaInclination, deltaIncDeg.toFixed(2) + '°');
 
         // Color code based on magnitude
         elements.deltaInclination.classList.remove('delta-low', 'delta-med', 'delta-high');
@@ -510,7 +494,5 @@ function updateInclinationDisplay() {
         }
     }
 
-    if (elements.planeChangeDirection) {
-        elements.planeChangeDirection.textContent = direction;
-    }
+    setTextIfChanged(elements.planeChangeDirection, direction);
 }

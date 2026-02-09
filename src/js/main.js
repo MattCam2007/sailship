@@ -50,31 +50,54 @@ const navCanvas = document.getElementById('navCanvas');
 // Frame counter for periodic cleanup
 let frameCount = 0;
 
-// Cleanup interval: 3600 frames = 60 seconds @ 60fps
-const CLEANUP_INTERVAL = 3600;
+// Cleanup interval: 720 frames = 12 seconds @ 60fps per stage
+// With 5 cleanup stages, full cycle completes in ~60 seconds
+const CLEANUP_INTERVAL = 720;
+
+// ============================================================================
+// Intersection Detection Throttle
+// ============================================================================
+// At high time warp, trajectory cache invalidates every 1-2 frames, causing
+// expensive intersection/closest-approach/node-crossing detection to run
+// 30-60 times per second. This throttle limits detection to once per interval.
+// The trajectory prediction itself is NOT throttled (renderer needs it).
+
+/** Minimum interval between intersection detection runs (ms) */
+const DETECTION_MIN_INTERVAL_MS = 200;
+
+/** Timestamp of last detection run */
+let lastDetectionTime = 0;
 
 /**
- * Perform periodic memory cleanup.
- * Clears all caches and resets canvas state to release GPU resources.
+ * Staggered cache cleanup functions.
+ * Instead of clearing all caches at once (causing a frame spike),
+ * rotate through them one per cleanup cycle. Each cache rebuilds
+ * independently on next access, spreading the rebuild cost.
+ */
+const CLEANUP_STAGES = [
+    () => { clearTrajectoryCache(); clearIntersectionCache(); },  // These are coupled
+    () => { clearClosestApproachCache(); },
+    () => { clearNodeCrossingsCache(); },
+    () => { clearGradientCache(); },
+    () => {
+        clearPlanetTextureCache();
+        // Canvas state reset releases GPU resources
+        const ctx = navCanvas.getContext('2d');
+        if (ctx) { ctx.save(); ctx.restore(); }
+    },
+];
+
+/** Current cleanup stage index (rotates through CLEANUP_STAGES) */
+let cleanupStage = 0;
+
+/**
+ * Perform one stage of periodic memory cleanup.
+ * Rotates through cache types so only one is cleared per cycle,
+ * avoiding the frame spike from clearing everything at once.
  */
 function performMemoryCleanup() {
-    // Clear all caches
-    clearTrajectoryCache();
-    clearIntersectionCache();
-    clearClosestApproachCache();
-    clearNodeCrossingsCache();
-    clearGradientCache();
-    clearPlanetTextureCache();
-
-    // Get canvas context for state reset
-    const ctx = navCanvas.getContext('2d');
-    if (ctx) {
-        // Canvas state reset releases GPU resources
-        ctx.save();
-        ctx.restore();
-    }
-
-    console.log('[MEMORY] Periodic cleanup performed (frame ' + frameCount + ')');
+    CLEANUP_STAGES[cleanupStage]();
+    cleanupStage = (cleanupStage + 1) % CLEANUP_STAGES.length;
 }
 
 /**
@@ -124,7 +147,13 @@ function updatePositions() {
     // and old ghost planet positions persist
     const needsUpdate = !trajectoryHash || !isIntersectionCacheValid(trajectoryHash);
 
-    if (needsUpdate) {
+    // Throttle detection runs: at high time warp, cache invalidates every 1-2 frames
+    // but full detection (intersections + closest approach + node crossings) costs
+    // 14-34ms. Limiting to once per DETECTION_MIN_INTERVAL_MS keeps frame rate smooth.
+    const now = performance.now();
+    const detectionThrottled = (now - lastDetectionTime) < DETECTION_MIN_INTERVAL_MS;
+
+    if (needsUpdate && !detectionThrottled) {
         const player = getPlayerShip();
         if (player && player.orbitalElements && player.sail) {
             const soiBody = player.soiState?.isInSOI ? player.soiState.currentBody : null;
@@ -231,6 +260,8 @@ function updatePositions() {
                     setNodeCrossingsCache(trajectoryHash, destination, nodeCrossings);
                 }
             }
+
+            lastDetectionTime = now;
         }
     }
 }
