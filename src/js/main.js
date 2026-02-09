@@ -109,7 +109,7 @@ function updatePositions() {
     // Update celestial body positions (reads Julian date from gameState)
     updateCelestialPositions();
 
-    // Update autopilot (adjusts sail settings before physics)
+    // Update autopilot (fires thrusters at periapsis when inside SOI)
     updateAutoPilot(timeScale);
 
     // Update player ship with orbital mechanics and sail physics
