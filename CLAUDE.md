@@ -204,8 +204,6 @@ while **Orbital Paths** shows the instantaneous Keplerian orbit (where ship woul
 - Shows planet's actual position at that crossing time with time offset label
 - Example: "VENUS +221d 4h" means Venus will be at that position 221 days from now
 - "CLOSE" indicator appears when planet is near trajectory at crossing time (good intercept)
-- Ghosts filtered by angular separation: only shown when planet is within 45° of crossing point
-- Ghosts fade smoothly from full opacity (< 22.5°) to faint (45°), then hidden beyond 45°
 
 **Usage**:
 1. Enable "ENCOUNTER MARKERS" toggle (requires "ORBITAL PATHS" also enabled)

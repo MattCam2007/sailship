@@ -326,40 +326,6 @@ export const INTERSECTION_CONFIG = {
      * Minimum steps regardless of duration (quality floor).
      */
     minSteps: 200,
-
-    /**
-     * Maximum angular separation (radians) for ghost planet display.
-     *
-     * Ghost planets (encounter markers) are suppressed when the angular
-     * separation between the ship's orbit-crossing position and the
-     * planet's actual position exceeds this threshold. Angular separation
-     * is measured at the Sun between the two heliocentric position vectors.
-     *
-     * Why angular separation (not distance in AU)?
-     * For nearly circular orbits, distance ≈ 2a × sin(θ/2), so angular
-     * separation naturally scales with orbital radius. A 45° gap is the
-     * same navigational challenge at any orbit: ~12.5% of the full orbit.
-     *
-     * At 45° (π/4): distance ≈ 0.77 × orbital_radius
-     *   Mercury: 0.30 AU, Venus: 0.55 AU, Earth: 0.77 AU, Mars: 1.17 AU
-     *
-     * 45° is a reasonable limit for solar sail phase adjustment. Beyond
-     * this, the planet is too far around its orbit to represent a viable
-     * intercept opportunity.
-     */
-    maxAngularSeparation: Math.PI / 4,
-
-    /**
-     * Fraction of maxAngularSeparation at which opacity fade begins.
-     *
-     * Ghost planets at angular separations below this fraction of the max
-     * threshold are rendered at full opacity. Above this, opacity fades
-     * linearly to a minimum, providing smooth visual degradation instead
-     * of abrupt pop-in/pop-out at the threshold boundary.
-     *
-     * At 0.5: fade starts at 22.5° (half of 45°), full opacity below that.
-     */
-    fadeStartFraction: 0.5,
 };
 
 /**
