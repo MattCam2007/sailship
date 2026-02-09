@@ -408,10 +408,30 @@ function initTrajectoryConfig() {
     const resetBtn = document.getElementById('trajectoryConfigReset');
     const DEFAULT_DAYS = 60;
 
+    // Coalesce trajectory duration updates within a frame.
+    // The slider fires many 'input' events per second during drag;
+    // only apply the latest value once per animation frame.
+    let pendingDurationDays = null;
+    let durationUpdatePending = false;
+    function scheduleDurationUpdate(days) {
+        pendingDurationDays = days;
+        if (!durationUpdatePending) {
+            durationUpdatePending = true;
+            requestAnimationFrame(() => {
+                durationUpdatePending = false;
+                if (pendingDurationDays !== null) {
+                    setTrajectoryDuration(pendingDurationDays);
+                    pendingDurationDays = null;
+                }
+            });
+        }
+    }
+
     if (slider) {
         slider.addEventListener('input', (e) => {
             const days = parseInt(e.target.value);
-            setTrajectoryDuration(days);
+            scheduleDurationUpdate(days);
+            // Update display immediately for responsiveness
             if (valueDisplay) {
                 valueDisplay.textContent = formatDuration(days);
             }
@@ -521,7 +541,11 @@ function initRightPanelTabs() {
 }
 
 /**
- * Set up sail control sliders
+ * Set up sail control sliders.
+ *
+ * Uses requestAnimationFrame-based coalescing for updateSailDisplay()
+ * to avoid redundant DOM updates when multiple slider input events
+ * fire within the same frame (e.g., during fast slider dragging).
  */
 function initSailControls() {
     const sailCountSlider = document.getElementById('sailCount');
@@ -532,6 +556,20 @@ function initSailControls() {
     const deployValue = document.getElementById('sailDeployValue');
     const angleValue = document.getElementById('sailAngleValue');
     const pitchValue = document.getElementById('sailPitchValue');
+
+    // Coalesce updateSailDisplay() calls within a single animation frame.
+    // Slider 'input' events can fire many times per frame during fast dragging;
+    // this ensures we only update the display once per frame.
+    let sailDisplayUpdatePending = false;
+    function scheduleSailDisplayUpdate() {
+        if (!sailDisplayUpdatePending) {
+            sailDisplayUpdatePending = true;
+            requestAnimationFrame(() => {
+                sailDisplayUpdatePending = false;
+                updateSailDisplay();
+            });
+        }
+    }
 
     const player = getPlayerShip();
 
@@ -570,7 +608,7 @@ function initSailControls() {
             if (sailCountValue) {
                 sailCountValue.textContent = value;
             }
-            updateSailDisplay();
+            scheduleSailDisplayUpdate();
         });
     }
 
@@ -588,7 +626,7 @@ function initSailControls() {
                 const displayValue = Number.isInteger(rounded) ? rounded : parseFloat(rounded.toFixed(2));
                 deployValue.textContent = displayValue + '%';
             }
-            updateSailDisplay();
+            scheduleSailDisplayUpdate();
         });
     }
 
@@ -607,7 +645,7 @@ function initSailControls() {
                 const displayValue = Number.isInteger(rounded) ? rounded : parseFloat(rounded.toFixed(2));
                 angleValue.textContent = displayValue + '°';
             }
-            updateSailDisplay();
+            scheduleSailDisplayUpdate();
         });
     }
 
@@ -626,7 +664,7 @@ function initSailControls() {
                 const displayValue = Number.isInteger(rounded) ? rounded : parseFloat(rounded.toFixed(2));
                 pitchValue.textContent = displayValue + '°';
             }
-            updateSailDisplay();
+            scheduleSailDisplayUpdate();
         });
     }
 }
