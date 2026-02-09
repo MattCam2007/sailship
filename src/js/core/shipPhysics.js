@@ -346,28 +346,133 @@ export function updateShipPhysics(ship, deltaTime) {
         absolutePosition.z ** 2
     );
 
-    // Calculate sail thrust (if sail exists and is deployed)
-    // Thrust is calculated in heliocentric frame using absolutePosition and absoluteVelocity
-    let thrust = { x: 0, y: 0, z: 0 };
+    // ========================================================================
+    // THRUST APPLICATION WITH RK2 SUB-STEPPING
+    // ========================================================================
+    // Matches the trajectory predictor's RK2 midpoint integration method.
+    // Without this, ship physics (Euler) diverges from predicted trajectory
+    // (RK2), causing ghost planets to be inaccurate. At 10M x time warp,
+    // single-step Euler with ~2-day steps accumulates ~1 day error per 200
+    // days, translating to ~2M km positional error at Mars orbit.
+    //
+    // Sub-stepping splits large deltaTime into 2-hour steps (matching the
+    // trajectory predictor's 12 steps/day) and uses RK2 midpoint at each.
+    const effectiveThrust = ship.sail && ship.sail.deploymentPercent > 0 &&
+                            ship.sail.area > 0 &&
+                            (ship.sail.condition || 100) > 0;
 
-    if (ship.sail && ship.sail.deploymentPercent > 0) {
+    if (effectiveThrust) {
+        // Match trajectory predictor step size: 12 steps/day = 0.0833 day steps
+        const MAX_SUBSTEP = 1 / 12;  // 2 hours in days
+        const MAX_SUBSTEPS = 50;     // Cap for extreme time warps
+        const numSubSteps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(deltaTime / MAX_SUBSTEP)));
+        const subDt = deltaTime / numSubSteps;
+
+        for (let step = 0; step < numSubSteps; step++) {
+            const stepTime = julianDate - deltaTime + step * subDt;
+
+            // Get position/velocity at current orbital state
+            const stepPos = getPosition(ship.orbitalElements, stepTime);
+            const stepVel = getVelocity(ship.orbitalElements, stepTime);
+
+            if (!isFinite(stepPos.x) || !isFinite(stepVel.vx)) break;
+
+            // Convert to heliocentric for thrust calculation
+            let absPos = stepPos;
+            let absVel = stepVel;
+            if (ship.soiState.isInSOI) {
+                const parent = getBodyByName(ship.soiState.currentBody);
+                if (parent && parent.elements) {
+                    const planetPos = getPosition(parent.elements, stepTime);
+                    const planetVel = getVelocity(parent.elements, stepTime);
+                    absPos = {
+                        x: stepPos.x + planetPos.x,
+                        y: stepPos.y + planetPos.y,
+                        z: stepPos.z + planetPos.z
+                    };
+                    absVel = {
+                        vx: stepVel.vx + planetVel.vx,
+                        vy: stepVel.vy + planetVel.vy,
+                        vz: stepVel.vz + planetVel.vz
+                    };
+                }
+            }
+            const distSun = Math.sqrt(absPos.x ** 2 + absPos.y ** 2 + absPos.z ** 2);
+
+            // RK2 Step 1: Calculate thrust at start of sub-step
+            const thrustStart = calculateSailThrust(
+                ship.sail, absPos, absVel, distSun, ship.mass || 10000
+            );
+            const thrustMag = Math.sqrt(
+                thrustStart.x ** 2 + thrustStart.y ** 2 + thrustStart.z ** 2
+            );
+
+            if (thrustMag < 1e-20) continue;
+
+            // RK2 Step 2: Propagate to midpoint using start thrust
+            const midElements = applyThrust(ship.orbitalElements, thrustStart, subDt / 2, stepTime);
+            if (!isFinite(midElements.a) || !isFinite(midElements.e) ||
+                midElements.e < 0 || midElements.e > 50) {
+                // Midpoint failed - fall back to Euler for this sub-step
+                const fallback = applyThrust(ship.orbitalElements, thrustStart, subDt, stepTime);
+                if (isFinite(fallback.a) && isFinite(fallback.e) &&
+                    fallback.e >= 0 && fallback.e <= 50) {
+                    ship.orbitalElements = fallback;
+                }
+                continue;
+            }
+
+            // RK2 Step 3: Get state at midpoint for thrust recalculation
+            const midTime = stepTime + subDt / 2;
+            const midPos = getPosition(midElements, midTime);
+            const midVel = getVelocity(midElements, midTime);
+
+            let midAbsPos = midPos;
+            let midAbsVel = midVel;
+            if (ship.soiState.isInSOI) {
+                const parent = getBodyByName(ship.soiState.currentBody);
+                if (parent && parent.elements) {
+                    const planetPosMid = getPosition(parent.elements, midTime);
+                    const planetVelMid = getVelocity(parent.elements, midTime);
+                    midAbsPos = {
+                        x: midPos.x + planetPosMid.x,
+                        y: midPos.y + planetPosMid.y,
+                        z: midPos.z + planetPosMid.z
+                    };
+                    midAbsVel = {
+                        vx: midVel.vx + planetVelMid.vx,
+                        vy: midVel.vy + planetVelMid.vy,
+                        vz: midVel.vz + planetVelMid.vz
+                    };
+                }
+            }
+            const midDistSun = Math.sqrt(
+                midAbsPos.x ** 2 + midAbsPos.y ** 2 + midAbsPos.z ** 2
+            );
+
+            // RK2 Step 4: Calculate thrust at midpoint
+            const thrustMid = calculateSailThrust(
+                ship.sail, midAbsPos, midAbsVel, midDistSun, ship.mass || 10000
+            );
+
+            // RK2 Step 5: Apply midpoint thrust for the FULL sub-step
+            const newElements = applyThrust(ship.orbitalElements, thrustMid, subDt, stepTime);
+            if (isFinite(newElements.a) && isFinite(newElements.e) &&
+                newElements.e >= 0 && newElements.e <= 50) {
+                ship.orbitalElements = newElements;
+            }
+        }
+    }
+
+    // Store last thrust for diagnostics (compute at final position)
+    let thrust = { x: 0, y: 0, z: 0 };
+    if (effectiveThrust) {
         thrust = calculateSailThrust(
             ship.sail,
             absolutePosition,
             absoluteVelocity,
             distanceFromSun,
             ship.mass || 10000
-        );
-    }
-
-    // Apply thrust to modify orbital elements
-    const thrustMag = Math.sqrt(thrust.x ** 2 + thrust.y ** 2 + thrust.z ** 2);
-    if (thrustMag > 1e-20) {
-        ship.orbitalElements = applyThrust(
-            ship.orbitalElements,
-            thrust,
-            deltaTime,
-            julianDate
         );
     }
 

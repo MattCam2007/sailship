@@ -36,7 +36,7 @@ import {
 } from './core/gameState.js';
 import { destination } from './core/navigation.js';
 import { getBodyByName } from './data/celestialBodies.js';
-import { INTERSECTION_CONFIG } from './config.js';
+import { INTERSECTION_CONFIG, SOI_RADII } from './config.js';
 import { initThemeEngine } from './core/themeEngine.js';
 import { initThemeSelector } from './ui/themeSelector.js';
 
@@ -162,19 +162,62 @@ function updatePositions() {
                     soiBody
                 );
 
-                // Store with trajectory hash for synchronization
-                setIntersectionCache(trajectoryHash, intersections);
-
-                // Detect closest approaches to all bodies (Solution #5)
+                // Detect closest approaches to all bodies
                 // This answers "what's my minimum distance to each planet?"
-                if (!isClosestApproachCacheValid(trajectoryHash)) {
-                    const closestApproaches = detectClosestApproaches(
-                        highResTrajectory,
-                        celestialBodies,
-                        currentTime
-                    );
-                    setClosestApproachCache(trajectoryHash, closestApproaches);
+                const closestApproaches = detectClosestApproaches(
+                    highResTrajectory,
+                    celestialBodies,
+                    currentTime
+                );
+                setClosestApproachCache(trajectoryHash, closestApproaches);
+
+                // ============================================================
+                // CLOSEST APPROACH GHOST REFINEMENT
+                // ============================================================
+                // For near encounters, the closest approach position is more
+                // accurate than the radius-crossing position. When the closest
+                // approach distance is significantly better than the radius
+                // crossing distance for the same body, use the closest approach
+                // data for the ghost planet position.
+                //
+                // This fixes the "ghost says CLOSE but I miss" problem: radius
+                // crossing ghosts show where the planet is when you cross its
+                // orbital radius, but the closest approach shows where the
+                // planet is when you're actually nearest to it.
+                for (const intersection of intersections) {
+                    const ca = closestApproaches.find(c => c.bodyName === intersection.bodyName);
+                    if (!ca) continue;
+
+                    const soiRadius = SOI_RADII[intersection.bodyName] || 0.01;
+                    // Only refine when encounter is within 10x SOI (navigation-relevant range)
+                    if (ca.minDistance < soiRadius * 10 && ca.minDistance < intersection.distance) {
+                        // Use closest approach position and time for this ghost
+                        intersection.bodyPosition = ca.bodyPos;
+                        intersection.trajectoryPosition = ca.shipPos;
+                        intersection.distance = ca.minDistance;
+                        intersection.time = ca.time;
+
+                        // Recalculate angular separation with refined positions
+                        const shipMag = Math.sqrt(
+                            ca.shipPos.x ** 2 + ca.shipPos.y ** 2 + ca.shipPos.z ** 2
+                        );
+                        const planetMag = Math.sqrt(
+                            ca.bodyPos.x ** 2 + ca.bodyPos.y ** 2 + ca.bodyPos.z ** 2
+                        );
+                        if (shipMag > 1e-10 && planetMag > 1e-10) {
+                            const dotProd = ca.shipPos.x * ca.bodyPos.x +
+                                            ca.shipPos.y * ca.bodyPos.y +
+                                            ca.shipPos.z * ca.bodyPos.z;
+                            const cosAngle = Math.max(-1, Math.min(1, dotProd / (shipMag * planetMag)));
+                            intersection.angularSeparation = Math.acos(cosAngle);
+                            const cross = ca.shipPos.x * ca.bodyPos.y - ca.shipPos.y * ca.bodyPos.x;
+                            intersection.isAhead = cross > 0;
+                        }
+                    }
                 }
+
+                // Store refined intersections with trajectory hash for synchronization
+                setIntersectionCache(trajectoryHash, intersections);
 
                 // Detect node crossings for the current destination
                 // Shows where trajectory crosses target's orbital plane (optimal for plane changes)
