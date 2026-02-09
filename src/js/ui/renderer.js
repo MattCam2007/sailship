@@ -16,7 +16,7 @@ import {
     getNodeCrossingsCache,
     bodyFilters
 } from '../core/gameState.js';
-import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG, PLANET_TEXTURE_CONFIG } from '../config.js';
+import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG, PLANET_TEXTURE_CONFIG, INTERSECTION_CONFIG } from '../config.js';
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
 import { hasTexture, renderPlanetTexture, clearPlanetTextureCache, initPlanetTextures } from '../lib/planetTextures.js';
@@ -1196,10 +1196,25 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         const julianDate = getJulianDate();
         const deltaDays = intersection.time - julianDate;
 
+        // ANGULAR SEPARATION OPACITY FADE
+        // Ghosts near the max angular separation threshold fade out smoothly
+        // to avoid abrupt pop-in/pop-out as sail adjustments shift the trajectory.
+        // Close encounters (within 2x SOI) are always at full opacity.
+        const angSep = intersection.angularSeparation || 0;
+        const maxAngSep = INTERSECTION_CONFIG.maxAngularSeparation;
+        const fadeStart = maxAngSep * INTERSECTION_CONFIG.fadeStartFraction;
+        let fadeAlpha = 1.0;
+        if (angSep > fadeStart) {
+            const fadeRange = maxAngSep - fadeStart;
+            fadeAlpha = 1.0 - 0.8 * Math.min(1, (angSep - fadeStart) / fadeRange);
+        }
+
         // VISUAL POLISH: Pulsing glow when within SOI distance (good intercept)
         // Uses SOI radius for body-appropriate threshold instead of arbitrary 24h
         const soiRadius = SOI_RADII[intersection.bodyName] || 0.01;
         const isCloseEncounter = intersection.distance < soiRadius * 2;
+        // Close encounters always at full opacity regardless of angular separation
+        if (isCloseEncounter) fadeAlpha = 1.0;
         if (isCloseEncounter) {
             const phase = (Date.now() % 2000) / 2000 * Math.PI * 2;
             const intensity = 0.5 + 0.5 * Math.sin(phase);
@@ -1213,18 +1228,18 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
             ctx.restore();
         }
 
-        // Draw ghost planet (50% transparent)
+        // Draw ghost planet (50% base transparency, modulated by angular separation fade)
         ctx.save();
-        ctx.globalAlpha = 0.5;
+        ctx.globalAlpha = 0.5 * fadeAlpha;
         ctx.fillStyle = display.color;
         ctx.beginPath();
         ctx.arc(projected.x, projected.y, display.radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw subtle outline (70% transparent for visibility)
+        // Draw subtle outline (70% base transparency, modulated by fade)
         ctx.strokeStyle = display.color;
         ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = 0.7 * fadeAlpha;
         ctx.stroke();
 
         ctx.restore();
@@ -1251,7 +1266,7 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         const labelText = `${intersection.bodyName} ${timeOffset} [${distLabel}]${phaseLabel}`;
 
         ctx.save();
-        ctx.globalAlpha = 0.8;
+        ctx.globalAlpha = 0.8 * fadeAlpha;
         ctx.font = '11px monospace';
         ctx.fillStyle = display.color;
         ctx.strokeStyle = 'rgba(0,0,0,0.7)';
