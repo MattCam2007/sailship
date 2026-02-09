@@ -245,8 +245,20 @@ function updatePositions() {
                     }
                 }
 
-                // Store refined intersections with trajectory hash for synchronization
-                setIntersectionCache(trajectoryHash, intersections);
+                // ============================================================
+                // ANGULAR SEPARATION FILTER
+                // ============================================================
+                // Suppress ghost planets where the planet is too far around
+                // its orbit to represent a viable intercept. Applied AFTER
+                // closest approach refinement so refined angular separations
+                // are used (refinement can significantly reduce the value).
+                const maxAngSep = INTERSECTION_CONFIG.maxAngularSeparation;
+                const filteredIntersections = intersections.filter(
+                    i => i.angularSeparation <= maxAngSep
+                );
+
+                // Store filtered intersections with trajectory hash for synchronization
+                setIntersectionCache(trajectoryHash, filteredIntersections);
 
                 // Detect node crossings for the current destination
                 // Shows where trajectory crosses target's orbital plane (optimal for plane changes)
