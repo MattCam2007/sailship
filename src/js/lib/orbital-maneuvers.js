@@ -30,6 +30,7 @@ import {
     SOLAR_PRESSURE_1AU,
     ACCEL_CONVERSION,
     SAIL_MASS_PER_UNIT,
+    TRAJECTORY_ROBUSTNESS,
 } from '../config.js';
 
 
@@ -441,11 +442,12 @@ export function applyThrust(elements, thrust, deltaTime, julianDate) {
     // M0 must correspond to the time when position/velocity were computed.
     const newElements = stateToElements(position, newVelocity, μ, julianDate);
 
-    // FM7 FIX: Validate new elements to prevent degenerate orbits from propagating.
-    // If conversion produced invalid elements, return original elements unchanged.
+    // Validate new elements to prevent degenerate orbits from propagating.
+    // stateToElements now clamps a and e, so this catches only true NaN/Infinity.
     const elementsValid =
         isFinite(newElements.a) && newElements.a !== 0 &&
         isFinite(newElements.e) && newElements.e >= 0 &&
+        newElements.e <= TRAJECTORY_ROBUSTNESS.maxEccentricity &&
         isFinite(newElements.i) &&
         isFinite(newElements.Ω) &&
         isFinite(newElements.ω) &&

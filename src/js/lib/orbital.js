@@ -278,6 +278,202 @@ export function getHyperbolicTrueAnomalyLimit(e) {
 }
 
 // ============================================================================
+// Universal Variable (Stumpff) Functions for Near-Parabolic Orbits
+// ============================================================================
+
+/**
+ * Stumpff function C(z) (also called c2).
+ *
+ * Smoothly handles all orbit types:
+ *   z > 0: elliptic — C(z) = (1 - cos(√z)) / z
+ *   z < 0: hyperbolic — C(z) = (cosh(√(-z)) - 1) / (-z)
+ *   z ≈ 0: parabolic — C(z) ≈ 1/2 (Taylor series)
+ *
+ * @param {number} z - α × χ² where α = 1/a
+ * @returns {number} Stumpff C value
+ */
+export function stumpffC(z) {
+    if (z > 1e-6) {
+        const sqrtZ = Math.sqrt(z);
+        return (1 - Math.cos(sqrtZ)) / z;
+    } else if (z < -1e-6) {
+        const sqrtNegZ = Math.sqrt(-z);
+        return (Math.cosh(sqrtNegZ) - 1) / (-z);
+    }
+    // Taylor series near zero: 1/2 - z/24 + z²/720
+    return 1 / 2 - z / 24 + z * z / 720;
+}
+
+/**
+ * Stumpff function S(z) (also called c3).
+ *
+ * Smoothly handles all orbit types:
+ *   z > 0: elliptic — S(z) = (√z - sin(√z)) / (√z)³
+ *   z < 0: hyperbolic — S(z) = (sinh(√(-z)) - √(-z)) / (√(-z))³
+ *   z ≈ 0: parabolic — S(z) ≈ 1/6 (Taylor series)
+ *
+ * @param {number} z - α × χ² where α = 1/a
+ * @returns {number} Stumpff S value
+ */
+export function stumpffS(z) {
+    if (z > 1e-6) {
+        const sqrtZ = Math.sqrt(z);
+        return (sqrtZ - Math.sin(sqrtZ)) / (sqrtZ * sqrtZ * sqrtZ);
+    } else if (z < -1e-6) {
+        const sqrtNegZ = Math.sqrt(-z);
+        return (Math.sinh(sqrtNegZ) - sqrtNegZ) / (sqrtNegZ * sqrtNegZ * sqrtNegZ);
+    }
+    // Taylor series near zero: 1/6 - z/120 + z²/5040
+    return 1 / 6 - z / 120 + z * z / 5040;
+}
+
+/**
+ * Propagate a state vector forward in time using the universal variable formulation.
+ *
+ * This method works for ALL orbit types (elliptic, parabolic, hyperbolic) without
+ * singularities at e = 1. It uses the Lagrange f and g coefficients computed via
+ * Stumpff functions.
+ *
+ * The universal variable χ is found by solving:
+ *   √μ·Δt = (r₀·vr₀/√μ)·χ²·C(αχ²) + (1-α·r₀)·χ³·S(αχ²) + r₀·χ
+ *
+ * Reference: Curtis, "Orbital Mechanics for Engineering Students", Algorithm 3.4
+ *
+ * @param {{x:number, y:number, z:number}} pos0 - Initial position in AU
+ * @param {{vx:number, vy:number, vz:number}} vel0 - Initial velocity in AU/day
+ * @param {number} mu - Gravitational parameter (AU³/day²)
+ * @param {number} dt - Time step in days
+ * @returns {{pos: {x,y,z}, vel: {vx,vy,vz}}} Propagated state
+ */
+export function propagateStateUniversal(pos0, vel0, mu, dt) {
+    const r0 = Math.sqrt(pos0.x ** 2 + pos0.y ** 2 + pos0.z ** 2);
+
+    if (r0 < 1e-15) {
+        // Degenerate: at origin
+        return { pos: { ...pos0 }, vel: { ...vel0 } };
+    }
+
+    const v0sq = vel0.vx ** 2 + vel0.vy ** 2 + vel0.vz ** 2;
+    const vr0 = (pos0.x * vel0.vx + pos0.y * vel0.vy + pos0.z * vel0.vz) / r0;
+    const sqrtMu = Math.sqrt(mu);
+
+    // Reciprocal semi-major axis: α = 2/r₀ - v²/μ
+    const alpha = 2 / r0 - v0sq / mu;
+
+    // Initial guess for universal variable χ
+    let chi;
+    if (Math.abs(alpha) < 1e-10) {
+        // Near-parabolic: χ ≈ √μ·Δt/r₀
+        chi = sqrtMu * dt / r0;
+    } else if (alpha > 0) {
+        // Elliptic: χ ≈ √μ·Δt·α (fraction of one orbit)
+        chi = sqrtMu * dt * alpha;
+    } else {
+        // Hyperbolic
+        chi = sqrtMu * dt / r0;
+    }
+
+    // Newton-Raphson iteration to solve the universal Kepler equation
+    const maxIter = 50;
+    const tol = 1e-12;
+
+    for (let iter = 0; iter < maxIter; iter++) {
+        const chi2 = chi * chi;
+        const z = alpha * chi2;
+        const Cz = stumpffC(z);
+        const Sz = stumpffS(z);
+        const chi3 = chi2 * chi;
+
+        // f(χ) = universal Kepler equation residual
+        const fChi = (r0 * vr0 / sqrtMu) * chi2 * Cz +
+            (1 - alpha * r0) * chi3 * Sz +
+            r0 * chi - sqrtMu * dt;
+
+        // f'(χ) = derivative
+        const fPrime = (r0 * vr0 / sqrtMu) * chi * (1 - z * Sz) +
+            (1 - alpha * r0) * chi2 * Cz +
+            r0;
+
+        if (Math.abs(fPrime) < 1e-20) break;
+
+        const delta = fChi / fPrime;
+        chi -= delta;
+
+        if (Math.abs(delta) < tol * Math.max(1, Math.abs(chi))) {
+            break;
+        }
+    }
+
+    // Compute Lagrange f and g coefficients
+    const chi2 = chi * chi;
+    const z = alpha * chi2;
+    const Cz = stumpffC(z);
+    const Sz = stumpffS(z);
+
+    const f = 1 - (chi2 / r0) * Cz;
+    const g = dt - (chi2 * chi / sqrtMu) * Sz;
+
+    // New position
+    const pos = {
+        x: f * pos0.x + g * vel0.vx,
+        y: f * pos0.y + g * vel0.vy,
+        z: f * pos0.z + g * vel0.vz
+    };
+
+    const r = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2);
+    if (r < 1e-15) {
+        return { pos, vel: { ...vel0 } };
+    }
+
+    const fdot = (sqrtMu / (r * r0)) * chi * (z * Sz - 1);
+    const gdot = 1 - (chi2 / r) * Cz;
+
+    const vel = {
+        vx: fdot * pos0.x + gdot * vel0.vx,
+        vy: fdot * pos0.y + gdot * vel0.vy,
+        vz: fdot * pos0.z + gdot * vel0.vz
+    };
+
+    return { pos, vel };
+}
+
+/**
+ * Compute position and velocity at epoch from orbital elements.
+ *
+ * Internal helper: computes state vector at M0 (Δt = 0 from epoch)
+ * using the anomaly-based approach. Used as initial state for
+ * universal variable propagation of near-parabolic orbits.
+ *
+ * @param {Object} elements - Orbital elements
+ * @returns {{pos: {x,y,z}, vel: {vx,vy,vz}}} State at epoch
+ */
+function computeStateAtEpoch(elements) {
+    const { a, e, i, Ω, ω, M0, μ } = elements;
+
+    let ν;
+    if (e >= 1) {
+        const H = solveKeplerHyperbolic(M0, e);
+        ν = hyperbolicToTrueAnomaly(H, e);
+    } else {
+        const E = solveKepler(M0, e);
+        ν = eccentricToTrueAnomaly(E, e);
+    }
+
+    const r = orbitalRadius(a, e, ν);
+    const posOrbital = positionInOrbitalPlane(r, ν);
+    const pos = rotateToEcliptic(posOrbital, i, Ω, ω);
+
+    const velOrbital = velocityInOrbitalPlane(a, e, μ, ν);
+    const vel = rotateVelocityToEcliptic(velOrbital, i, Ω, ω);
+
+    return { pos, vel };
+}
+
+// Near-parabolic eccentricity band for universal variable routing
+const NEAR_PARABOLIC_LOW = 0.95;
+const NEAR_PARABOLIC_HIGH = 1.05;
+
+// ============================================================================
 // Orbit Classification
 // ============================================================================
 
@@ -513,6 +709,21 @@ export function getPosition(elements, julianDate) {
     // Time since epoch
     const deltaTime = julianDate - epoch;
 
+    // Near-parabolic orbits (0.95 < e < 1.05): use universal variable propagation
+    // to avoid the Kepler solver singularity at e = 1. Compute state at epoch
+    // using the anomaly-based approach (works because stateToElements nudges e
+    // away from exactly 1.0), then propagate by Δt using Stumpff functions.
+    if (e > NEAR_PARABOLIC_LOW && e < NEAR_PARABOLIC_HIGH && Math.abs(deltaTime) > 1e-15) {
+        const epochState = computeStateAtEpoch(elements);
+        if (isFinite(epochState.pos.x) && isFinite(epochState.vel.vx)) {
+            const propagated = propagateStateUniversal(epochState.pos, epochState.vel, μ, deltaTime);
+            if (isFinite(propagated.pos.x) && isFinite(propagated.pos.y) && isFinite(propagated.pos.z)) {
+                return propagated.pos;
+            }
+        }
+        // Fall through to standard path if universal failed
+    }
+
     // Step 1: Mean motion (uses |a| internally for hyperbolic)
     const n = meanMotion(a, μ);
 
@@ -577,6 +788,18 @@ export function getVelocity(elements, julianDate) {
 
     // Time since epoch
     const deltaTime = julianDate - epoch;
+
+    // Near-parabolic orbits: use universal variable propagation (same as getPosition)
+    if (e > NEAR_PARABOLIC_LOW && e < NEAR_PARABOLIC_HIGH && Math.abs(deltaTime) > 1e-15) {
+        const epochState = computeStateAtEpoch(elements);
+        if (isFinite(epochState.pos.x) && isFinite(epochState.vel.vx)) {
+            const propagated = propagateStateUniversal(epochState.pos, epochState.vel, μ, deltaTime);
+            if (isFinite(propagated.vel.vx) && isFinite(propagated.vel.vy) && isFinite(propagated.vel.vz)) {
+                return propagated.vel;
+            }
+        }
+        // Fall through to standard path if universal failed
+    }
 
     // Mean motion (uses |a| internally for hyperbolic)
     const n = meanMotion(a, μ);

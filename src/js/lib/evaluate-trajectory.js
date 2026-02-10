@@ -10,7 +10,7 @@
 
 import { getPosition, getVelocity, J2000 } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
-import { INTERSECTION_CONFIG, SOI_RADII, GAME_START_EPOCH } from '../config.js';
+import { INTERSECTION_CONFIG, SOI_RADII, GAME_START_EPOCH, TRAJECTORY_ROBUSTNESS } from '../config.js';
 
 // ============================================================================
 // CONFIGURATION (subset relevant to trajectory evaluation)
@@ -335,7 +335,7 @@ export function evaluateCandidate(yawDeg, pitchDeg, ship, target, options = {}) 
                 const newElements = applyThrust(simElements, thrust, timeStep, simTime);
 
                 if (!isFinite(newElements.a) || !isFinite(newElements.e) ||
-                    newElements.e < 0 || newElements.e > 50) {
+                    newElements.e < 0 || newElements.e > TRAJECTORY_ROBUSTNESS.maxEccentricity) {
                     break;
                 }
 

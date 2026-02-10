@@ -10,7 +10,7 @@
  */
 
 import { MU_SUN } from './orbital.js';
-import { SOI_RADII, GRAVITATIONAL_PARAMS } from '../config.js';
+import { SOI_RADII, GRAVITATIONAL_PARAMS, TRAJECTORY_ROBUSTNESS } from '../config.js';
 
 console.log('[SOI] Module loaded');
 
@@ -402,21 +402,30 @@ export function stateToElements(pos, vel, mu, epoch) {
     }
 
     // Semi-major axis handling:
-    // - For elliptic: a > 0, apply minimum threshold
-    // - For hyperbolic: a < 0, preserve sign, apply minimum magnitude
+    // - For elliptic: a > 0, clamp to [minA, maxA]
+    // - For hyperbolic: a < 0, clamp magnitude to [minA, maxA]
+    // Clamping prevents runaway energy calculations from producing
+    // degenerate orbits that crash the integrator.
+    const { minSemiMajorAxis: minA, maxSemiMajorAxis: maxA, maxEccentricity: maxE } = TRAJECTORY_ROBUSTNESS;
+
     let finalA;
     if (isHyperbolic) {
         // Hyperbolic: a should be negative
-        // Apply minimum magnitude (1e-6 AU for planetary SOIs, 1e-4 AU otherwise)
-        const minMagnitude = Math.abs(a) < 0.001 ? 1e-6 : 1e-4;
-        finalA = Math.sign(a) * Math.max(Math.abs(a), minMagnitude);
-        if (finalA > 0) finalA = -minMagnitude;  // Ensure negative for hyperbolic
+        const absMag = clamp(Math.abs(a), minA, maxA);
+        finalA = -absMag;
+        if (!isFinite(finalA)) finalA = -r;  // Fallback
     } else {
         // Elliptic: a should be positive
-        finalA = Math.max(1e-6, a);
+        finalA = clamp(a, minA, maxA);
         if (!isFinite(finalA) || finalA <= 0) {
             finalA = r;  // Fallback to current radius
         }
+    }
+
+    // Clamp eccentricity to prevent runaway values from crashing downstream solvers.
+    // Valid hyperbolic orbits rarely exceed e ~ 10-20; e > maxE is numerical noise.
+    if (e > maxE) {
+        e = maxE;
     }
 
     const result = {

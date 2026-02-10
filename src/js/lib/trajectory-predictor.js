@@ -11,7 +11,7 @@
 
 import { getPosition, getVelocity } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
-import { SOI_RADII, PHYSICS_CONFIG } from '../config.js';
+import { SOI_RADII, PHYSICS_CONFIG, TRAJECTORY_ROBUSTNESS } from '../config.js';
 import { getBodyByName } from '../data/celestialBodies.js';
 
 // SOI trajectory diagnostic - tracks one-shot logging per SOI stay
@@ -25,7 +25,7 @@ const DEFAULT_DURATION_DAYS = 60;
 const DEFAULT_STEPS = 200;
 const DEFAULT_MASS_KG = 10000;
 const MIN_THRUST_THRESHOLD = 1e-20;
-const MAX_HELIOCENTRIC_RADIUS = 10;  // Stop prediction at 10 AU (beyond Jupiter)
+const MAX_HELIOCENTRIC_RADIUS = 50;  // Stop prediction at 50 AU (covers classical solar system through Neptune/Pluto)
 const MIN_HELIOCENTRIC_RADIUS = 0.01;  // Stop prediction at 0.01 AU (sun collision, ~1.5M km)
 
 // Cache TTL configuration
@@ -362,20 +362,16 @@ export function predictTrajectory(params) {
         // has negligible effect, and orbital elements are not meaningful anyway
         if (i < steps - 1 && effectiveThrust && !tooCloseToSun && !useLinearInterpolation) {
             // ================================================================
-            // RK2 MIDPOINT INTEGRATION
+            // RK2 MIDPOINT INTEGRATION WITH ADAPTIVE SUB-STEPPING
             // ================================================================
-            // Instead of Euler (thrust at start, apply for full step), use the
-            // midpoint method: propagate half-step with start thrust, recalculate
-            // thrust at midpoint, use midpoint thrust for full step.
+            // Primary: RK2 midpoint method for accuracy.
+            // Fallback: If element changes per step exceed thresholds (|Δe| or
+            // |Δa/a| too large), redo the step with N smaller Euler sub-steps.
+            // Sub-steps recompute thrust direction at each sub-position, preventing
+            // the large ΔV that causes stateToElements to produce bad elements.
             //
-            // This reduces trajectory divergence from ~3-10 days to ~1 day over
-            // a 200-day transfer, at the cost of one extra calculateSailThrust
-            // call per step.
-            //
-            // Why this matters: The RTN frame (radial-transverse-normal) rotates
-            // as the ship orbits. Euler holds thrust direction constant over each
-            // 2-hour step, but the frame rotates ~0.08° per step at 1 AU. Over
-            // 200 days (2400 steps), these small errors compound nonlinearly.
+            // Sub-stepping is internal only — the output trajectory point count
+            // is unchanged, so the cache and intersection detection are unaffected.
 
             const velocity = getVelocity(simElements, simTime);
 
@@ -421,25 +417,27 @@ export function predictTrajectory(params) {
             );
 
             if (thrustStartMag > MIN_THRUST_THRESHOLD) {
+                const maxE = TRAJECTORY_ROBUSTNESS.maxEccentricity;
+                const prevElements = simElements;  // Save for possible sub-stepping
+
                 // Step 2: Propagate to midpoint using start thrust (half step)
                 const midTime = simTime + timeStep / 2;
                 const midElements = applyThrust(simElements, thrustStart, timeStep / 2, simTime);
 
                 // Validate midpoint elements
+                let stepFailed = false;
                 if (!isFinite(midElements.a) || !isFinite(midElements.e) ||
-                    midElements.e < 0 || midElements.e > 50) {
+                    midElements.e < 0 || midElements.e > maxE) {
                     // Midpoint failed - fall back to Euler (use start thrust for full step)
                     const newElements = applyThrust(simElements, thrustStart, timeStep, simTime);
                     if (!isFinite(newElements.a) || !isFinite(newElements.e) ||
                         !isFinite(newElements.i) || !isFinite(newElements.Ω) ||
                         !isFinite(newElements.ω) || !isFinite(newElements.M0) ||
-                        newElements.e < 0 || newElements.e > 50) {
-                        if (trajectory.length > 0) {
-                            trajectory[trajectory.length - 1].truncated = 'ORBITAL_INSTABILITY';
-                        }
-                        break;
+                        newElements.e < 0 || newElements.e > maxE) {
+                        stepFailed = true;
+                    } else {
+                        simElements = newElements;
                     }
-                    simElements = newElements;
                 } else {
                     // Step 3: Get position/velocity at midpoint for thrust recalculation
                     const midPos = getPosition(midElements, midTime);
@@ -480,26 +478,99 @@ export function predictTrajectory(params) {
                     );
 
                     // Step 5: Apply midpoint thrust for the FULL step from original state
-                    const newElements = applyThrust(simElements, thrustMid, timeStep, simTime);
+                    const newElements = applyThrust(prevElements, thrustMid, timeStep, simTime);
 
                     // Validate new orbital elements
                     if (!isFinite(newElements.a) || !isFinite(newElements.e) ||
                         !isFinite(newElements.i) || !isFinite(newElements.Ω) ||
-                        !isFinite(newElements.ω) || !isFinite(newElements.M0)) {
+                        !isFinite(newElements.ω) || !isFinite(newElements.M0) ||
+                        newElements.e < 0 || newElements.e > maxE) {
+                        stepFailed = true;
+                    } else {
+                        simElements = newElements;
+                    }
+                }
+
+                // ============================================================
+                // ADAPTIVE SUB-STEPPING
+                // ============================================================
+                // If the RK2 step failed outright, or if element changes are
+                // too large (indicating the step size was too aggressive for
+                // the dynamics), redo from prevElements with smaller sub-steps.
+                // Each sub-step recomputes thrust direction, preventing the
+                // large single-step ΔV that causes stateToElements instability.
+                const {
+                    substepEccentricityThreshold: eThresh,
+                    substepSemiMajorAxisThreshold: aThresh,
+                    substepCount: N
+                } = TRAJECTORY_ROBUSTNESS;
+
+                const needsSubstepping = stepFailed || (
+                    !stepFailed && (
+                        Math.abs(simElements.e - prevElements.e) > eThresh ||
+                        (Math.abs(prevElements.a) > 1e-10 &&
+                         Math.abs(simElements.a - prevElements.a) / Math.abs(prevElements.a) > aThresh)
+                    )
+                );
+
+                if (needsSubstepping) {
+                    // Redo from prevElements with N smaller Euler sub-steps
+                    let subElems = prevElements;
+                    const subDt = timeStep / N;
+                    let subFailed = false;
+
+                    for (let j = 0; j < N; j++) {
+                        const subTime = simTime + j * subDt;
+                        const subPos = getPosition(subElems, subTime);
+                        const subVel = getVelocity(subElems, subTime);
+
+                        // Convert to heliocentric for thrust calculation
+                        let subThrustPos = subPos;
+                        let subThrustVel = subVel;
+                        let subDist = Math.sqrt(subPos.x ** 2 + subPos.y ** 2 + subPos.z ** 2);
+
+                        if (isInSOI && currentBody !== 'SUN') {
+                            const parent = getBodyByName(currentBody);
+                            if (parent && parent.elements) {
+                                const pPos = getPosition(parent.elements, subTime);
+                                const pVel = getVelocity(parent.elements, subTime);
+                                subThrustPos = {
+                                    x: subPos.x + pPos.x,
+                                    y: subPos.y + pPos.y,
+                                    z: subPos.z + pPos.z
+                                };
+                                subThrustVel = {
+                                    vx: subVel.vx + pVel.vx,
+                                    vy: subVel.vy + pVel.vy,
+                                    vz: subVel.vz + pVel.vz
+                                };
+                                subDist = Math.sqrt(
+                                    subThrustPos.x ** 2 + subThrustPos.y ** 2 + subThrustPos.z ** 2
+                                );
+                            }
+                        }
+
+                        const subThrust = calculateSailThrust(
+                            sail, subThrustPos, subThrustVel, subDist, mass
+                        );
+                        const subNew = applyThrust(subElems, subThrust, subDt, subTime);
+
+                        if (!isFinite(subNew.a) || !isFinite(subNew.e) ||
+                            subNew.e < 0 || subNew.e > maxE) {
+                            subFailed = true;
+                            break;
+                        }
+                        subElems = subNew;
+                    }
+
+                    if (subFailed) {
+                        // Sub-stepping also failed — truncate trajectory
                         if (trajectory.length > 0) {
                             trajectory[trajectory.length - 1].truncated = 'ORBITAL_INSTABILITY';
                         }
                         break;
                     }
-
-                    if (newElements.e < 0 || newElements.e > 50) {
-                        if (trajectory.length > 0) {
-                            trajectory[trajectory.length - 1].truncated = 'ECCENTRIC_INSTABILITY';
-                        }
-                        break;
-                    }
-
-                    simElements = newElements;
+                    simElements = subElems;
                 }
             }
         }
