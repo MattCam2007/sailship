@@ -245,20 +245,13 @@ function updatePositions() {
                     }
                 }
 
-                // ============================================================
-                // ANGULAR SEPARATION FILTER
-                // ============================================================
-                // Suppress ghost planets where the planet is too far around
-                // its orbit to represent a viable intercept. Applied AFTER
-                // closest approach refinement so refined angular separations
-                // are used (refinement can significantly reduce the value).
-                const maxAngSep = INTERSECTION_CONFIG.maxAngularSeparation;
-                const filteredIntersections = intersections.filter(
-                    i => i.angularSeparation <= maxAngSep
-                );
-
-                // Store filtered intersections with trajectory hash for synchronization
-                setIntersectionCache(trajectoryHash, filteredIntersections);
+                // Store ALL intersections in cache (unfiltered).
+                // Angular separation filtering is handled in the renderer where
+                // Tier 1 ghosts (< 45°) and Tier 2 phase indicators (45-90°)
+                // are rendered differently. Keeping all crossings in the cache
+                // allows the renderer and future autopilot systems to access
+                // the full data set.
+                setIntersectionCache(trajectoryHash, intersections);
 
                 // Detect node crossings for the current destination
                 // Shows where trajectory crosses target's orbital plane (optimal for plane changes)

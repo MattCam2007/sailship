@@ -1147,26 +1147,51 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
     // the planet won't be when they arrive.
     let encounters = [];
 
+    // Tier 2 phase indicators (45-90°) are drawn at the trajectory crossing point
+    const guidanceMaxAngSep = INTERSECTION_CONFIG.guidanceMaxAngularSeparation;
+    const tier1MaxAngSep = INTERSECTION_CONFIG.maxAngularSeparation;
+    let phaseIndicators = [];
+
     if (intersectionCache.results && intersectionCache.results.length > 0) {
-        encounters = intersectionCache.results
+        const filtered = intersectionCache.results
             .filter(intersection => {
                 if (intersection.bodyName !== destination) return false;
                 if (!isFinite(intersection.distance)) return false;
                 const body = celestialBodies.find(b => b.name === intersection.bodyName);
                 if (body && body.category && !bodyFilters[body.category]) return false;
+                // Filter out beyond guidance threshold (90°)
+                if ((intersection.angularSeparation || 0) > guidanceMaxAngSep) return false;
                 return true;
-            })
-            .map(intersection => ({
-                bodyName: intersection.bodyName,
-                bodyPosition: intersection.bodyPosition,
-                time: intersection.time,
-                distance: intersection.distance,
-                angularSeparation: intersection.angularSeparation || 0,
-                isAhead: intersection.isAhead || false
-            }));
+            });
+
+        for (const intersection of filtered) {
+            const angSep = intersection.angularSeparation || 0;
+            if (angSep <= tier1MaxAngSep) {
+                // Tier 1: standard ghost planet
+                encounters.push({
+                    bodyName: intersection.bodyName,
+                    bodyPosition: intersection.bodyPosition,
+                    time: intersection.time,
+                    distance: intersection.distance,
+                    angularSeparation: angSep,
+                    isAhead: intersection.isAhead || false
+                });
+            } else {
+                // Tier 2: phase indicator at trajectory crossing point
+                phaseIndicators.push({
+                    bodyName: intersection.bodyName,
+                    bodyPosition: intersection.bodyPosition,
+                    trajectoryPosition: intersection.trajectoryPosition,
+                    time: intersection.time,
+                    distance: intersection.distance,
+                    angularSeparation: angSep,
+                    isAhead: intersection.isAhead || false
+                });
+            }
+        }
     }
 
-    if (encounters.length === 0) return;
+    if (encounters.length === 0 && phaseIndicators.length === 0) return;
 
     for (const intersection of encounters) {
         const bodyPos = intersection.bodyPosition;
