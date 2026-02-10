@@ -16,7 +16,7 @@ import {
     getNodeCrossingsCache,
     bodyFilters
 } from '../core/gameState.js';
-import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG, PLANET_TEXTURE_CONFIG, INTERSECTION_CONFIG } from '../config.js';
+import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG, PLANET_TEXTURE_CONFIG, INTERSECTION_CONFIG, RING_CONFIG } from '../config.js';
 import { meanMotion, MU_SUN } from '../lib/orbital.js';
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
@@ -504,6 +504,217 @@ function drawSOIBoundaries(centerX, centerY, scale) {
     }
 }
 
+// ============================================================================
+// Ring Rendering System
+// ============================================================================
+
+/**
+ * Compute the projected ring ellipse parameters for a ringed body.
+ *
+ * The ring lies in the body's equatorial plane, whose normal (pole) is tilted
+ * from the ecliptic north by the body's axial tilt. After applying camera
+ * rotations, we get the projected ellipse shape on screen.
+ *
+ * @param {string} bodyName - Name of the body (for axial tilt lookup)
+ * @returns {{ rotation: number, cosIncl: number, visible: boolean }}
+ *   rotation: angle of ring major axis on screen (radians)
+ *   cosIncl: foreshortening factor (0 = edge-on, 1 = face-on)
+ *   visible: false if ring is too edge-on to render
+ */
+function computeRingProjection(bodyName) {
+    const tiltDeg = PLANET_TEXTURE_CONFIG.axialTilts[bodyName] || 0;
+    const tilt = tiltDeg * Math.PI / 180;
+
+    // Ring pole in ecliptic coordinates (simplified: tilt from ecliptic north)
+    // Pole points along +Z (ecliptic north) rotated by tilt around X axis
+    let px = 0;
+    let py = -Math.sin(tilt);
+    let pz = Math.cos(tilt);
+
+    // Apply camera Z rotation (same as project3D)
+    const cosZ = Math.cos(camera.angleZ);
+    const sinZ = Math.sin(camera.angleZ);
+    const px1 = px * cosZ - py * sinZ;
+    const py1 = px * sinZ + py * cosZ;
+
+    // Apply camera X rotation (tilt view)
+    const cosX = Math.cos(camera.angleX);
+    const sinX = Math.sin(camera.angleX);
+    const py2 = py1 * cosX - pz * sinX;
+    const pz2 = py1 * sinX + pz * cosX;
+
+    // pz2 is the component of the pole pointing toward the camera.
+    // |pz2| determines foreshortening: 0 = edge-on, 1 = face-on.
+    // The projected pole direction on screen is (px1, -py2) [Y flipped for screen].
+    // The ring major axis is perpendicular to the projected pole.
+
+    const cosIncl = Math.abs(pz2);
+
+    // Skip rendering when nearly edge-on (rings are ~10m thick, invisible)
+    if (cosIncl < 0.03) {
+        return { rotation: 0, cosIncl: 0, visible: false };
+    }
+
+    // Ring major axis angle: perpendicular to the projected pole
+    const rotation = Math.atan2(-py2, px1) + Math.PI / 2;
+
+    return { rotation, cosIncl, visible: true };
+}
+
+/**
+ * Draw planetary rings for a body, rendering either the back or front half.
+ *
+ * Uses canvas ellipse() with clipping to draw half the ring at a time,
+ * allowing correct z-ordering (back half behind planet, front half in front).
+ *
+ * @param {Object} projected - Screen position {x, y}
+ * @param {number} screenRadius - Planet screen radius in pixels
+ * @param {Object} ringConfig - Ring config from RING_CONFIG
+ * @param {Object} ringProj - From computeRingProjection()
+ * @param {boolean} drawFront - true for front half, false for back half
+ */
+function drawRings(projected, screenRadius, ringConfig, ringProj, drawFront) {
+    const { rotation, cosIncl } = ringProj;
+    const { innerRadius, outerRadius, colorStops } = ringConfig;
+
+    const outerScreenRadius = screenRadius * outerRadius;
+    const innerScreenRadius = screenRadius * innerRadius;
+
+    // Compute ring band width in pixels for detail decisions
+    const ringWidth = outerScreenRadius - innerScreenRadius;
+
+    ctx.save();
+
+    // Set up clip region for the correct half.
+    // We clip along the ring's major axis (the equatorial diameter).
+    // Rotate a clip rectangle to align with the ring plane.
+    ctx.beginPath();
+    const clipSize = outerScreenRadius + 4; // Generous padding
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    // Build a half-plane clip region rotated to align with ring major axis.
+    // "Front" half is the half closer to camera. The sign of pz2 from
+    // computeRingProjection determines which side that is.
+    // With our rotation, the clip is simple: one side of the line through center.
+    const sign = drawFront ? 1 : -1;
+
+    // Perpendicular to major axis (along the pole projection) determines the half
+    const perpX = -sin;
+    const perpY = cos;
+
+    // Draw a large clipping polygon covering just one half
+    ctx.moveTo(
+        projected.x + cos * (-clipSize),
+        projected.y + sin * (-clipSize)
+    );
+    ctx.lineTo(
+        projected.x + cos * clipSize,
+        projected.y + sin * clipSize
+    );
+    ctx.lineTo(
+        projected.x + cos * clipSize + perpX * sign * clipSize * 2,
+        projected.y + sin * clipSize + perpY * sign * clipSize * 2
+    );
+    ctx.lineTo(
+        projected.x + cos * (-clipSize) + perpX * sign * clipSize * 2,
+        projected.y + sin * (-clipSize) + perpY * sign * clipSize * 2
+    );
+    ctx.closePath();
+    ctx.clip();
+
+    // Smooth opacity fade near edge-on viewing to prevent flicker
+    let edgeFade = 1.0;
+    if (cosIncl < 0.15) {
+        edgeFade = (cosIncl - 0.03) / 0.12; // Fade from 0.03 to 0.15
+    }
+
+    // Draw ring bands using concentric filled ellipses (from outer to inner).
+    // We use multiple concentric ellipse fills with per-band colors for a
+    // smooth, visually rich ring appearance.
+    if (ringWidth > 12) {
+        // Detailed rendering: multiple concentric ellipses matching color stops
+        drawRingBands(projected, screenRadius, outerScreenRadius, innerScreenRadius,
+            rotation, cosIncl, colorStops, edgeFade);
+    } else {
+        // Simple rendering: single filled ellipse ring for small sizes
+        drawRingSimple(projected, outerScreenRadius, innerScreenRadius,
+            rotation, cosIncl, colorStops, edgeFade);
+    }
+
+    ctx.restore();
+}
+
+/**
+ * Draw detailed ring bands using multiple concentric ellipse fills.
+ * Called when ring is large enough on screen for visible band detail.
+ */
+function drawRingBands(projected, screenRadius, outerR, innerR, rotation, cosIncl, colorStops, edgeFade) {
+    const bandCount = Math.min(colorStops.length - 1, 24); // Cap segments
+    const ringWidth = outerR - innerR;
+
+    for (let i = 0; i < bandCount; i++) {
+        const stop0 = colorStops[i];
+        const stop1 = colorStops[i + 1];
+
+        // Interpolate radius for this band
+        const r0 = innerR + stop0[0] * ringWidth;
+        const r1 = innerR + stop1[0] * ringWidth;
+
+        // Average color/alpha for this band
+        const r = (stop0[1] + stop1[1]) >> 1;
+        const g = (stop0[2] + stop1[2]) >> 1;
+        const b = (stop0[3] + stop1[3]) >> 1;
+        const a = ((stop0[4] + stop1[4]) / 2) * edgeFade;
+
+        if (a < 0.01) continue; // Skip invisible bands
+
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
+        ctx.beginPath();
+
+        // Outer edge of band
+        ctx.ellipse(projected.x, projected.y, r1, r1 * cosIncl, rotation, 0, Math.PI * 2);
+
+        // Inner edge of band (counter-clockwise to create a ring/donut shape)
+        ctx.moveTo(
+            projected.x + Math.cos(rotation) * r0,
+            projected.y + Math.sin(rotation) * r0
+        );
+        ctx.ellipse(projected.x, projected.y, r0, r0 * cosIncl, rotation, 0, Math.PI * 2, true);
+
+        ctx.fill('evenodd');
+    }
+}
+
+/**
+ * Draw a simple ring as a single filled annulus.
+ * Used at small screen sizes where band detail isn't visible.
+ */
+function drawRingSimple(projected, outerR, innerR, rotation, cosIncl, colorStops, edgeFade) {
+    // Use the brightest stop as the ring color
+    let maxAlpha = 0;
+    let bestStop = colorStops[0];
+    for (const stop of colorStops) {
+        if (stop[4] > maxAlpha) {
+            maxAlpha = stop[4];
+            bestStop = stop;
+        }
+    }
+
+    const a = Math.min(maxAlpha * 0.7, 0.6) * edgeFade; // Slightly muted for small sizes
+    if (a < 0.01) return;
+
+    ctx.fillStyle = `rgba(${bestStop[1]}, ${bestStop[2]}, ${bestStop[3]}, ${a.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(projected.x, projected.y, outerR, outerR * cosIncl, rotation, 0, Math.PI * 2);
+    ctx.moveTo(
+        projected.x + Math.cos(rotation) * innerR,
+        projected.y + Math.sin(rotation) * innerR
+    );
+    ctx.ellipse(projected.x, projected.y, innerR, innerR * cosIncl, rotation, 0, Math.PI * 2, true);
+    ctx.fill('evenodd');
+}
+
 /**
  * Draw a celestial body
  */
@@ -571,6 +782,17 @@ function drawBody(body, centerX, centerY, scale) {
         ctx.arc(projected.x, projected.y, screenRadius, 0, Math.PI * 2);
         ctx.fill();
     } else {
+        // Check for ring system (Saturn, Uranus, Neptune)
+        const ringConfig = RING_CONFIG[body.name];
+        let ringProj = null;
+        if (ringConfig && screenRadius >= ringConfig.minScreenRadius) {
+            ringProj = computeRingProjection(body.name);
+            // Draw BACK half of ring (behind planet)
+            if (ringProj.visible) {
+                drawRings(projected, screenRadius, ringConfig, ringProj, false);
+            }
+        }
+
         // Planet rendering: textured sphere (when available and large enough)
         // or gradient fallback with crossfade transition between the two
         const { minScreenRadius, crossfadeRange } = PLANET_TEXTURE_CONFIG;
@@ -642,6 +864,11 @@ function drawBody(body, centerX, centerY, scale) {
             }
         }
 
+        // Draw FRONT half of ring (in front of planet)
+        if (ringProj && ringProj.visible) {
+            drawRings(projected, screenRadius, ringConfig, ringProj, true);
+        }
+
         // Subtle atmospheric glow (always, works with both modes)
         // Shadow requires a non-transparent fill to cast, so we draw the body color
         // at very low alpha underneath. The shadowBlur creates the colored halo.
@@ -656,9 +883,13 @@ function drawBody(body, centerX, centerY, scale) {
         ctx.restore();
     }
 
-    // Label with background pill
+    // Label with background pill — offset by ring extent for ringed planets
     if (displayOptions.showLabels) {
-        drawLabel(body.name, projected.x + screenRadius + 5, projected.y + 3, 'rgba(232, 93, 76, 0.8)', false);
+        const ringConfig = RING_CONFIG[body.name];
+        const labelOffset = (ringConfig && screenRadius >= ringConfig.minScreenRadius)
+            ? screenRadius * ringConfig.outerRadius + 5
+            : screenRadius + 5;
+        drawLabel(body.name, projected.x + labelOffset, projected.y + 3, 'rgba(232, 93, 76, 0.8)', false);
     }
 }
 

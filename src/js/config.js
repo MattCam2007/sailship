@@ -626,6 +626,75 @@ export const PLANET_TEXTURE_CONFIG = {
     },
 };
 
+// ============================================================================
+// Ring Configuration
+// ============================================================================
+
+/**
+ * Ring rendering configuration for ringed planets.
+ *
+ * Radii are expressed as multiples of the planet's physical radius.
+ * Color stops define the radial gradient across the ring width.
+ * Each stop: [position 0-1, r, g, b, a] where position 0 = inner edge, 1 = outer edge.
+ *
+ * Saturn ring data: NASA/JPL. Uranus/Neptune: simplified for visibility.
+ */
+export const RING_CONFIG = {
+    SATURN: {
+        innerRadius: 1.24,    // C ring inner edge (~74,500 km / 58,232 km)
+        outerRadius: 2.37,    // A ring outer edge (~136,775 km / 58,232 km)
+        minScreenRadius: 8,   // Don't draw rings below this planet screen radius
+        colorStops: [
+            // C ring (faint, translucent)
+            [0.00, 160, 145, 115, 0.12],
+            [0.14, 175, 158, 128, 0.20],
+            // B ring (brightest, most opaque)
+            [0.18, 200, 182, 148, 0.65],
+            [0.30, 220, 200, 165, 0.85],
+            [0.44, 228, 208, 172, 0.88],
+            // Cassini Division (dark gap)
+            [0.48, 50, 42, 32, 0.08],
+            [0.52, 50, 42, 32, 0.08],
+            // A ring (moderate brightness)
+            [0.56, 205, 185, 150, 0.65],
+            [0.72, 195, 175, 140, 0.55],
+            [0.88, 180, 162, 128, 0.35],
+            // F ring / outer fade
+            [1.00, 155, 138, 108, 0.04],
+        ],
+    },
+    URANUS: {
+        innerRadius: 1.50,    // ~38,000 km / 25,362 km
+        outerRadius: 2.02,    // ~51,149 km / 25,362 km
+        minScreenRadius: 12,
+        colorStops: [
+            // Uranus rings are very dark and narrow
+            [0.00, 80, 90, 100, 0.02],
+            [0.20, 90, 100, 115, 0.12],
+            [0.40, 95, 108, 125, 0.18],
+            [0.60, 95, 108, 125, 0.18],
+            [0.80, 90, 100, 115, 0.12],
+            [1.00, 80, 90, 100, 0.02],
+        ],
+    },
+    NEPTUNE: {
+        innerRadius: 1.70,    // ~41,900 km / 24,622 km
+        outerRadius: 2.54,    // ~62,933 km / 24,622 km
+        minScreenRadius: 12,
+        colorStops: [
+            // Neptune's rings are faint with clumpy arcs (Adams ring brightest)
+            [0.00, 100, 105, 130, 0.02],
+            [0.30, 110, 118, 148, 0.06],
+            [0.55, 105, 112, 140, 0.04],
+            // Adams ring (the distinct one)
+            [0.78, 120, 130, 165, 0.15],
+            [0.85, 125, 135, 170, 0.18],
+            [0.92, 120, 130, 165, 0.12],
+            [1.00, 100, 108, 135, 0.02],
+        ],
+    },
+};
+
 /**
  * Default colors for ships by faction/type.
  */
