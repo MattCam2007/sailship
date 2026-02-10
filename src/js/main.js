@@ -159,14 +159,9 @@ function updatePositions() {
             const soiBody = player.soiState?.isInSOI ? player.soiState.currentBody : null;
             const currentTime = getJulianDate();
 
-            // Calculate HIGH-RESOLUTION trajectory for intersection detection
-            // This is separate from the rendering trajectory for better accuracy
+            // Calculate trajectory for intersection detection
+            // Let trajectory-predictor.js calculate adaptive steps based on orbit characteristics
             const duration = trajectoryConfig.durationDays;
-            const rawSteps = Math.round(duration * INTERSECTION_CONFIG.stepsPerDay);
-            const intersectionSteps = Math.min(
-                INTERSECTION_CONFIG.maxSteps,
-                Math.max(INTERSECTION_CONFIG.minSteps, rawSteps)
-            );
 
             const highResTrajectory = predictTrajectory({
                 orbitalElements: player.orbitalElements,
@@ -174,7 +169,6 @@ function updatePositions() {
                 mass: player.mass || 10000,
                 startTime: currentTime,
                 duration: duration,
-                steps: intersectionSteps,
                 soiState: player.soiState,
                 extremeFlybyState: player.extremeFlybyState
             });

@@ -1137,6 +1137,58 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
 }
 
 /**
+ * Subdivide trajectory for smooth rendering at all zoom levels.
+ * Interpolates between physics points to ensure ~18 pixels per segment.
+ * Pattern adapted from drawOrbit() zoom-adaptive segments.
+ *
+ * This is purely visual smoothing - no physics cost. The physics points
+ * remain unchanged; we only add interpolated points for rendering.
+ */
+function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
+    if (!trajectory || trajectory.length < 2) return trajectory;
+
+    const TARGET_PIXELS_PER_SEGMENT = 18;
+    const subdivided = [];
+
+    for (let i = 0; i < trajectory.length - 1; i++) {
+        const p1 = trajectory[i];
+        const p2 = trajectory[i + 1];
+
+        // Project to screen space to measure pixel distance
+        const proj1 = project3D(p1.x, p1.y, p1.z, centerX, centerY, scale);
+        const proj2 = project3D(p2.x, p2.y, p2.z, centerX, centerY, scale);
+
+        const pixelDist = Math.sqrt(
+            (proj2.x - proj1.x) ** 2 + (proj2.y - proj1.y) ** 2
+        );
+
+        // Always add first point
+        subdivided.push(p1);
+
+        // If segment is long in screen space, subdivide it
+        if (pixelDist > TARGET_PIXELS_PER_SEGMENT) {
+            const subsegments = Math.ceil(pixelDist / TARGET_PIXELS_PER_SEGMENT);
+
+            // Linear interpolation in 3D space
+            for (let j = 1; j < subsegments; j++) {
+                const t = j / subsegments;
+                subdivided.push({
+                    x: p1.x + (p2.x - p1.x) * t,
+                    y: p1.y + (p2.y - p1.y) * t,
+                    z: p1.z + (p2.z - p1.z) * t,
+                    time: p1.time + (p2.time - p1.time) * t,
+                });
+            }
+        }
+    }
+
+    // Add final point
+    subdivided.push(trajectory[trajectory.length - 1]);
+
+    return subdivided;
+}
+
+/**
  * Draw the predicted trajectory (spiral path) showing where the ship
  * will actually go with continuous thrust.
  *
@@ -1156,25 +1208,17 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
 
     // Get predicted trajectory with configurable duration
     const duration = trajectoryConfig.durationDays;
-    // Use high-resolution steps for accurate trajectory prediction
-    // Low resolution causes thrust to be held constant over large time steps,
-    // leading to trajectory divergence (ship doesn't end up where predicted)
-    const rawSteps = Math.round(duration * TRAJECTORY_RENDER_CONFIG.stepsPerDay);
-    const steps = Math.min(
-        TRAJECTORY_RENDER_CONFIG.maxSteps,
-        Math.max(TRAJECTORY_RENDER_CONFIG.minSteps, rawSteps)
-    );
 
     // Use current simulation date for trajectory prediction
     const startTime = getJulianDate();
 
+    // Let trajectory-predictor.js calculate adaptive steps based on orbit characteristics
     const trajectory = predictTrajectory({
         orbitalElements: ship.orbitalElements,
         sail: ship.sail,
         mass: ship.mass || 10000,
         startTime: startTime,
         duration: duration,
-        steps: steps,
         soiState: ship.soiState,  // For SOI boundary detection
         extremeFlybyState: ship.extremeFlybyState  // For extreme eccentricity linear interpolation
     });
@@ -1199,29 +1243,26 @@ function drawPredictedTrajectory(ship, centerX, centerY, scale) {
     // When in SOI, it internally converts planetocentric → heliocentric.
     // DO NOT add parent offset here - it's already included in trajectory positions.
 
+    // Subdivide trajectory for smooth rendering at all zoom levels
+    // This adds interpolated points purely for visual quality - zero physics cost
+    const renderTrajectory = subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale);
+
     // Draw trajectory with gradient fade
     ctx.lineWidth = 2;
     ctx.setLineDash([]);  // Solid line (not dashed like Keplerian)
 
-    // Draw in segments with decreasing alpha for time direction indication.
-    // For high-resolution trajectories (>2000 points), skip points for rendering
-    // while keeping the full data for intersection detection accuracy.
-    const segmentCount = trajectory.length - 1;
-    const MAX_VISUAL_SEGMENTS = 1500;
-    const drawSkip = segmentCount > MAX_VISUAL_SEGMENTS
-        ? Math.ceil(segmentCount / MAX_VISUAL_SEGMENTS)
-        : 1;
+    // Draw in segments with decreasing alpha for time direction indication
+    const segmentCount = renderTrajectory.length - 1;
 
-    for (let i = 0; i < segmentCount; i += drawSkip) {
+    for (let i = 0; i < segmentCount; i++) {
         const progress = i / segmentCount;
         const alpha = 0.8 - progress * 0.6;  // Fade from 0.8 to 0.2
 
         // Magenta/purple color to distinguish from green Keplerian orbit
         ctx.strokeStyle = getColor('canvas.trajectory', alpha);
 
-        const p1 = trajectory[i];
-        const nextIdx = Math.min(i + drawSkip, segmentCount);
-        const p2 = trajectory[nextIdx];
+        const p1 = renderTrajectory[i];
+        const p2 = renderTrajectory[i + 1];
 
         // Trajectory positions are already heliocentric (no offset needed)
         const x1 = p1.x;
