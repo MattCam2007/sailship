@@ -124,6 +124,57 @@ function niceScaleNumber(value) {
     return 10 * pow;
 }
 
+/**
+ * Format a distance value with adaptive units based on magnitude and zoom level.
+ *
+ * Picks the most meaningful unit (AU, M km, K km, km) based on the distance
+ * value, and adds extra precision when zoomed in close so that small sail
+ * adjustments produce visible changes in the display.
+ *
+ * @param {number} distanceAU - Distance in AU
+ * @returns {string} Formatted distance string (e.g. "1.24 AU", "8.98 M km", "142 K km")
+ */
+function formatDistance(distanceAU) {
+    const KM_PER_AU = 149597870.7;
+    const km = distanceAU * KM_PER_AU;
+
+    // Determine extra precision from effective zoom
+    // Higher zoom = more pixels per AU = user is looking at finer detail
+    const effectiveScale = getScale() * camera.zoom;
+    let bonusDecimals = 0;
+    if (effectiveScale > 10000) {
+        bonusDecimals = 2;
+    } else if (effectiveScale > 2000) {
+        bonusDecimals = 1;
+    }
+
+    if (distanceAU >= 1) {
+        // Large distances: AU with 2 decimals
+        const decimals = 2 + bonusDecimals;
+        return distanceAU.toFixed(decimals) + ' AU';
+    } else if (distanceAU >= 0.1) {
+        // Medium distances: AU with 3 decimals
+        const decimals = 3 + bonusDecimals;
+        return distanceAU.toFixed(decimals) + ' AU';
+    } else if (km >= 1000000) {
+        // 1M-15M km range: millions of km
+        const mKm = km / 1000000;
+        const decimals = 2 + bonusDecimals;
+        return mKm.toFixed(decimals) + ' M km';
+    } else if (km >= 10000) {
+        // 10K-1M km range: thousands of km
+        const kKm = km / 1000;
+        const decimals = Math.min(1 + bonusDecimals, 3);
+        return kKm.toFixed(decimals) + ' K km';
+    } else if (km >= 100) {
+        // 100-10K km: plain km, no decimals
+        return Math.round(km).toLocaleString('en-US') + ' km';
+    } else {
+        // Sub-100 km: km with decimals
+        return km.toFixed(1) + ' km';
+    }
+}
+
 /** Track last effective scale to skip redundant updateScaleDisplay calculations */
 let lastEffectiveScale = -1;
 
@@ -223,7 +274,7 @@ function updateDestinationDisplay() {
     const info = getDestinationInfo();
 
     if (info) {
-        setTextIfChanged(elements.destDist, info.distance.toFixed(3) + ' AU');
+        setTextIfChanged(elements.destDist, formatDistance(info.distance));
 
         // Show relative velocity to target (important for capture)
         if (elements.relVelocity && info.relativeVelocity !== null) {
@@ -279,7 +330,7 @@ function updateDestinationDisplay() {
     }
 
     if (closestDistance !== undefined) {
-        setTextIfChanged(elements.closestDist, closestDistance.toFixed(3) + ' AU');
+        setTextIfChanged(elements.closestDist, formatDistance(closestDistance));
         if (elements.timeToClosest) {
             const days = Math.floor(timeToClosest);
             const hours = Math.floor((timeToClosest % 1) * 24);
