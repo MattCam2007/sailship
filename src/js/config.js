@@ -350,6 +350,22 @@ export const INTERSECTION_CONFIG = {
     maxAngularSeparation: Math.PI / 4,
 
     /**
+     * Maximum angular separation (radians) for Tier 2 phase indicators.
+     *
+     * When angular separation exceeds maxAngularSeparation (Tier 1 ghost
+     * threshold) but is below this value, a directional phase indicator
+     * is drawn at the trajectory crossing point instead of a ghost planet.
+     *
+     * The phase indicator shows a chevron pointing toward the planet's
+     * actual position with a label like "MARS 63deg AHEAD ~2 orbits",
+     * giving the player recovery guidance when they drift off-course.
+     *
+     * At π/2 (90°): planet is a quarter-orbit away. Beyond this,
+     * the transfer is fundamentally different and no indicator is shown.
+     */
+    guidanceMaxAngularSeparation: Math.PI / 2,
+
+    /**
      * Fraction of maxAngularSeparation at which opacity fade begins.
      *
      * Ghost planets at angular separations below this fraction of the max
