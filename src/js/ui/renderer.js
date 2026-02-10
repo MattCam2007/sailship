@@ -17,6 +17,7 @@ import {
     bodyFilters
 } from '../core/gameState.js';
 import { SOI_RADII, BODY_DISPLAY, SCALE_RENDERING_CONFIG, TRAJECTORY_RENDER_CONFIG, PLANET_TEXTURE_CONFIG, INTERSECTION_CONFIG } from '../config.js';
+import { meanMotion, MU_SUN } from '../lib/orbital.js';
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
 import { hasTexture, renderPlanetTexture, clearPlanetTextureCache, initPlanetTextures } from '../lib/planetTextures.js';
@@ -1302,6 +1303,132 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         const labelY = projected.y - display.radius - 5;
 
         // Draw text with outline for readability
+        ctx.strokeText(labelText, labelX, labelY);
+        ctx.fillText(labelText, labelX, labelY);
+
+        ctx.restore();
+    }
+
+    // ====================================================================
+    // TIER 2: Phase Indicators (45-90°)
+    // ====================================================================
+    // Drawn at the trajectory crossing point (where ship crosses target's
+    // orbital radius), NOT at the planet's position. Shows a directional
+    // chevron pointing toward the planet with phase gap and orbit estimate.
+    for (const indicator of phaseIndicators) {
+        const crossingPos = indicator.trajectoryPosition;
+        if (!crossingPos) continue;
+
+        // Project the ship's crossing point to screen
+        const crossingProjected = project3D(
+            crossingPos.x, crossingPos.y, crossingPos.z,
+            centerX, centerY, scale
+        );
+        if (!crossingProjected) continue;
+
+        // Cull off-screen
+        if (crossingProjected.x < -50 || crossingProjected.x > canvas.width + 50) continue;
+        if (crossingProjected.y < -50 || crossingProjected.y > canvas.height + 50) continue;
+
+        const display = BODY_DISPLAY[indicator.bodyName];
+        if (!display) continue;
+
+        // Calculate direction from crossing point to planet position (in 2D ecliptic)
+        // This gives the chevron its pointing direction
+        const dx = indicator.bodyPosition.x - crossingPos.x;
+        const dy = indicator.bodyPosition.y - crossingPos.y;
+        const dirMag = Math.sqrt(dx * dx + dy * dy);
+        if (dirMag < 1e-10) continue;
+
+        // Project the planet position to get screen-space direction
+        const planetProjected = project3D(
+            indicator.bodyPosition.x, indicator.bodyPosition.y, indicator.bodyPosition.z,
+            centerX, centerY, scale
+        );
+        if (!planetProjected) continue;
+
+        const screenDx = planetProjected.x - crossingProjected.x;
+        const screenDy = planetProjected.y - crossingProjected.y;
+        const screenDirMag = Math.sqrt(screenDx * screenDx + screenDy * screenDy);
+        // Normalized screen direction (use fallback if planet projects to same point)
+        const ndx = screenDirMag > 1 ? screenDx / screenDirMag : 1;
+        const ndy = screenDirMag > 1 ? screenDy / screenDirMag : 0;
+
+        // Draw chevron (open arrow) pointing toward planet
+        const chevronSize = 8;
+        const cx = crossingProjected.x;
+        const cy = crossingProjected.y;
+
+        // Chevron tip is offset from crossing point in the planet direction
+        const tipX = cx + ndx * chevronSize * 2;
+        const tipY = cy + ndy * chevronSize * 2;
+
+        // Perpendicular for chevron wings
+        const perpX = -ndy;
+        const perpY = ndx;
+
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.strokeStyle = display.color;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Draw chevron shape (open arrow: two lines from wings to tip)
+        ctx.beginPath();
+        ctx.moveTo(cx + perpX * chevronSize - ndx * chevronSize * 0.5,
+                   cy + perpY * chevronSize - ndy * chevronSize * 0.5);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineTo(cx - perpX * chevronSize - ndx * chevronSize * 0.5,
+                   cy - perpY * chevronSize - ndy * chevronSize * 0.5);
+        ctx.stroke();
+
+        // Draw small circle at crossing point (distinct from ghost planet circle)
+        ctx.beginPath();
+        ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.restore();
+
+        // Estimate orbits to close the phase gap
+        // Phase closure rate = difference in mean motions between ship and target
+        const angSepDeg = indicator.angularSeparation * (180 / Math.PI);
+        const targetBody = celestialBodies.find(b => b.name === indicator.bodyName);
+        let orbitEstimate = '';
+        if (targetBody && targetBody.elements) {
+            const shipRadius = Math.sqrt(
+                crossingPos.x ** 2 + crossingPos.y ** 2 + crossingPos.z ** 2
+            );
+            if (shipRadius > 0.01) {
+                // Ship's mean motion at crossing radius (approximate circular orbit)
+                const nShip = meanMotion(shipRadius, MU_SUN);
+                // Target's mean motion
+                const nTarget = meanMotion(targetBody.elements.a, MU_SUN);
+                const phaseDiffRate = Math.abs(nShip - nTarget); // rad/day
+                if (phaseDiffRate > 1e-10) {
+                    const daysToClose = indicator.angularSeparation / phaseDiffRate;
+                    const targetPeriod = 2 * Math.PI / nTarget;
+                    const orbits = Math.ceil(daysToClose / targetPeriod);
+                    orbitEstimate = orbits === 1 ? ' ~1 orbit' : ` ~${orbits} orbits`;
+                }
+            }
+        }
+
+        // Draw label
+        const direction = indicator.isAhead ? 'AHEAD' : 'BEHIND';
+        const labelText = `${indicator.bodyName} ${Math.round(angSepDeg)}° ${direction}${orbitEstimate}`;
+
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.font = '10px monospace';
+        ctx.fillStyle = display.color;
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 3;
+
+        // Position label offset from chevron tip
+        const labelX = tipX + ndx * 8 + 5;
+        const labelY = tipY + ndy * 8;
+
         ctx.strokeText(labelText, labelX, labelY);
         ctx.fillText(labelText, labelX, labelY);
 
