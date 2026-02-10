@@ -246,9 +246,16 @@ export function predictTrajectory(params) {
         ? steps
         : calculateAdaptiveSteps(orbitalElements, duration, soiState);
 
+    // Create resolved params with ACTUAL step count for cache hash
+    // This prevents cache collisions when different orbits need different step counts
+    const resolvedParams = {
+        ...params,
+        steps: adaptiveSteps
+    };
+
     // Check cache
     const now = Date.now();
-    const hash = hashInputs(params);
+    const hash = hashInputs(resolvedParams);
 
     // Adaptive TTL: use longer TTL when trajectory is stable
     const isStable = trajectoryCache.stableCount >= CACHE_CONFIG.stableThreshold;
