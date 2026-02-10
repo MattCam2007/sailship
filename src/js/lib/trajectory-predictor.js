@@ -9,10 +9,11 @@
  * instantaneous orbit if thrust stopped.
  */
 
-import { getPosition, getVelocity } from './orbital.js';
+import { getPosition, getVelocity, MU_SUN } from './orbital.js';
 import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
-import { SOI_RADII, PHYSICS_CONFIG } from '../config.js';
+import { SOI_RADII, PHYSICS_CONFIG, TRAJECTORY_RENDER_CONFIG } from '../config.js';
 import { getBodyByName } from '../data/celestialBodies.js';
+import { getGravitationalParam } from './soi.js';
 
 // SOI trajectory diagnostic - tracks one-shot logging per SOI stay
 let soiTrajDiag = {
@@ -22,7 +23,6 @@ let soiTrajDiag = {
 
 // Configuration constants
 const DEFAULT_DURATION_DAYS = 60;
-const DEFAULT_STEPS = 200;
 const DEFAULT_MASS_KG = 10000;
 const MIN_THRUST_THRESHOLD = 1e-20;
 const MAX_HELIOCENTRIC_RADIUS = 10;  // Stop prediction at 10 AU (beyond Jupiter)
@@ -46,6 +46,71 @@ let trajectoryCache = {
     inputHash: null,
     stableCount: 0  // Tracks how many consecutive frames had the same hash
 };
+
+/**
+ * Calculate adaptive step count based on orbital characteristics.
+ *
+ * Fast-rotating orbits (inner planets, high-thrust spirals) need more steps
+ * to accurately capture the continuous rotation of the RTN reference frame.
+ * Slow orbits (outer planets) can use fewer steps without visible error.
+ *
+ * @param {Object} orbitalElements - Ship's orbital elements
+ * @param {number} duration - Prediction duration in days
+ * @param {Object} soiState - Current SOI state {currentBody, isInSOI}
+ * @returns {number} Optimal step count for this orbit
+ */
+function calculateAdaptiveSteps(orbitalElements, duration, soiState) {
+    const { a, e } = orbitalElements;
+
+    // Get gravitational parameter (Sun or planet)
+    let μ = MU_SUN;
+    if (soiState?.isInSOI && soiState.currentBody !== 'SUN') {
+        μ = getGravitationalParam(soiState.currentBody);
+    }
+
+    // Calculate orbital period using Kepler's third law: T = 2π√(a³/μ)
+    // For hyperbolic orbits (e >= 1), a is negative - use absolute value
+    const absA = Math.abs(a);
+
+    // Guard against degenerate orbits (would cause NaN or Infinity)
+    if (!isFinite(absA) || absA < 1e-10) {
+        // Fallback to minimum steps for safety
+        return TRAJECTORY_RENDER_CONFIG.minSteps;
+    }
+
+    const orbitalPeriod = 2 * Math.PI * Math.sqrt(absA * absA * absA / μ);
+
+    // Calculate steps based on duration and orbital period
+    // Use stepsPerDay from config as the target resolution
+    const stepsFromDuration = Math.ceil(duration * TRAJECTORY_RENDER_CONFIG.stepsPerDay);
+
+    // For hyperbolic orbits (e >= 1), orbital period is infinite
+    // Use duration-based steps only
+    if (e >= 1.0 || !isFinite(orbitalPeriod) || orbitalPeriod <= 0) {
+        return Math.max(
+            TRAJECTORY_RENDER_CONFIG.minSteps,
+            Math.min(stepsFromDuration, TRAJECTORY_RENDER_CONFIG.maxSteps)
+        );
+    }
+
+    // For elliptical orbits, ensure minimum samples per orbit
+    // This prevents under-sampling when predicting far into the future
+    const orbitsInDuration = duration / orbitalPeriod;
+    const stepsPerOrbit = 50;  // Minimum steps per orbit for smooth curves
+    const stepsFromPeriod = Math.ceil(orbitsInDuration * stepsPerOrbit);
+
+    // Use the larger of duration-based or period-based step count
+    // This ensures both:
+    // 1. Fine-grained time resolution (from stepsPerDay)
+    // 2. Adequate orbital sampling (from stepsPerOrbit)
+    const adaptiveSteps = Math.max(stepsFromDuration, stepsFromPeriod);
+
+    // Clamp to configured min/max bounds
+    return Math.max(
+        TRAJECTORY_RENDER_CONFIG.minSteps,
+        Math.min(adaptiveSteps, TRAJECTORY_RENDER_CONFIG.maxSteps)
+    );
+}
 
 /**
  * Generate a hash of inputs for cache invalidation.
@@ -104,13 +169,17 @@ function hashInputs(params) {
  * attempting to cross them, as SOI transitions are significant events
  * that deserve user attention.
  *
+ * ADAPTIVE RESOLUTION: Step count is automatically calculated based on orbital
+ * characteristics. Fast-rotating orbits (inner planets) use more steps to
+ * accurately capture RTN frame rotation. Slow orbits (outer planets) use fewer.
+ *
  * @param {Object} params - Prediction parameters
  * @param {Object} params.orbitalElements - Starting Keplerian elements
  * @param {Object} params.sail - Sail configuration {area, reflectivity, angle, pitchAngle, deploymentPercent, condition}
  * @param {number} params.mass - Ship mass in kg
  * @param {number} params.startTime - Julian date to start from
  * @param {number} params.duration - Days to predict ahead (default 60)
- * @param {number} params.steps - Number of position samples (default 200)
+ * @param {number} params.steps - Number of position samples (optional, auto-calculated if omitted)
  * @param {Object} params.soiState - SOI state {currentBody, isInSOI}
  * @param {Object} params.extremeFlybyState - Optional extreme flyby state for linear interpolation
  * @returns {Array} Array of {x, y, z, time, truncated?} positions in AU
@@ -122,10 +191,16 @@ export function predictTrajectory(params) {
         mass = DEFAULT_MASS_KG,
         startTime,
         duration = DEFAULT_DURATION_DAYS,
-        steps = DEFAULT_STEPS,
+        steps,  // Optional - will be auto-calculated if not provided
         soiState = null,
         extremeFlybyState = null
     } = params;
+
+    // Calculate adaptive step count if not explicitly provided
+    // This ensures optimal accuracy for all orbit types without manual tuning
+    const adaptiveSteps = steps !== undefined
+        ? steps
+        : calculateAdaptiveSteps(orbitalElements, duration, soiState);
 
     // Check cache
     const now = Date.now();
@@ -147,7 +222,7 @@ export function predictTrajectory(params) {
 
     // Propagate trajectory
     const trajectory = [];
-    const timeStep = duration / steps;
+    const timeStep = duration / adaptiveSteps;
 
     // Clone orbital elements for simulation (don't modify original)
     let simElements = { ...orbitalElements };
@@ -190,7 +265,7 @@ export function predictTrajectory(params) {
             `e=${simElements.e.toFixed(4)} a=${simElements.a.toFixed(6)} | ` +
             `SOI_radius=${soiRadius?.toFixed(6) || 'N/A'} AU | ` +
             `linearInterp=${useLinearInterpolation} | ` +
-            `steps=${steps} duration=${duration}d`
+            `steps=${adaptiveSteps} (adaptive) duration=${duration}d`
         );
         if (useLinearInterpolation && extremeFlybyState) {
             console.log(
@@ -204,7 +279,7 @@ export function predictTrajectory(params) {
         soiTrajDiag.lastLoggedSOIBody = null;
     }
 
-    for (let i = 0; i < steps; i++) {
+    for (let i = 0; i < adaptiveSteps; i++) {
         const simTime = startTime + i * timeStep;
 
         // Get position from current orbital elements (planetocentric when in SOI)
@@ -249,7 +324,7 @@ export function predictTrajectory(params) {
                     soiTrajDiag.lastLoggedReason = 'SOI_EXIT';
                     const timeInSOI = (i * timeStep).toFixed(2);
                     console.log(
-                        `[TRAJ_DIAG] TRUNCATED at step ${i}/${steps} (SOI_EXIT) | ` +
+                        `[TRAJ_DIAG] TRUNCATED at step ${i}/${adaptiveSteps} (SOI_EXIT) | ` +
                         `${trajectory.length} points rendered | ` +
                         `dist=${distFromOrigin.toFixed(6)} > SOI*1.1=${(soiRadius*1.1).toFixed(6)} | ` +
                         `${timeInSOI}d into prediction | ` +
@@ -312,7 +387,7 @@ export function predictTrajectory(params) {
 
         // Skip thrust application for extreme flybys - the flyby is so fast that sail thrust
         // has negligible effect, and orbital elements are not meaningful anyway
-        if (i < steps - 1 && effectiveThrust && !tooCloseToSun && !useLinearInterpolation) {
+        if (i < adaptiveSteps - 1 && effectiveThrust && !tooCloseToSun && !useLinearInterpolation) {
             // ================================================================
             // RK2 MIDPOINT INTEGRATION
             // ================================================================
@@ -533,4 +608,54 @@ export function getTrajectoryHash() {
     return null;
 }
 
-console.log('[TRAJECTORY_PREDICTOR] Module loaded');
+/**
+ * Debug function: Calculate and log adaptive step count for current orbit.
+ * Call from console: window.debugTrajectorySteps()
+ */
+export function debugTrajectorySteps(ship, durationDays = 60) {
+    if (!ship || !ship.orbitalElements) {
+        console.log('[DEBUG] No ship or orbital elements available');
+        return;
+    }
+
+    const steps = calculateAdaptiveSteps(ship.orbitalElements, durationDays, ship.soiState);
+    const { a, e } = ship.orbitalElements;
+
+    let μ = MU_SUN;
+    if (ship.soiState?.isInSOI && ship.soiState.currentBody !== 'SUN') {
+        μ = getGravitationalParam(ship.soiState.currentBody);
+    }
+
+    const absA = Math.abs(a);
+    const orbitalPeriod = e < 1.0 ? 2 * Math.PI * Math.sqrt(absA * absA * absA / μ) : Infinity;
+    const timeStepDays = durationDays / steps;
+    const timeStepHours = timeStepDays * 24;
+
+    console.log('\n========== TRAJECTORY ADAPTIVE RESOLUTION DEBUG ==========');
+    console.log(`[DEBUG] Orbit: a=${a.toFixed(6)} AU, e=${e.toFixed(4)}`);
+    console.log(`[DEBUG] Reference: ${ship.soiState?.isInSOI ? ship.soiState.currentBody : 'SUN'}`);
+    console.log(`[DEBUG] Orbital period: ${orbitalPeriod === Infinity ? 'HYPERBOLIC' : orbitalPeriod.toFixed(2) + ' days'}`);
+    console.log(`[DEBUG] Prediction duration: ${durationDays} days`);
+    console.log(`[DEBUG] Adaptive step count: ${steps}`);
+    console.log(`[DEBUG] Time per step: ${timeStepHours.toFixed(2)} hours (${timeStepDays.toFixed(4)} days)`);
+
+    if (orbitalPeriod !== Infinity) {
+        const angularVelDegPerDay = 360 / orbitalPeriod;
+        const frameRotationPerStep = angularVelDegPerDay * timeStepDays;
+        console.log(`[DEBUG] RTN frame rotation per step: ${frameRotationPerStep.toFixed(3)}°`);
+        console.log(`[DEBUG] Total frame rotation over prediction: ${(frameRotationPerStep * steps).toFixed(1)}°`);
+    }
+
+    console.log(`[DEBUG] Config limits: min=${TRAJECTORY_RENDER_CONFIG.minSteps}, max=${TRAJECTORY_RENDER_CONFIG.maxSteps}`);
+    console.log('========== END DEBUG ==========\n');
+
+    return steps;
+}
+
+// Make debug function available globally
+if (typeof window !== 'undefined') {
+    window.debugTrajectorySteps = debugTrajectorySteps;
+}
+
+console.log('[TRAJECTORY_PREDICTOR] Module loaded with adaptive resolution');
+console.log('[TRAJECTORY_PREDICTOR] Use window.debugTrajectorySteps(ship) to inspect step calculation');
