@@ -180,6 +180,43 @@ export const SOI_RADII = {
 };
 
 /**
+ * Trajectory robustness configuration.
+ * Controls adaptive sub-stepping and element clamping to prevent
+ * numerical instability in the trajectory predictor.
+ */
+export const TRAJECTORY_ROBUSTNESS = {
+    /**
+     * Maximum allowed semi-major axis magnitude in AU.
+     * Orbits with |a| beyond this are clamped — catches runaway energy calculations.
+     * 1000 AU is well beyond any solar system orbit (Pluto aphelion ≈ 49 AU).
+     */
+    maxSemiMajorAxis: 1000,
+
+    /**
+     * Minimum allowed semi-major axis magnitude in AU.
+     * Prevents degenerate near-zero orbits from collapsing the integrator.
+     */
+    minSemiMajorAxis: 1e-6,
+
+    /**
+     * Maximum eccentricity before trajectory truncation.
+     * Generous enough to allow real hyperbolic flybys (e ~ 2-10),
+     * but catches runaway integration errors (e suddenly jumping to 500+).
+     * 200 is the cutoff; the old value of 50 was too conservative.
+     */
+    maxEccentricity: 200,
+
+    /**
+     * Adaptive sub-stepping thresholds.
+     * When orbital element changes per step exceed these, the step is
+     * retried with smaller internal sub-steps.
+     */
+    substepEccentricityThreshold: 0.1,   // |Δe| per step
+    substepSemiMajorAxisThreshold: 0.2,  // |Δa/a| per step
+    substepCount: 4,                      // Number of sub-steps when triggered
+};
+
+/**
  * Physics simulation configuration.
  * Controls numerical stability and simulation behavior.
  */
