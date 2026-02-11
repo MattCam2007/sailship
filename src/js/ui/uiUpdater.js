@@ -9,6 +9,7 @@ import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo, getShipVelocityKmS } from '../core/shipPhysics.js';
 import { SOI_RADII } from '../config.js';
 import { camera } from '../core/camera.js';
+import { formatTripDistance, getTripElapsedDays, getTripAvgSpeedKmS, resetTripometer } from '../core/tripometer.js';
 
 // Cache DOM elements
 let elements = {};
@@ -78,10 +79,22 @@ export function initUI() {
         thrusterRetrograde: document.getElementById('thrusterRetrograde'),
         thrusterPrograde: document.getElementById('thrusterPrograde'),
         fuelIndicator: document.getElementById('fuelIndicator'),
+        // Tripometer elements
+        tripDist: document.getElementById('tripDist'),
+        tripTime: document.getElementById('tripTime'),
+        tripAvg: document.getElementById('tripAvg'),
     };
 
     // Initialize sail display with current values
     updateSailDisplay();
+
+    // Wire up tripometer reset button
+    const tripResetBtn = document.getElementById('tripReset');
+    if (tripResetBtn) {
+        tripResetBtn.addEventListener('click', () => {
+            resetTripometer();
+        });
+    }
 }
 
 /**
@@ -98,6 +111,7 @@ export function updateUI() {
     updateThrusterDisplayInternal();
     updateSOIStatus();
     updateInclinationDisplay();
+    updateTripometerDisplay();
 }
 
 const MONTH_ABBR = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -210,6 +224,16 @@ function updateTimeDisplay() {
     const timeText = `${dateStr} // ${missionStr}`;
     setTextIfChanged(elements.timeDisplay, timeText);
     setTextIfChanged(elements.mobileTimeDisplay, timeText);
+}
+
+/**
+ * Update tripometer display with distance, elapsed time, and average speed.
+ */
+function updateTripometerDisplay() {
+    setTextIfChanged(elements.tripDist, formatTripDistance());
+    setTextIfChanged(elements.tripTime, 'T+ ' + formatMissionTime(getTripElapsedDays()));
+    const avg = getTripAvgSpeedKmS();
+    setTextIfChanged(elements.tripAvg, 'AVG ' + avg.toFixed(2) + ' km/s');
 }
 
 /**
