@@ -562,10 +562,10 @@ export const DEFAULT_THRUSTER = {
  */
 export const PLANET_TEXTURE_CONFIG = {
     /** Minimum screen radius (px) to activate texture rendering */
-    minScreenRadius: 30,
+    minScreenRadius: 6,
 
     /** Screen radius range over which gradient→texture crossfade occurs */
-    crossfadeRange: 20,
+    crossfadeRange: 10,
 
     /** Resolution of the offscreen WebGL render target (square) */
     renderSize: 512,

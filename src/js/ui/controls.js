@@ -3,7 +3,7 @@
  */
 
 import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
-import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, AUTOPILOT_MODES, setAutoPilotPhase, getAutoPilotPhase, setAutoPilotMode, getAutoPilotMode, setTrajectoryDuration, bodyFilters, saveBodyFilters, markCourseApplied, clearTransitState } from '../core/gameState.js';
+import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, AUTOPILOT_MODES, setAutoPilotPhase, getAutoPilotPhase, setAutoPilotMode, getAutoPilotMode, setTrajectoryDuration, bodyFilters, saveBodyFilters } from '../core/gameState.js';
 import { exportGameState, importGameState, fetchSaveIndex, loadSaveFile } from '../core/saveState.js';
 import { resizeCanvas } from './renderer.js';
 import {
@@ -12,15 +12,7 @@ import {
     generateFlightPath,
     computeCapturePlan,
     computeSlingshotPlan,
-    getDestinationInfo,
-    computeOptimalCourse,
-    getCachedOptimalCourse,
-    applyComputedCourse,
-    getCourseComputationState,
-    isRefinementMode,
-    clearOptimalCourseCache,
-    computeLaunchWindows,
-    getLaunchWindowState
+    getDestinationInfo
 } from '../core/navigation.js';
 import { celestialBodies, getVisibleBodies } from '../data/celestialBodies.js';
 import { ships, getPlayerShip, setSailAngle, setSailPitch, setSailDeployment, setSailCount, setThrusterBurnSize } from '../data/ships.js';
@@ -255,8 +247,6 @@ export function initControls(canvas) {
     initAutoPilotControls();
     initEncounterModeControls();
     initThrusterControls();
-    initCoursePlotter();
-    initLaunchWindowFinder();
     initSaveLoadControls();
     initCheatCodes();
     initKeyboardShortcuts();
@@ -753,10 +743,10 @@ function initKeyboardShortcuts() {
     const pitchSlider = document.getElementById('sailPitch');
 
     document.addEventListener('keydown', e => {
-        // Tab switching shortcuts: Ctrl+1/2/3 for SAIL/NAV/AUTO
-        if ((e.ctrlKey || e.metaKey) && ['1', '2', '3'].includes(e.key)) {
+        // Tab switching shortcuts: Ctrl+1/2 for SAIL/NAV
+        if ((e.ctrlKey || e.metaKey) && ['1', '2'].includes(e.key)) {
             e.preventDefault(); // Prevent browser shortcuts
-            const tabMap = { '1': 'sail', '2': 'nav', '3': 'auto' };
+            const tabMap = { '1': 'sail', '2': 'nav' };
             const tabButtons = document.querySelectorAll('#rightPanelTabs .tab-btn');
             const targetTab = tabMap[e.key];
             const targetButton = Array.from(tabButtons).find(btn => btn.dataset.tab === targetTab);
@@ -803,15 +793,6 @@ function initKeyboardShortcuts() {
             const newState = !isAutoPilotEnabled();
             setAutoPilotEnabled(newState);
             updateAutoPilotUI(newState);
-            return;
-        }
-
-        // Theme selector with 't'
-        if (e.key === 't' || e.key === 'T') {
-            // Import themeSelector dynamically to avoid circular dependencies
-            import('./themeSelector.js').then(module => {
-                module.openThemeSelector();
-            });
             return;
         }
 
@@ -1245,11 +1226,6 @@ export function populateObjectList() {
                 setDestination(obj.name);
                 setDestinationName(obj.name);
                 generateFlightPath();
-
-                // Clear transit state when destination changes
-                // This disables refinement mode until a new course is applied
-                clearTransitState('destination changed');
-                updatePlotButtonText();
             }
         });
         list.appendChild(item);
@@ -1316,29 +1292,7 @@ function initEncounterModeControls() {
     updateModeUI(getAutoPilotMode());
 }
 
-/**
- * Update the plot button text based on whether refinement mode is active.
- *
- * Shows "REFINE COURSE" when:
- * - A course has been applied (transit state active)
- * - Current destination matches the applied course destination
- * - Current sail settings are within ±20° of applied course
- *
- * Shows "PLOT COURSE" in all other cases.
- */
-export function updatePlotButtonText() {
-    const plotBtn = document.getElementById('plotCourseBtn');
-    if (!plotBtn) return;
-
-    const btnText = plotBtn.querySelector('.course-btn-text');
-    if (!btnText) return;
-
-    // Don't update if currently computing
-    if (plotBtn.classList.contains('computing')) return;
-
-    const useRefinement = isRefinementMode();
-    btnText.textContent = useRefinement ? 'REFINE COURSE' : 'PLOT COURSE';
-}
+// Course Plotter feature removed
 
 /**
  * Set up thruster controls for orbital insertion and gravity assist
@@ -1420,455 +1374,7 @@ function initThrusterControls() {
     }
 }
 
-// Course plotter sail count (separate from the ship's current sail count)
-let coursePlotterSailCount = 1;
-
-/**
- * Get the course plotter's selected sail count.
- * @returns {number} Selected sail count for course plotting
- */
-export function getCoursePlotterSailCount() {
-    return coursePlotterSailCount;
-}
-
-/**
- * Set up course plotter controls
- */
-function initCoursePlotter() {
-    const plotBtn = document.getElementById('plotCourseBtn');
-    const applyBtn = document.getElementById('applyCourseBtn');
-    const resetBtn = document.getElementById('resetCourseBtn');
-    const resultDiv = document.getElementById('courseResult');
-
-    // Initialize sail count from current ship state
-    const player = getPlayerShip();
-    if (player?.sail) {
-        coursePlotterSailCount = player.sail.sailCount || 1;
-        const sailCountDisplay = document.getElementById('courseSailCountValue');
-        if (sailCountDisplay) sailCountDisplay.textContent = coursePlotterSailCount;
-    }
-
-    // Sail count +/- buttons
-    const sailCountDown = document.getElementById('courseSailCountDown');
-    const sailCountUp = document.getElementById('courseSailCountUp');
-    const sailCountDisplay = document.getElementById('courseSailCountValue');
-
-    if (sailCountDown) {
-        sailCountDown.addEventListener('click', () => {
-            coursePlotterSailCount = Math.max(1, coursePlotterSailCount - 1);
-            if (sailCountDisplay) sailCountDisplay.textContent = coursePlotterSailCount;
-        });
-    }
-
-    if (sailCountUp) {
-        sailCountUp.addEventListener('click', () => {
-            coursePlotterSailCount = Math.min(20, coursePlotterSailCount + 1);
-            if (sailCountDisplay) sailCountDisplay.textContent = coursePlotterSailCount;
-        });
-    }
-
-    // Worker count control
-    initWorkerControl(
-        'coursePlotterWorkersDown',
-        'coursePlotterWorkersUp',
-        'coursePlotterWorkerCount',
-        'coursePlotterWorkers'
-    );
-
-    if (plotBtn) {
-        plotBtn.addEventListener('click', async () => {
-            // Check if already computing
-            const state = getCourseComputationState();
-            if (state.computing) return;
-
-            // Read worker count from UI
-            const workerCount = getWorkerCount('coursePlotterWorkerCount');
-
-            // Update button to show computing state
-            plotBtn.classList.add('computing');
-            plotBtn.querySelector('.course-btn-text').textContent = 'COMPUTING...';
-            applyBtn.disabled = true;
-
-            // Clear previous result
-            resultDiv.classList.remove('has-solution');
-            resultDiv.innerHTML = '<div class="course-status">Phase 1/3: Scanning...</div>';
-
-            try {
-                const course = await computeOptimalCourse((progress) => {
-                    // Update progress display (v4.0 bracket search + legacy phases)
-                    let statusText;
-                    if (progress.phase === 'starting') {
-                        statusText = progress.message || 'Initializing...';
-                    } else if (progress.phase === 'scouting') {
-                        statusText = 'Scouting horizons...';
-                    } else if (progress.phase === 'deep-search') {
-                        const horizonNum = (progress.horizonIndex || 0) + 1;
-                        const horizonTotal = progress.horizonCount || 2;
-                        const horizonDays = progress.currentHorizon || 365;
-                        const subPhase = progress.subPhase || 'searching';
-                        statusText = `Horizon ${horizonNum}/${horizonTotal} (${horizonDays}d): ${subPhase}`;
-                    } else if (progress.phase === 'refinement-mode') {
-                        const subPhase = progress.subPhase || 'searching';
-                        statusText = `Refining: ${subPhase}`;
-                    } else if (progress.phase === 'complete') {
-                        statusText = 'Complete';
-                    } else {
-                        statusText = progress.message || 'Computing...';
-                    }
-                    resultDiv.innerHTML = `<div class="course-status">${statusText}</div>`;
-                }, coursePlotterSailCount, workerCount);
-
-                // Update button state
-                plotBtn.classList.remove('computing');
-                updatePlotButtonText();  // Update based on refinement mode
-
-                if (course) {
-                    displayCourseResult(course, resultDiv);
-                    applyBtn.disabled = false;
-                    // Show reset button when we have a result
-                    if (resetBtn) resetBtn.style.display = '';
-                } else {
-                    resultDiv.innerHTML = '<div class="course-status">No solution found</div>';
-                }
-            } catch (error) {
-                console.error('Course computation error:', error);
-                plotBtn.classList.remove('computing');
-                updatePlotButtonText();  // Update based on refinement mode
-                resultDiv.innerHTML = '<div class="course-status">Computation failed</div>';
-            }
-        });
-    }
-
-    if (applyBtn) {
-        applyBtn.addEventListener('click', () => {
-            const course = getCachedOptimalCourse();
-            if (course && applyComputedCourse(course)) {
-                // Fix #5: Mark that a course was applied so intersection detector
-                // forces high precision, preventing ghost position "jumping" when
-                // user zooms in to verify the intercept
-                markCourseApplied();
-
-                // Sync slider positions with the precise course values
-                const deploySlider = document.getElementById('sailDeployment');
-                const angleSlider = document.getElementById('sailAngle');
-                const pitchSlider = document.getElementById('sailPitch');
-                const sailCountSlider = document.getElementById('sailCount');
-                const deployValue = document.getElementById('sailDeployValue');
-                const angleValue = document.getElementById('sailAngleValue');
-                const pitchValue = document.getElementById('sailPitchValue');
-                const sailCountValue = document.getElementById('sailCountValue');
-
-                // Helper to format values - show decimal only if not a whole number
-                const formatValue = (val, suffix) => {
-                    const rounded = Math.round(val * 10) / 10;
-                    const display = Number.isInteger(rounded) ? rounded : rounded.toFixed(1);
-                    return display + suffix;
-                };
-
-                if (deploySlider) deploySlider.value = course.deployment;
-                if (angleSlider) angleSlider.value = course.yawDeg;
-                if (pitchSlider) pitchSlider.value = course.pitchDeg;
-                if (sailCountSlider) sailCountSlider.value = coursePlotterSailCount;
-                if (deployValue) deployValue.textContent = formatValue(course.deployment, '%');
-                if (angleValue) angleValue.textContent = formatValue(course.yawDeg, '°');
-                if (pitchValue) pitchValue.textContent = formatValue(course.pitchDeg, '°');
-                if (sailCountValue) sailCountValue.textContent = coursePlotterSailCount;
-
-                // Update sail display (also updates mobile sliders)
-                updateSailDisplay();
-
-                // Disable apply button until next recalculation
-                applyBtn.disabled = true;
-                applyBtn.textContent = 'APPLIED';
-
-                // Update plot button to show "REFINE COURSE" since course is now applied
-                updatePlotButtonText();
-            }
-        });
-    }
-
-    // Reset button - clears the course plotter state
-    if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-            // Clear the cached course
-            clearOptimalCourseCache();
-            clearTransitState('course plotter reset');
-
-            // Reset result display
-            if (resultDiv) {
-                resultDiv.classList.remove('has-solution');
-                resultDiv.innerHTML = '<div class="course-status">Select destination, then plot course</div>';
-            }
-
-            // Disable apply and hide reset
-            if (applyBtn) {
-                applyBtn.disabled = true;
-                applyBtn.textContent = 'APPLY COURSE';
-            }
-            resetBtn.style.display = 'none';
-
-            // Reset plot button text
-            updatePlotButtonText();
-        });
-    }
-}
-
-/**
- * Display course computation result
- * @param {Object} course - Computed course solution
- * @param {HTMLElement} container - Result container element
- */
-function displayCourseResult(course, container) {
-    const qualityClass = course.quality.toLowerCase().replace('_', '-');
-    const arrivalDays = Math.round(course.timeToClosest);
-    const distanceAU = course.minDistance.toFixed(4);
-
-    // Format transfer horizon (show as years if > 365 days)
-    let transferText = '';
-    if (course.horizonDays) {
-        if (course.horizonDays >= 365) {
-            const years = (course.horizonDays / 365).toFixed(1);
-            transferText = `${years}yr`;
-        } else {
-            transferText = `${course.horizonDays}d`;
-        }
-    }
-
-    // v3.0: Format crossing info
-    let crossingText = '';
-    let crossingTimeText = '';
-    if (course.crossingInfo && course.crossingInfo.usedCrossingAware) {
-        const ci = course.crossingInfo;
-        if (ci.totalCrossings > 0) {
-            // Show which crossing is targeted (1-indexed for user display)
-            const crossingNum = ci.crossingIndex + 1;
-            const direction = ci.crossingDirection === 'outbound' ? '↑' : '↓';
-            crossingText = `#${crossingNum}/${ci.totalCrossings} ${direction}`;
-
-            // Fix #4: Format crossing time as "T+XXd Xh" from timeToClosest (days)
-            const crossingDays = Math.floor(course.timeToClosest);
-            const crossingHours = Math.round((course.timeToClosest - crossingDays) * 24);
-            crossingTimeText = `T+${crossingDays}d ${crossingHours}h`;
-        }
-    }
-
-    // v3.0: Format phase angle (angular separation)
-    let phaseText = '';
-    if (course.crossingInfo && course.crossingInfo.angularSeparationDeg < 180) {
-        const phaseDeg = course.crossingInfo.angularSeparationDeg.toFixed(1);
-        phaseText = `${phaseDeg}°`;
-    }
-
-    container.classList.add('has-solution');
-    container.innerHTML = `
-        <div class="course-settings">
-            <div class="course-row">
-                <span class="course-label">SAILS</span>
-                <span class="course-value">${course.sailCount || 1}</span>
-            </div>
-            <div class="course-row">
-                <span class="course-label">YAW</span>
-                <span class="course-value">${course.yawDeg.toFixed(1)}°</span>
-            </div>
-            <div class="course-row">
-                <span class="course-label">PITCH</span>
-                <span class="course-value">${course.pitchDeg.toFixed(1)}°</span>
-            </div>
-            <div class="course-row">
-                <span class="course-label">DEPLOY</span>
-                <span class="course-value">${course.deployment}%</span>
-            </div>
-            <div class="course-row">
-                <span class="course-label">ETA</span>
-                <span class="course-value">${arrivalDays}d</span>
-            </div>
-            <div class="course-row">
-                <span class="course-label">CLOSEST</span>
-                <span class="course-value">${distanceAU} AU</span>
-            </div>
-            ${transferText ? `<div class="course-row">
-                <span class="course-label">TRANSFER</span>
-                <span class="course-value">${transferText}</span>
-            </div>` : ''}
-            ${crossingText ? `<div class="course-row">
-                <span class="course-label">CROSSING</span>
-                <span class="course-value">${crossingText}</span>
-            </div>` : ''}
-            ${crossingTimeText ? `<div class="course-row">
-                <span class="course-label">TIME</span>
-                <span class="course-value">${crossingTimeText}</span>
-            </div>` : ''}
-            ${phaseText ? `<div class="course-row">
-                <span class="course-label">PHASE</span>
-                <span class="course-value">${phaseText}</span>
-            </div>` : ''}
-            <div class="course-quality ${qualityClass}">${course.quality.replace('_', ' ')}</div>
-        </div>
-    `;
-}
-
-/**
- * Set up launch window finder controls
- */
-function initLaunchWindowFinder() {
-    const findBtn = document.getElementById('findWindowsBtn');
-    const resultDiv = document.getElementById('launchWindowResult');
-
-    if (!findBtn || !resultDiv) return;
-
-    // Worker count control
-    initWorkerControl(
-        'launchWindowWorkersDown',
-        'launchWindowWorkersUp',
-        'launchWindowWorkerCount',
-        'launchWindowWorkers'
-    );
-
-    findBtn.addEventListener('click', async () => {
-        // Check if already computing
-        const state = getLaunchWindowState();
-        if (state.computing) return;
-
-        // Read worker count from UI
-        const workerCount = getWorkerCount('launchWindowWorkerCount');
-
-        // Update button to show computing state
-        findBtn.classList.add('computing');
-        findBtn.querySelector('.course-btn-text').textContent = 'SCANNING...';
-
-        // Clear previous result
-        resultDiv.classList.remove('has-solution');
-        resultDiv.innerHTML = '<div class="course-status">Scanning departure dates...</div>';
-
-        try {
-            const result = await computeLaunchWindows((progress) => {
-                const pct = Math.round((progress.progress || 0) * 100);
-                let statusText;
-                if (progress.phase === 'baseline') {
-                    statusText = 'Evaluating current departure...';
-                } else if (progress.phase === 'scanning') {
-                    statusText = `Scanning departures... (${pct}%)`;
-                } else if (progress.phase === 'verifying') {
-                    const idx = (progress.windowIndex || 0) + 1;
-                    statusText = `Verifying window ${idx}... (${pct}%)`;
-                } else if (progress.phase === 'complete') {
-                    statusText = 'Analysis complete';
-                } else {
-                    statusText = progress.message || 'Computing...';
-                }
-                resultDiv.innerHTML = `<div class="course-status">${statusText}</div>`;
-            }, workerCount);
-
-            // Restore button
-            findBtn.classList.remove('computing');
-            findBtn.querySelector('.course-btn-text').textContent = 'FIND WINDOWS';
-
-            if (result && result.error) {
-                if (result.error === 'EXIT_SOI') {
-                    resultDiv.innerHTML = '<div class="course-status">Exit SOI first</div>';
-                } else {
-                    resultDiv.innerHTML = `<div class="course-status">${result.errorMessage}</div>`;
-                }
-            } else if (result) {
-                displayLaunchWindowResults(result, resultDiv);
-            } else {
-                resultDiv.innerHTML = '<div class="course-status">No results</div>';
-            }
-        } catch (error) {
-            console.error('Launch window computation error:', error);
-            findBtn.classList.remove('computing');
-            findBtn.querySelector('.course-btn-text').textContent = 'FIND WINDOWS';
-            resultDiv.innerHTML = '<div class="course-status">Computation failed</div>';
-        }
-    });
-}
-
-/**
- * Format days into a readable string (e.g., "320d" or "1.2yr")
- */
-function formatDays(days) {
-    if (days >= 365) {
-        return (days / 365).toFixed(1) + 'yr';
-    }
-    return Math.round(days) + 'd';
-}
-
-/**
- * Display launch window analysis results
- * @param {Object} result - Results from computeLaunchWindows()
- * @param {HTMLElement} container - Result container element
- */
-function displayLaunchWindowResults(result, container) {
-    const { windows, baseline, computeTimeMs } = result;
-
-    let html = '<div class="course-settings">';
-
-    // Baseline (depart now)
-    if (baseline) {
-        const baselineStatus = baseline.status || 'NO_INTERCEPT';
-        const statusClass = baselineStatus === 'INTERCEPT' ? 'status-intercept'
-            : baselineStatus === 'NEAR_MISS' ? 'status-miss' : '';
-        html += `
-            <div class="course-row" style="opacity: 0.6">
-                <span class="course-label">NOW</span>
-                <span class="course-value ${statusClass}">${formatDays(baseline.totalDays)} ${baselineStatus.replace('_', ' ')}</span>
-            </div>
-        `;
-    }
-
-    // Separator
-    if (windows.length > 0) {
-        html += `<div class="course-row" style="border-top: 1px solid rgba(76,232,141,0.2); margin: 4px 0; padding-top: 4px;"><span class="course-label" style="font-size: 0.7em; opacity: 0.5">WINDOWS FOUND: ${windows.length}</span><span class="course-value"></span></div>`;
-    }
-
-    // Windows
-    for (let i = 0; i < windows.length; i++) {
-        const w = windows[i];
-        const statusClass = w.status === 'INTERCEPT' ? 'status-intercept'
-            : (w.status === 'NEAR_MISS' || w.status === 'NEAR MISS') ? 'status-miss' : '';
-
-        // Calculate savings vs baseline
-        let savingsText = '';
-        if (baseline && w.totalDays < baseline.totalDays) {
-            const saved = Math.round(baseline.totalDays - w.totalDays);
-            savingsText = ` (−${formatDays(saved)})`;
-        }
-
-        const isBest = i === 0 && windows.length > 1;
-
-        html += `
-            <div class="course-row">
-                <span class="course-label">${isBest ? '★ ' : ''}COAST ${formatDays(w.coastDays)}</span>
-                <span class="course-value ${statusClass}">${formatDays(w.totalDays)} total${savingsText}</span>
-            </div>
-        `;
-
-        // Show sail settings for verified windows
-        if (w.verified && w.yawDeg !== undefined) {
-            html += `
-                <div class="course-row" style="font-size: 0.8em; opacity: 0.7">
-                    <span class="course-label">  SAIL</span>
-                    <span class="course-value">Y${w.yawDeg.toFixed(0)}° P${w.pitchDeg.toFixed(0)}° → ${formatDays(w.flightDays)} flight</span>
-                </div>
-            `;
-        }
-    }
-
-    // Compute time
-    if (computeTimeMs) {
-        html += `
-            <div class="course-row" style="font-size: 0.7em; opacity: 0.4; margin-top: 4px">
-                <span class="course-label">COMPUTED IN</span>
-                <span class="course-value">${(computeTimeMs / 1000).toFixed(1)}s</span>
-            </div>
-        `;
-    }
-
-    html += '</div>';
-
-    container.classList.add('has-solution');
-    container.innerHTML = html;
-}
+// Course Plotter and Launch Windows features removed
 
 /**
  * Set up save/load game state controls
@@ -2173,28 +1679,33 @@ export function updateAutoPilot(deltaTime) {
     }
 
     // Auto-fire thruster if plan recommends it
-    if (plan.thrusterAction && plan.thrusterAction.when === 'NOW') {
-        const now = Date.now();
-        // Use fast cooldown for extreme flybys (e > 50) - ship traverses SOI in seconds
-        const ecc = plan.eccentricity || 0;
-        const cooldown = ecc > 50 ? AUTOPILOT_THRUSTER_COOLDOWN_FAST : AUTOPILOT_THRUSTER_COOLDOWN;
-        if (now - lastAutopilotThrusterTime > cooldown) {
-            const result = fireThruster(player, plan.thrusterAction.direction);
-            if (result.success) {
-                lastAutopilotThrusterTime = now;
-                const label = plan.thrusterAction.direction.toUpperCase();
-                console.log(`[AUTOPILOT] Auto-fired ${label} thruster: ΔV=${result.deltaVApplied.toFixed(2)} km/s, e=${result.newEccentricity.toFixed(4)}`);
+    if (plan.thrusterAction) {
+        const shouldFire = plan.thrusterAction.when === 'NOW' ||
+                          (plan.thrusterAction.when === 'AT_PERIAPSIS' && plan.nearPeriapsis);
 
-                // Update thruster UI
-                const lastBurnDisplay = document.getElementById('thrusterLastBurn');
-                if (lastBurnDisplay) {
-                    lastBurnDisplay.textContent =
-                        `AUTO ${label}: -${result.deltaVApplied.toFixed(2)} km/s | e=${result.newEccentricity.toFixed(4)}`;
-                    lastBurnDisplay.classList.add('success');
-                    lastBurnDisplay.classList.remove('empty');
-                    setTimeout(() => lastBurnDisplay.classList.remove('success'), 2000);
+        if (shouldFire) {
+            const now = Date.now();
+            // Use fast cooldown for extreme flybys (e > 50) - ship traverses SOI in seconds
+            const ecc = plan.eccentricity || 0;
+            const cooldown = ecc > 50 ? AUTOPILOT_THRUSTER_COOLDOWN_FAST : AUTOPILOT_THRUSTER_COOLDOWN;
+            if (now - lastAutopilotThrusterTime > cooldown) {
+                const result = fireThruster(player, plan.thrusterAction.direction);
+                if (result.success) {
+                    lastAutopilotThrusterTime = now;
+                    const label = plan.thrusterAction.direction.toUpperCase();
+                    console.log(`[AUTOPILOT] Auto-fired ${label} thruster: ΔV=${result.deltaVApplied.toFixed(2)} km/s, e=${result.newEccentricity.toFixed(4)}`);
+
+                    // Update thruster UI
+                    const lastBurnDisplay = document.getElementById('thrusterLastBurn');
+                    if (lastBurnDisplay) {
+                        lastBurnDisplay.textContent =
+                            `AUTO ${label}: -${result.deltaVApplied.toFixed(2)} km/s | e=${result.newEccentricity.toFixed(4)}`;
+                        lastBurnDisplay.classList.add('success');
+                        lastBurnDisplay.classList.remove('empty');
+                        setTimeout(() => lastBurnDisplay.classList.remove('success'), 2000);
+                    }
+                    updateSailDisplay();
                 }
-                updateSailDisplay();
             }
         }
     }

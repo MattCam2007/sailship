@@ -260,7 +260,7 @@ while **Orbital Paths** shows the instantaneous Keplerian orbit (where ship woul
 Left panel sections can be collapsed/expanded by clicking their headers. Panel state persists across sessions via localStorage.
 
 ### Tab Groups
-The right panel uses a tab system (SAIL/NAV/AUTO) for organizing controls and data. Tab state persists across sessions.
+The right panel uses a tab system (SAIL/NAV) for organizing controls and data. Tab state persists across sessions.
 
 ### Trajectory Configuration
 The predicted trajectory duration can be adjusted from 30 days to 5 years (1825 days). Use the slider or preset buttons (60d, 6mo, 1yr, 2yr, 3yr, 5yr) for quick selection. The RESET button returns to default (60 days). Extended range supports outer planet transfers and course solver multi-horizon search.
@@ -306,7 +306,6 @@ The selected control is highlighted in the SAIL panel. Click control rows or the
 - `A` - Toggle autopilot
 - `Ctrl+1` / `Cmd+1` - Switch to SAIL tab
 - `Ctrl+2` / `Cmd+2` - Switch to NAV tab
-- `Ctrl+3` / `Cmd+3` - Switch to AUTO tab
 
 ### Cheat Codes (requires sails at 0% deployment)
 - `,` / `.` - Nudge ship backward/forward 1 day along orbit

@@ -32,7 +32,6 @@ import { destination, setDestination, clearInterceptCache } from './navigation.j
 import { getPlayerShip } from '../data/ships.js';
 import { camera, setCameraFollow } from './camera.js';
 import { ASSET_BASE_URL } from '../config.js';
-import { getActiveTheme, applyTheme } from './themeEngine.js';
 
 // Version for save format compatibility
 const SAVE_VERSION = 1;
@@ -43,14 +42,10 @@ const SAVE_VERSION = 1;
  */
 export function serializeGameState() {
     const player = getPlayerShip();
-    const activeTheme = getActiveTheme();
 
     return {
         version: SAVE_VERSION,
         savedAt: new Date().toISOString(),
-
-        // Theme
-        theme: activeTheme ? activeTheme.name : 'Default Coral',
 
         // Time state
         time: {
@@ -140,14 +135,6 @@ export function deserializeGameState(state) {
 
     if (state.version > SAVE_VERSION) {
         throw new Error(`Save version ${state.version} is newer than supported version ${SAVE_VERSION}`);
-    }
-
-    // Restore theme (if present)
-    if (state.theme) {
-        applyTheme(state.theme).catch(err => {
-            console.warn(`Failed to restore theme ${state.theme}:`, err);
-            // Continue with default theme
-        });
     }
 
     // Restore time state
