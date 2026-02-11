@@ -36,6 +36,9 @@ let shaderProgram = null;
 /** @type {Object<string, WebGLTexture>} Loaded textures keyed by body name */
 const textures = {};
 
+/** @type {Object<string, WebGLTexture>} Loaded normal map textures keyed by body name */
+const normalMapTextures = {};
+
 /** @type {Object<string, HTMLCanvasElement>} Cached rendered spheres per body */
 const renderCache = {};
 
@@ -92,12 +95,14 @@ in vec2 vUV;
 out vec4 fragColor;
 
 uniform sampler2D uTexture;
+uniform sampler2D uNormalMap;
 uniform float uRotation;      // Y-axis rotation in radians (planet spin)
 uniform float uAxialTilt;     // Axial tilt in radians
 uniform vec3 uLightDir;       // Direction TO the sun (normalized)
 uniform float uAmbient;       // Ambient light level
 uniform float uCameraAngleZ;  // Camera Z rotation (orbital view)
 uniform float uCameraAngleX;  // Camera X rotation (tilt view)
+uniform bool uUseNormalMap;   // Whether to use normal mapping
 
 // Analytic ray-sphere intersection.
 // Ray origin at (0,0,-2), direction toward pixel on near plane.
@@ -178,9 +183,31 @@ void main() {
 
     vec4 texColor = texture(uTexture, texCoord);
 
-    // Lambertian lighting using the untilted normal for light calculation
+    // Surface normal for lighting (either from normal map or smooth sphere)
+    vec3 surfaceNormal = normal;
+
+    if (uUseNormalMap) {
+        // Sample normal map (RGB encoded, [0,1] -> [-1,1])
+        vec3 normalMapSample = texture(uNormalMap, texCoord).rgb * 2.0 - 1.0;
+
+        // Build tangent space basis
+        // For a sphere, tangent is perpendicular to normal in texture space
+        // Tangent points in longitude direction, bitangent in latitude direction
+        vec3 tangent = normalize(cross(vec3(0.0, 1.0, 0.0), normal));
+        if (length(tangent) < 0.01) {
+            // At poles, choose arbitrary tangent
+            tangent = vec3(1.0, 0.0, 0.0);
+        }
+        vec3 bitangent = normalize(cross(normal, tangent));
+
+        // Transform normal from tangent space to world space
+        mat3 TBN = mat3(tangent, bitangent, normal);
+        surfaceNormal = normalize(TBN * normalMapSample);
+    }
+
+    // Lambertian lighting using the surface normal
     // (light comes from the sun direction in world space)
-    float NdotL = dot(normal, uLightDir);
+    float NdotL = dot(surfaceNormal, uLightDir);
     float diffuse = max(NdotL, 0.0);
 
     // Smooth terminator (soften day/night boundary)
@@ -250,12 +277,14 @@ export function initPlanetTextures() {
         gl.useProgram(shaderProgram);
         uniforms = {
             uTexture: gl.getUniformLocation(shaderProgram, 'uTexture'),
+            uNormalMap: gl.getUniformLocation(shaderProgram, 'uNormalMap'),
             uRotation: gl.getUniformLocation(shaderProgram, 'uRotation'),
             uAxialTilt: gl.getUniformLocation(shaderProgram, 'uAxialTilt'),
             uLightDir: gl.getUniformLocation(shaderProgram, 'uLightDir'),
             uAmbient: gl.getUniformLocation(shaderProgram, 'uAmbient'),
             uCameraAngleZ: gl.getUniformLocation(shaderProgram, 'uCameraAngleZ'),
             uCameraAngleX: gl.getUniformLocation(shaderProgram, 'uCameraAngleX'),
+            uUseNormalMap: gl.getUniformLocation(shaderProgram, 'uUseNormalMap'),
         };
 
         // Create VAO for fullscreen quad (uses gl_VertexID, no actual buffer needed)
@@ -319,8 +348,9 @@ function compileShader(type, source) {
  * Loads asynchronously — planets render with gradients until textures are ready.
  */
 function loadAllTextures() {
-    const { baseUrl, textures: textureMap, highResTextures } = PLANET_TEXTURE_CONFIG;
+    const { baseUrl, textures: textureMap, highResTextures, normalMaps } = PLANET_TEXTURE_CONFIG;
 
+    // Load base color textures
     for (const [bodyName, filename] of Object.entries(textureMap)) {
         if (loading.has(bodyName) || failed.has(bodyName) || textures[bodyName]) continue;
 
@@ -353,6 +383,30 @@ function loadAllTextures() {
         };
 
         img.src = url;
+    }
+
+    // Load normal map textures (if available)
+    if (normalMaps) {
+        for (const [bodyName, filename] of Object.entries(normalMaps)) {
+            if (normalMapTextures[bodyName]) continue;
+
+            const url = baseUrl + filename;
+            const img = new Image();
+
+            img.onload = () => {
+                const tex = createTextureFromImage(img);
+                if (tex) {
+                    normalMapTextures[bodyName] = tex;
+                    console.log(`[PLANET_TEXTURES] Loaded normal map: ${bodyName} (${img.width}x${img.height})`);
+                }
+            };
+
+            img.onerror = () => {
+                console.warn(`[PLANET_TEXTURES] Failed to load normal map: ${bodyName} from ${url}`);
+            };
+
+            img.src = url;
+        }
     }
 }
 
@@ -471,10 +525,19 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, 
 
     gl.useProgram(shaderProgram);
 
-    // Bind texture
+    // Bind base texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, textures[bodyName]);
     gl.uniform1i(uniforms.uTexture, 0);
+
+    // Bind normal map (if available and enabled)
+    const hasNormalMap = normalMapTextures[bodyName] && displayOptions.useNormalMaps;
+    if (hasNormalMap) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, normalMapTextures[bodyName]);
+        gl.uniform1i(uniforms.uNormalMap, 1);
+    }
+    gl.uniform1i(uniforms.uUseNormalMap, hasNormalMap ? 1 : 0);
 
     // Set uniforms
     gl.uniform1f(uniforms.uRotation, quantizedRotation);
@@ -536,6 +599,16 @@ export function clearPlanetTextureCache() {
         }
         delete textures[key];
     }
+
+    // Clear normal map cache
+    for (const key of Object.keys(normalMapTextures)) {
+        const tex = normalMapTextures[key];
+        if (tex && gl) {
+            gl.deleteTexture(tex);
+        }
+        delete normalMapTextures[key];
+    }
+
     loading.clear();
     failed.clear();
 
