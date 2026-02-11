@@ -30,9 +30,9 @@ export const ASSET_BASE_URL = '';
 
 /**
  * Game starting epoch as Julian date.
- * J2000 + 7305 days ≈ year 2020, giving a reasonable planetary configuration.
+ * J2000 + 9538 days ≈ Feb 11, 2026, giving current planetary positions.
  */
-export const GAME_START_EPOCH = J2000 + 7305;
+export const GAME_START_EPOCH = J2000 + 9538;
 
 /**
  * Time calculation constants for game speed.
