@@ -3,7 +3,7 @@
  */
 
 import { destination, getDestinationInfo, predictClosestApproach } from '../core/navigation.js';
-import { getTime, getCurrentZoom, getScale, getClosestApproachForBody } from '../core/gameState.js';
+import { getTime, getJulianDate, getCurrentZoom, getScale, getClosestApproachForBody } from '../core/gameState.js';
 import { getBodyByName } from '../data/celestialBodies.js';
 import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo } from '../core/shipPhysics.js';
@@ -95,17 +95,114 @@ export function updateUI() {
     updateInclinationDisplay();
 }
 
+const MONTH_ABBR = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
 /**
- * Update time display
+ * Convert Julian date to Gregorian calendar date + time.
+ * Algorithm from Meeus, Astronomical Algorithms.
+ * @param {number} jd - Julian date
+ * @returns {{year:number, month:number, day:number, hours:number, minutes:number, seconds:number}}
+ */
+function julianToGregorian(jd) {
+    const z = Math.floor(jd + 0.5);
+    const f = (jd + 0.5) - z;
+
+    let a;
+    if (z < 2299161) {
+        a = z;
+    } else {
+        const alpha = Math.floor((z - 1867216.25) / 36524.25);
+        a = z + 1 + alpha - Math.floor(alpha / 4);
+    }
+
+    const b = a + 1524;
+    const c = Math.floor((b - 122.1) / 365.25);
+    const d = Math.floor(365.25 * c);
+    const e = Math.floor((b - d) / 30.6001);
+
+    const day = b - d - Math.floor(30.6001 * e);
+    const month = e < 14 ? e - 1 : e - 13;
+    const year = month > 2 ? c - 4716 : c - 4715;
+
+    const totalHours = f * 24;
+    const hours = Math.floor(totalHours);
+    const totalMinutes = (totalHours - hours) * 60;
+    const minutes = Math.floor(totalMinutes);
+    const seconds = Math.floor((totalMinutes - minutes) * 60);
+
+    return { year, month, day, hours, minutes, seconds };
+}
+
+/**
+ * Format elapsed mission time (in days) to human-readable string.
+ * Shows the two most significant units for readability.
+ * @param {number} timeDays - Elapsed time in days
+ * @returns {string}
+ */
+function formatMissionTime(timeDays) {
+    const totalSeconds = Math.floor(timeDays * 86400);
+
+    if (totalSeconds < 60) {
+        return `${totalSeconds}s`;
+    }
+
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+
+    if (totalMinutes < 60) {
+        return `${totalMinutes}m ${secs}s`;
+    }
+
+    const totalHours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+
+    if (totalHours < 24) {
+        return `${totalHours}h ${mins}m`;
+    }
+
+    const totalDays = Math.floor(totalHours / 24);
+    const hrs = totalHours % 24;
+
+    if (totalDays < 7) {
+        return `${totalDays}d ${hrs}h`;
+    }
+
+    if (totalDays < 30) {
+        const weeks = Math.floor(totalDays / 7);
+        const days = totalDays % 7;
+        return `${weeks}w ${days}d`;
+    }
+
+    if (totalDays < 365) {
+        const months = Math.floor(totalDays / 30);
+        const days = totalDays % 30;
+        return `${months}mo ${days}d`;
+    }
+
+    if (totalDays < 3652) {
+        const years = Math.floor(totalDays / 365);
+        const months = Math.floor((totalDays % 365) / 30);
+        return `${years}y ${months}mo`;
+    }
+
+    const decades = Math.floor(totalDays / 3652);
+    const years = Math.floor((totalDays % 3652) / 365);
+    return `${decades}dec ${years}y`;
+}
+
+/**
+ * Update time display with current date and mission elapsed timer.
  */
 function updateTimeDisplay() {
-    const time = getTime();
-    const days = Math.floor(time);
-    const hours = Math.floor((time % 1) * 24);
-    const mins = Math.floor(((time % 1) * 24 % 1) * 60);
+    const jd = getJulianDate();
+    const g = julianToGregorian(jd);
+    const elapsed = getTime();
 
-    setTextIfChanged(elements.timeDisplay,
-        `2351.${String(127 + days).padStart(3, '0')} // ${String(14 + hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:07 UTC`);
+    const dateStr = `${String(g.day).padStart(2, '0')} ${MONTH_ABBR[g.month - 1]} ${g.year} ` +
+        `${String(g.hours).padStart(2, '0')}:${String(g.minutes).padStart(2, '0')}:${String(g.seconds).padStart(2, '0')} UTC`;
+    const missionStr = `T+ ${formatMissionTime(elapsed)}`;
+
+    setTextIfChanged(elements.timeDisplay, `${dateStr} // ${missionStr}`);
 }
 
 /**
