@@ -1,0 +1,8 @@
+# IDE
+.idea/
+
+# Git worktrees
+.worktrees/
+
+# macOS
+.DS_Store

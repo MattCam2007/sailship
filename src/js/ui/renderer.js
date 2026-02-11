@@ -21,7 +21,70 @@ import { meanMotion, MU_SUN } from '../lib/orbital.js';
 import { predictTrajectory } from '../lib/trajectory-predictor.js';
 import { drawStarfield, initStarfield } from '../lib/starfield.js';
 import { hasTexture, renderPlanetTexture, clearPlanetTextureCache, initPlanetTextures } from '../lib/planetTextures.js';
-import { getColor, onThemeChange } from '../core/themeEngine.js';
+// Default color palette (formerly from theme engine)
+const COLORS = {
+    canvas: {
+        grid: '#e85d4c',
+        gridAlpha: 0.1,
+        orbitPrimary: '#e85d4c',
+        orbitPrimaryAlpha: 0.3,
+        orbitMoon: '#e85d4c',
+        orbitMoonAlpha: 0.15,
+        shipOrbitElliptic: '#4ce88d',
+        shipOrbitEllipticAlpha: 0.5,
+        shipOrbitHyperbolic: '#64c8ff',
+        shipOrbitHyperbolicAlpha: 0.7,
+        shipOrbitSOI: '#4c8de8',
+        shipOrbitSOIAlpha: 0.6,
+        trajectory: '#c864ff',
+        trajectoryAlpha: 0.8,
+        trajectoryPoint: '#c864ff',
+        label: '#e85d4c',
+        labelAlpha: 0.8,
+        labelBg: '#0a0a0a',
+        labelBgAlpha: 0.7,
+    }
+};
+
+/**
+ * Get a color with optional alpha override
+ * @param {string} path - Dot-separated path to color (e.g., 'canvas.grid')
+ * @param {number} [alpha] - Optional alpha override (0-1)
+ * @returns {string} - Color in rgba(...) or rgb(...) format
+ */
+function getColor(path, alpha = null) {
+    const parts = path.split('.');
+    let color = COLORS;
+    for (const part of parts) {
+        color = color?.[part];
+    }
+
+    if (!color) {
+        console.warn(`Color not found: ${path}, using fallback`);
+        color = COLORS.canvas.grid;
+    }
+
+    // Check for alpha property
+    const alphaProp = path + 'Alpha';
+    const parts2 = alphaProp.split('.');
+    let defaultAlpha = COLORS;
+    for (const part of parts2) {
+        defaultAlpha = defaultAlpha?.[part];
+    }
+
+    const finalAlpha = alpha ?? defaultAlpha ?? 1;
+
+    // Parse hex color to RGB
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+
+    if (finalAlpha === 1) {
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+    return `rgba(${r}, ${g}, ${b}, ${finalAlpha})`;
+}
 
 let canvas, ctx;
 
@@ -168,12 +231,6 @@ export function initRenderer(canvasElement) {
         console.log('[RENDERER] WebGL context restored');
     });
 
-    // Subscribe to theme changes - clear gradient cache when theme changes
-    onThemeChange(() => {
-        clearGradientCache();
-        clearPlanetTextureCache();
-        console.log('[RENDERER] Theme changed, caches cleared');
-    });
 }
 
 /**
