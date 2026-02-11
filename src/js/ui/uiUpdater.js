@@ -13,6 +13,9 @@ import { camera } from '../core/camera.js';
 // Cache DOM elements
 let elements = {};
 
+// Frame counter for throttling velocity display updates
+let velocityFrameCounter = 0;
+
 /**
  * Set textContent only if the value has actually changed.
  * Skips the DOM write (and potential reflow) when the text is the same.
@@ -44,6 +47,7 @@ export function initUI() {
         sailAngleValue: document.getElementById('sailAngleValue'),
         sailThrust: document.getElementById('sailThrust'),
         sailAccelG: document.getElementById('sailAccelG'),
+        sailVelocity: document.getElementById('sailVelocity'),
         sailDeployment: document.getElementById('sailDeployment'),
         sailAngle: document.getElementById('sailAngle'),
         // SOI status elements
@@ -376,6 +380,19 @@ export function updateSailDisplay() {
         // No thrust info available
         setTextIfChanged(elements.sailThrust, '0.000 mm/s²');
         setTextIfChanged(elements.sailAccelG, '0.000000 g');
+    }
+
+    // Update velocity display (throttled to every 6 frames for performance)
+    if (++velocityFrameCounter >= 6) {
+        velocityFrameCounter = 0;
+        if (player.velocity) {
+            const { x, y, z } = player.velocity;
+            // AU/day to km/s: 1 AU/day = 1731.46 km/s
+            const velocityKmS = Math.sqrt(x * x + y * y + z * z) * 1731.46;
+            setTextIfChanged(elements.sailVelocity, velocityKmS.toFixed(2) + ' km/s');
+        } else {
+            setTextIfChanged(elements.sailVelocity, '0.00 km/s');
+        }
     }
 
     // Update slider value displays if sail exists
