@@ -328,6 +328,27 @@ function initDisplayOptions() {
         }
     });
 
+    // High-res texture toggle requires special handling (clear texture cache and reload)
+    const highResTexturesToggle = document.getElementById('useHighResTextures');
+    if (highResTexturesToggle) {
+        // Load saved preference
+        const savedPref = localStorage.getItem('useHighResTextures');
+        if (savedPref !== null) {
+            const enabled = savedPref === 'true';
+            highResTexturesToggle.checked = enabled;
+            setDisplayOption('useHighResTextures', enabled);
+        }
+
+        highResTexturesToggle.addEventListener('change', e => {
+            const enabled = e.target.checked;
+            setDisplayOption('useHighResTextures', enabled);
+            localStorage.setItem('useHighResTextures', enabled.toString());
+            // Clear texture cache to force reload with new resolution
+            clearPlanetTextureCache();
+            console.log(`[CONTROLS] High-res textures ${enabled ? 'enabled' : 'disabled'}, cache cleared`);
+        });
+    }
+
     // Initialize body filter controls
     initBodyFilters();
 }
