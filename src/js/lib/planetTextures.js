@@ -18,6 +18,7 @@
  */
 
 import { PLANET_TEXTURE_CONFIG } from '../config.js';
+import { displayOptions } from '../core/gameState.js';
 
 // ============================================================================
 // Module State
@@ -49,6 +50,12 @@ const failed = new Set();
 
 /** Whether the WebGL system initialized successfully */
 let initialized = false;
+
+/** Anisotropic filtering extension (if available) */
+let anisotropyExt = null;
+
+/** Maximum anisotropy level supported by GPU */
+let maxAnisotropy = 1;
 
 /** Uniform locations */
 let uniforms = {};
@@ -260,6 +267,15 @@ export function initPlanetTextures() {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
+        // Check for anisotropic filtering extension
+        anisotropyExt = gl.getExtension('EXT_texture_filter_anisotropic');
+        if (anisotropyExt) {
+            maxAnisotropy = gl.getParameter(anisotropyExt.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+            console.log(`[PLANET_TEXTURES] Anisotropic filtering enabled: ${maxAnisotropy}x`);
+        } else {
+            console.log('[PLANET_TEXTURES] Anisotropic filtering not available');
+        }
+
         initialized = true;
         console.log('[PLANET_TEXTURES] Initialized WebGL2 offscreen renderer');
 
@@ -303,13 +319,21 @@ function compileShader(type, source) {
  * Loads asynchronously — planets render with gradients until textures are ready.
  */
 function loadAllTextures() {
-    const { baseUrl, textures: textureMap } = PLANET_TEXTURE_CONFIG;
+    const { baseUrl, textures: textureMap, highResTextures } = PLANET_TEXTURE_CONFIG;
 
     for (const [bodyName, filename] of Object.entries(textureMap)) {
         if (loading.has(bodyName) || failed.has(bodyName) || textures[bodyName]) continue;
 
         loading.add(bodyName);
-        const url = baseUrl + filename;
+
+        // Check if high-res texture should be used
+        let textureFilename = filename;
+        if (displayOptions.useHighResTextures && highResTextures && highResTextures[bodyName]) {
+            textureFilename = highResTextures[bodyName];
+            console.log(`[PLANET_TEXTURES] Loading high-res texture for ${bodyName}: ${textureFilename}`);
+        }
+
+        const url = baseUrl + textureFilename;
 
         const img = new Image();
 
@@ -349,13 +373,20 @@ function createTextureFromImage(img) {
     // Generate mipmaps for better filtering at small sizes
     gl.generateMipmap(gl.TEXTURE_2D);
 
-    // Filtering
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    // Filtering: Use LINEAR_MIPMAP_NEAREST for sharper close-up viewing
+    // This selects the nearest mip level without blending, preserving more detail
+    // when planets are viewed at tactical/orbital zoom
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     // Wrap modes (equirectangular wraps horizontally, clamps vertically)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    // Apply anisotropic filtering if available (improves sharpness at oblique angles)
+    if (anisotropyExt) {
+        gl.texParameterf(gl.TEXTURE_2D, anisotropyExt.TEXTURE_MAX_ANISOTROPY_EXT, maxAnisotropy);
+    }
 
     gl.bindTexture(gl.TEXTURE_2D, null);
 
@@ -394,14 +425,15 @@ export function hasTexture(bodyName) {
 export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, cameraAngleZ = 0, cameraAngleX = 0) {
     if (!initialized || !textures[bodyName]) return null;
 
-    // Determine render resolution: at least 2x screenRadius, capped at renderSize
+    // Determine render resolution: dynamic scaling based on screen radius
+    const idealSize = Math.ceil(screenRadius * PLANET_TEXTURE_CONFIG.renderSizeScaling);
     const size = Math.min(
-        PLANET_TEXTURE_CONFIG.renderSize,
-        Math.max(64, Math.ceil(screenRadius * 2.5))
+        PLANET_TEXTURE_CONFIG.maxRenderSize,
+        Math.max(PLANET_TEXTURE_CONFIG.minRenderSize, idealSize)
     );
 
-    // Round size to nearest power-of-2-friendly value for better cache stability
-    const quantizedSize = Math.ceil(size / 32) * 32;
+    // Round size to nearest quantization step for better cache stability
+    const quantizedSize = Math.ceil(size / PLANET_TEXTURE_CONFIG.renderSizeQuantize) * PLANET_TEXTURE_CONFIG.renderSizeQuantize;
 
     // Calculate planet rotation angle (mod 2PI for numerical stability)
     // gameDays is a Julian date (~2,460,000+), so raw rotation would overflow precision
@@ -484,14 +516,32 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, 
 }
 
 /**
- * Clear all cached renders (call on canvas resize or context loss).
+ * Clear all cached renders and reload textures.
+ * Called when resolution settings change (e.g., high-res toggle).
  */
 export function clearPlanetTextureCache() {
+    // Clear render cache
     for (const key of Object.keys(renderCache)) {
         delete renderCache[key];
     }
     for (const key of Object.keys(cacheKeys)) {
         delete cacheKeys[key];
+    }
+
+    // Clear texture cache and reload with new settings
+    for (const key of Object.keys(textures)) {
+        const tex = textures[key];
+        if (tex && gl) {
+            gl.deleteTexture(tex);
+        }
+        delete textures[key];
+    }
+    loading.clear();
+    failed.clear();
+
+    // Reload textures with current settings
+    if (initialized) {
+        loadAllTextures();
     }
 }
 
