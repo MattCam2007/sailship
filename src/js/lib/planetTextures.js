@@ -373,8 +373,10 @@ function createTextureFromImage(img) {
     // Generate mipmaps for better filtering at small sizes
     gl.generateMipmap(gl.TEXTURE_2D);
 
-    // Filtering
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    // Filtering: Use LINEAR_MIPMAP_NEAREST for sharper close-up viewing
+    // This selects the nearest mip level without blending, preserving more detail
+    // when planets are viewed at tactical/orbital zoom
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     // Wrap modes (equirectangular wraps horizontally, clamps vertically)
