@@ -1615,6 +1615,38 @@ export function getOrbitalInfo(ship) {
 }
 
 /**
+ * Get ship's heliocentric velocity magnitude in km/s.
+ * Computed directly from orbital elements (not cached velocity) for reliability.
+ * Handles SOI case by adding parent body's velocity.
+ *
+ * @param {Object} ship - Ship with orbitalElements
+ * @returns {number} Velocity in km/s, or 0 if unavailable
+ */
+export function getShipVelocityKmS(ship) {
+    if (!ship.orbitalElements) return 0;
+
+    const julianDate = getJulianDate();
+    const vel = getVelocity(ship.orbitalElements, julianDate);
+    if (!isFinite(vel.vx)) return 0;
+
+    let vx = vel.vx, vy = vel.vy, vz = vel.vz;
+
+    // If in SOI, orbital elements are parent-relative — add parent velocity
+    if (ship.soiState && ship.soiState.isInSOI) {
+        const parent = getBodyByName(ship.soiState.currentBody);
+        if (parent && parent.elements) {
+            const parentVel = getVelocity(parent.elements, julianDate);
+            vx += parentVel.vx;
+            vy += parentVel.vy;
+            vz += parentVel.vz;
+        }
+    }
+
+    // AU/day to km/s: 1 AU/day = 1731.46 km/s
+    return Math.sqrt(vx * vx + vy * vy + vz * vz) * 1731.46;
+}
+
+/**
  * Get current sail thrust info for display.
  * 
  * @param {Object} ship - Ship with sail state
