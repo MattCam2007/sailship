@@ -349,6 +349,27 @@ function initDisplayOptions() {
         });
     }
 
+    // Premium visual feature toggles (simple, no cache clearing needed)
+    const premiumToggles = ['useNormalMaps', 'useSpecular', 'useAtmosphereGlow'];
+    premiumToggles.forEach(toggleName => {
+        const toggle = document.getElementById(toggleName);
+        if (toggle) {
+            // Load saved preference
+            const savedPref = localStorage.getItem(toggleName);
+            if (savedPref !== null) {
+                const enabled = savedPref === 'true';
+                toggle.checked = enabled;
+                setDisplayOption(toggleName, enabled);
+            }
+
+            toggle.addEventListener('change', e => {
+                const enabled = e.target.checked;
+                setDisplayOption(toggleName, enabled);
+                localStorage.setItem(toggleName, enabled.toString());
+            });
+        }
+    });
+
     // Initialize body filter controls
     initBodyFilters();
 }

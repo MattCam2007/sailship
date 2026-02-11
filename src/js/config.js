@@ -428,6 +428,9 @@ export const DEFAULT_DISPLAY_OPTIONS = {
     showPredictedTrajectory: true,  // Spiral path showing where ship will go with thrust
     showIntersectionMarkers: true,  // Ghost planets at trajectory intersection points
     useHighResTextures: false,      // Use 4k/8k textures where available (requires more memory)
+    useNormalMaps: true,            // Use normal maps for surface detail (if available)
+    useSpecular: true,              // Use specular highlights on planets
+    useAtmosphereGlow: true,        // Use atmospheric rim glow effect
 };
 
 /**
@@ -616,6 +619,17 @@ export const PLANET_TEXTURE_CONFIG = {
         MARS:     '8k_mars.jpg',
         MERCURY:  '8k_mercury.jpg',
         SATURN:   '8k_saturn.jpg',
+    },
+
+    /**
+     * Normal map texture filenames (optional).
+     * Normal maps add surface depth detail via per-pixel lighting.
+     * Falls back to smooth sphere if not provided.
+     */
+    normalMaps: {
+        // Add paths when normal map textures are available
+        // EARTH: 'earth_normal.jpg',
+        // MARS: 'mars_normal.jpg',
     },
 
     /**
