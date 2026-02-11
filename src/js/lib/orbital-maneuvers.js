@@ -606,3 +606,199 @@ export function estimateDeltaAPerOrbit(a, charAccel, sailAngle) {
     
     return deltaA;
 }
+
+// ============================================================================
+// State-Vector Integration (RK4)
+// ============================================================================
+
+/**
+ * Calculate gravitational acceleration from a central body.
+ *
+ * Formula: a = -μ * r / |r|³
+ *
+ * @param {Object} state - State vector {x, y, z, vx, vy, vz} in AU, AU/day
+ * @param {number} mu - Gravitational parameter (AU³/day²), default SUN
+ * @returns {Object} Acceleration vector {x, y, z} in AU/day²
+ */
+export function gravitationalAcceleration(state, mu = MU_SUN) {
+    const r = Math.sqrt(state.x ** 2 + state.y ** 2 + state.z ** 2);
+    const r3 = r * r * r;
+
+    if (r < 1e-10) {
+        // Avoid division by zero at origin
+        return {x: 0, y: 0, z: 0};
+    }
+
+    return {
+        x: -mu * state.x / r3,
+        y: -mu * state.y / r3,
+        z: -mu * state.z / r3
+    };
+}
+
+/**
+ * Calculate sail thrust from state vector (without orbital elements).
+ *
+ * This version computes the RTN frame directly from position and velocity
+ * vectors, avoiding the need for orbital element conversion. Used for
+ * state-vector integration where elements aren't available.
+ *
+ * @param {Object} state - State vector {x, y, z, vx, vy, vz}
+ * @param {Object} sailState - Sail configuration (area, angle, deployment, etc.)
+ * @param {number} shipMass - Ship mass in kg
+ * @param {Object} sunPosition - Sun position {x, y, z} in AU (default origin)
+ * @returns {Object} Thrust acceleration {x, y, z} in AU/day²
+ */
+export function calculateSailThrustFromState(state, sailState, shipMass = 10000, sunPosition = {x: 0, y: 0, z: 0}) {
+    const {
+        area,
+        reflectivity,
+        angle,              // Yaw angle
+        pitchAngle = 0,     // Pitch angle
+        deploymentPercent,
+        condition,
+        sailCount = 1
+    } = sailState;
+
+    // Relative position to sun
+    const rx = state.x - sunPosition.x;
+    const ry = state.y - sunPosition.y;
+    const rz = state.z - sunPosition.z;
+    const r = Math.sqrt(rx * rx + ry * ry + rz * rz);
+
+    if (r < 1e-10) {
+        return {x: 0, y: 0, z: 0};  // No thrust at sun's center
+    }
+
+    // Calculate effective sail area
+    const effectiveArea = area * (deploymentPercent / 100) * (condition / 100);
+
+    // Solar radiation pressure at current distance
+    const pressure = getSolarPressure(r);
+
+    // Thrust magnitude
+    const cosYaw = Math.cos(angle);
+    const cosPitch = Math.cos(pitchAngle);
+    const thrustMagnitudeN = 2 * pressure * effectiveArea *
+                             cosYaw * cosYaw * cosPitch * cosPitch * reflectivity * sailCount;
+
+    // Effective mass
+    const effectiveMass = shipMass + Math.max(0, sailCount - 1) * SAIL_MASS_PER_UNIT;
+
+    // Convert to acceleration in AU/day²
+    const accelMS2 = thrustMagnitudeN / effectiveMass;
+    const accelAUDay2 = accelMS2 * ACCEL_CONVERSION;
+
+    // Build RTN frame from state vectors
+    // R (Radial): Unit vector pointing away from sun
+    const R = {x: rx / r, y: ry / r, z: rz / r};
+
+    // Angular momentum: h = r × v
+    const hx = ry * state.vz - rz * state.vy;
+    const hy = rz * state.vx - rx * state.vz;
+    const hz = rx * state.vy - ry * state.vx;
+    const h_mag = Math.sqrt(hx * hx + hy * hy + hz * hz);
+
+    if (h_mag < 1e-10) {
+        // Degenerate case: radial motion (no angular momentum)
+        // Default to thrust in radial direction only
+        return {
+            x: accelAUDay2 * R.x,
+            y: accelAUDay2 * R.y,
+            z: accelAUDay2 * R.z
+        };
+    }
+
+    // N (Normal): Unit vector perpendicular to orbital plane
+    const N = {x: hx / h_mag, y: hy / h_mag, z: hz / h_mag};
+
+    // T (Transverse): Completes right-handed frame (T = N × R)
+    const T = {
+        x: N.y * R.z - N.z * R.y,
+        y: N.z * R.x - N.x * R.z,
+        z: N.x * R.y - N.y * R.x
+    };
+
+    // Apply sail yaw and pitch to get thrust direction in RTN frame
+    const thrustR = Math.cos(angle) * Math.cos(pitchAngle);
+    const thrustT = Math.sin(angle) * Math.cos(pitchAngle);
+    const thrustN = Math.sin(pitchAngle);
+
+    // Convert RTN thrust to ecliptic coordinates
+    return {
+        x: accelAUDay2 * (thrustR * R.x + thrustT * T.x + thrustN * N.x),
+        y: accelAUDay2 * (thrustR * R.y + thrustT * T.y + thrustN * N.y),
+        z: accelAUDay2 * (thrustR * R.z + thrustT * T.z + thrustN * N.z)
+    };
+}
+
+/**
+ * Integrate state vector forward in time using RK4 (4th-order Runge-Kutta).
+ *
+ * This is the primary integration method for state-vector trajectory prediction.
+ * RK4 provides O(Δt⁴) local error, making it ~100-1000× more accurate than RK2
+ * for the same timestep.
+ *
+ * The state derivative is: dy/dt = f(t, y) = (vx, vy, vz, ax, ay, az)
+ * where acceleration a = -μ*r/|r|³ + thrust
+ *
+ * RK4 algorithm:
+ * 1. k1 = f(t, y)
+ * 2. k2 = f(t + dt/2, y + k1*dt/2)
+ * 3. k3 = f(t + dt/2, y + k2*dt/2)
+ * 4. k4 = f(t + dt, y + k3*dt)
+ * 5. y_new = y + (k1 + 2*k2 + 2*k3 + k4) * dt/6
+ *
+ * @param {Object} state - State vector {x, y, z, vx, vy, vz}
+ * @param {Object} sailState - Sail configuration for thrust calculation
+ * @param {number} dt - Time step in days
+ * @param {number} shipMass - Ship mass in kg
+ * @param {number} mu - Gravitational parameter (AU³/day²)
+ * @returns {Object} New state vector {x, y, z, vx, vy, vz}
+ */
+export function integrateStateRK4(state, sailState, dt, shipMass = 10000, mu = MU_SUN) {
+    // Helper function: compute state derivative dy/dt = (v, a)
+    function derivative(s, sail) {
+        const grav = gravitationalAcceleration(s, mu);
+        const thrust = calculateSailThrustFromState(s, sail, shipMass);
+
+        return {
+            // Position derivative is velocity
+            x: s.vx,
+            y: s.vy,
+            z: s.vz,
+            // Velocity derivative is acceleration (gravity + thrust)
+            vx: grav.x + thrust.x,
+            vy: grav.y + thrust.y,
+            vz: grav.z + thrust.z
+        };
+    }
+
+    // Helper function: add scaled derivative to state
+    function add(s, k, scale) {
+        return {
+            x: s.x + k.x * scale,
+            y: s.y + k.y * scale,
+            z: s.z + k.z * scale,
+            vx: s.vx + k.vx * scale,
+            vy: s.vy + k.vy * scale,
+            vz: s.vz + k.vz * scale
+        };
+    }
+
+    // RK4 stages
+    const k1 = derivative(state, sailState);
+    const k2 = derivative(add(state, k1, dt / 2), sailState);
+    const k3 = derivative(add(state, k2, dt / 2), sailState);
+    const k4 = derivative(add(state, k3, dt), sailState);
+
+    // Weighted average: (k1 + 2*k2 + 2*k3 + k4) / 6
+    return {
+        x: state.x + (k1.x + 2 * k2.x + 2 * k3.x + k4.x) * dt / 6,
+        y: state.y + (k1.y + 2 * k2.y + 2 * k3.y + k4.y) * dt / 6,
+        z: state.z + (k1.z + 2 * k2.z + 2 * k3.z + k4.z) * dt / 6,
+        vx: state.vx + (k1.vx + 2 * k2.vx + 2 * k3.vx + k4.vx) * dt / 6,
+        vy: state.vy + (k1.vy + 2 * k2.vy + 2 * k3.vy + k4.vy) * dt / 6,
+        vz: state.vz + (k1.vz + 2 * k2.vz + 2 * k3.vz + k4.vz) * dt / 6
+    };
+}
