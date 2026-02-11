@@ -18,6 +18,7 @@
  */
 
 import { PLANET_TEXTURE_CONFIG } from '../config.js';
+import { displayOptions } from '../core/gameState.js';
 
 // ============================================================================
 // Module State
@@ -318,13 +319,21 @@ function compileShader(type, source) {
  * Loads asynchronously — planets render with gradients until textures are ready.
  */
 function loadAllTextures() {
-    const { baseUrl, textures: textureMap } = PLANET_TEXTURE_CONFIG;
+    const { baseUrl, textures: textureMap, highResTextures } = PLANET_TEXTURE_CONFIG;
 
     for (const [bodyName, filename] of Object.entries(textureMap)) {
         if (loading.has(bodyName) || failed.has(bodyName) || textures[bodyName]) continue;
 
         loading.add(bodyName);
-        const url = baseUrl + filename;
+
+        // Check if high-res texture should be used
+        let textureFilename = filename;
+        if (displayOptions.useHighResTextures && highResTextures && highResTextures[bodyName]) {
+            textureFilename = highResTextures[bodyName];
+            console.log(`[PLANET_TEXTURES] Loading high-res texture for ${bodyName}: ${textureFilename}`);
+        }
+
+        const url = baseUrl + textureFilename;
 
         const img = new Image();
 
@@ -505,14 +514,32 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, 
 }
 
 /**
- * Clear all cached renders (call on canvas resize or context loss).
+ * Clear all cached renders and reload textures.
+ * Called when resolution settings change (e.g., high-res toggle).
  */
 export function clearPlanetTextureCache() {
+    // Clear render cache
     for (const key of Object.keys(renderCache)) {
         delete renderCache[key];
     }
     for (const key of Object.keys(cacheKeys)) {
         delete cacheKeys[key];
+    }
+
+    // Clear texture cache and reload with new settings
+    for (const key of Object.keys(textures)) {
+        const tex = textures[key];
+        if (tex && gl) {
+            gl.deleteTexture(tex);
+        }
+        delete textures[key];
+    }
+    loading.clear();
+    failed.clear();
+
+    // Reload textures with current settings
+    if (initialized) {
+        loadAllTextures();
     }
 }
 
