@@ -1,3 +1,7 @@
+---
+name: functional-tester
+---
+
 # Functional Tester Subagent
 
 A specialized reviewer focused on functionality, code paths, and test coverage.
@@ -8,7 +12,7 @@ Verify that the planned or implemented feature achieves its stated goals. Analyz
 
 ## Invocation Context
 
-This agent is invoked by the `/review` skill as one of four perspectives. It receives:
+This agent is invoked by the `/review` skill as one of seven perspectives. It receives:
 - The Implementation Plan
 - The Feature Specification
 - Relevant source files

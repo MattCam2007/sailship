@@ -121,7 +121,8 @@ export function getTripMaxSpeedKmS() {
 }
 
 /**
- * Format trip distance with adaptive units.
+ * Format trip distance with adaptive units and fixed widths.
+ * Uses leading zeros for consistent display width at high speeds.
  * @returns {string}
  */
 export function formatTripDistance() {
@@ -129,12 +130,24 @@ export function formatTripDistance() {
     const km = au * KM_PER_AU;
 
     if (au >= 1) {
-        return au.toFixed(3) + ' AU';
+        // Format: "000.000 AU" (up to 999.999 AU)
+        const wholePart = Math.floor(au);
+        const decimalPart = (au - wholePart).toFixed(3).substring(1); // ".XXX"
+        return String(wholePart).padStart(3, '0') + decimalPart + ' AU';
     } else if (km >= 1000000) {
-        return (km / 1000000).toFixed(2) + ' M km';
+        // Format: "000.00 M km" (up to 999.99 M km)
+        const mKm = km / 1000000;
+        const wholePart = Math.floor(mKm);
+        const decimalPart = (mKm - wholePart).toFixed(2).substring(1); // ".XX"
+        return String(wholePart).padStart(3, '0') + decimalPart + ' M km';
     } else if (km >= 1000) {
-        return (km / 1000).toFixed(1) + ' K km';
+        // Format: "000.0 K km" (up to 999.9 K km)
+        const kKm = km / 1000;
+        const wholePart = Math.floor(kKm);
+        const decimalPart = (kKm - wholePart).toFixed(1).substring(1); // ".X"
+        return String(wholePart).padStart(3, '0') + decimalPart + ' K km';
     } else {
-        return km.toFixed(0) + ' km';
+        // Format: "000 km" (up to 999 km)
+        return String(Math.floor(km)).padStart(3, '0') + ' km';
     }
 }

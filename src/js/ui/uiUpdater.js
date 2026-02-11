@@ -156,7 +156,7 @@ function julianToGregorian(jd) {
 
 /**
  * Format elapsed mission time (in days) to human-readable string.
- * Shows the two most significant units for readability.
+ * Uses leading zeros for consistent width at accelerated time speeds.
  * @param {number} timeDays - Elapsed time in days
  * @returns {string}
  */
@@ -164,51 +164,47 @@ function formatMissionTime(timeDays) {
     const totalSeconds = Math.floor(timeDays * 86400);
 
     if (totalSeconds < 60) {
-        return `${totalSeconds}s`;
+        return `${String(totalSeconds).padStart(2, '0')}s`;
     }
 
     const totalMinutes = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
 
     if (totalMinutes < 60) {
-        return `${totalMinutes}m ${secs}s`;
+        return `${String(totalMinutes).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
     }
 
     const totalHours = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;
 
     if (totalHours < 24) {
-        return `${totalHours}h ${mins}m`;
+        return `${String(totalHours).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m`;
     }
 
     const totalDays = Math.floor(totalHours / 24);
     const hrs = totalHours % 24;
 
-    if (totalDays < 7) {
-        return `${totalDays}d ${hrs}h`;
-    }
-
-    if (totalDays < 30) {
-        const weeks = Math.floor(totalDays / 7);
-        const days = totalDays % 7;
-        return `${weeks}w ${days}d`;
+    if (totalDays < 100) {
+        // Use 2-digit days for 0-99 days
+        return `${String(totalDays).padStart(2, '0')}d ${String(hrs).padStart(2, '0')}h`;
     }
 
     if (totalDays < 365) {
-        const months = Math.floor(totalDays / 30);
-        const days = totalDays % 30;
-        return `${months}mo ${days}d`;
+        // Use 3-digit days for 100-364 days
+        return `${String(totalDays).padStart(3, '0')}d ${String(hrs).padStart(2, '0')}h`;
     }
 
     if (totalDays < 3652) {
+        // Years and days (1-9 years)
         const years = Math.floor(totalDays / 365);
-        const months = Math.floor((totalDays % 365) / 30);
-        return `${years}y ${months}mo`;
+        const days = totalDays % 365;
+        return `${years}y ${String(days).padStart(3, '0')}d`;
     }
 
+    // Decades and years (10+ years)
     const decades = Math.floor(totalDays / 3652);
     const years = Math.floor((totalDays % 3652) / 365);
-    return `${decades}dec ${years}y`;
+    return `${String(decades).padStart(2, '0')}dec ${years}y`;
 }
 
 /**
@@ -234,9 +230,21 @@ function updateTimeDisplay() {
 function updateTripometerDisplay() {
     setTextIfChanged(elements.tripDist, formatTripDistance());
     setTextIfChanged(elements.tripTime, 'T+ ' + formatMissionTime(getTripElapsedDays()));
-    setTextIfChanged(elements.tripAvg, 'AVG ' + getTripAvgSpeedKmS().toFixed(2) + ' km/s');
-    setTextIfChanged(elements.tripMinSpeed, 'MIN ' + getTripMinSpeedKmS().toFixed(2));
-    setTextIfChanged(elements.tripMaxSpeed, 'MAX ' + getTripMaxSpeedKmS().toFixed(2) + ' km/s');
+
+    // Format speeds with leading zeros for whole part (up to 3 digits before decimal)
+    const avgSpeed = getTripAvgSpeedKmS();
+    const minSpeed = getTripMinSpeedKmS();
+    const maxSpeed = getTripMaxSpeedKmS();
+
+    const formatSpeed = (speed) => {
+        const wholePart = Math.floor(speed);
+        const decimalPart = (speed - wholePart).toFixed(2).substring(1); // ".XX"
+        return String(wholePart).padStart(3, '0') + decimalPart;
+    };
+
+    setTextIfChanged(elements.tripAvg, 'AVG ' + formatSpeed(avgSpeed) + ' km/s');
+    setTextIfChanged(elements.tripMinSpeed, 'MIN ' + formatSpeed(minSpeed));
+    setTextIfChanged(elements.tripMaxSpeed, 'MAX ' + formatSpeed(maxSpeed) + ' km/s');
 }
 
 /**

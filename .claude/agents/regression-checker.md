@@ -1,3 +1,7 @@
+---
+name: regression-checker
+---
+
 # Regression Checker Subagent
 
 A specialized quality agent that verifies changes don't break existing functionality.

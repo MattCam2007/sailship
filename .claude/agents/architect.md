@@ -1,3 +1,7 @@
+---
+name: architect
+---
+
 # Architect Subagent
 
 A specialized reviewer focused on code structure, patterns, and maintainability.
@@ -8,7 +12,7 @@ Evaluate the architectural quality of a plan or implementation. Ensure it follow
 
 ## Invocation Context
 
-This agent is invoked by the `/review` skill as one of four perspectives. It receives:
+This agent is invoked by the `/review` skill as one of seven perspectives. It receives:
 - The Implementation Plan
 - The Feature Specification
 - Relevant source files

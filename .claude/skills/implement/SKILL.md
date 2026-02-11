@@ -44,7 +44,7 @@ Based on unit type:
 
 **For Documentation Units:**
 - Create/update markdown files
-- Follow templates from DEVELOPMENT_PROCESS.md
+- Follow templates from CLAUDE.md
 
 **For Test Units:**
 - Add test cases
@@ -214,4 +214,4 @@ A successful unit implementation:
 
 ## Reference
 
-See DEVELOPMENT_PROCESS.md Phase 4: Implementation for the canonical process definition.
+See CLAUDE.md Phase 4: Implementation for the canonical process definition.

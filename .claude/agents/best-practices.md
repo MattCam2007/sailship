@@ -1,3 +1,7 @@
+---
+name: best-practices
+---
+
 # Best Practices Subagent
 
 A specialized quality agent that evaluates code against project standards and conventions.

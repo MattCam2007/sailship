@@ -1,6 +1,6 @@
 # /review [feature]
 
-Orchestrate a five-perspective review of an implementation plan.
+Orchestrate a seven-perspective review of an implementation plan.
 
 ## Purpose
 
@@ -94,7 +94,7 @@ Based on findings:
 
 **Location:** `reports/[feature]-review-[DATE].md`
 
-### Template (from DEVELOPMENT_PROCESS.md)
+### Template (from CLAUDE.md)
 
 ```markdown
 # [Feature Name] Review
@@ -292,4 +292,4 @@ A successful review:
 
 ## Reference
 
-See DEVELOPMENT_PROCESS.md Phase 3: Review for the canonical process definition.
+See CLAUDE.md Development Process → Phase 3: Review for the canonical process definition.

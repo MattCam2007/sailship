@@ -53,7 +53,7 @@ The discovery skill performs comprehensive codebase analysis to understand the c
 
 **Location:** `reports/[feature]-spec-[DATE].md`
 
-### Template (from DEVELOPMENT_PROCESS.md)
+### Template (from CLAUDE.md)
 
 ```markdown
 # [Feature Name] Specification
@@ -127,4 +127,4 @@ A successful discovery produces a spec that:
 
 ## Reference
 
-See DEVELOPMENT_PROCESS.md Phase 1: Discovery for the canonical process definition.
+See CLAUDE.md Phase 1: Discovery for the canonical process definition.

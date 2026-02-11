@@ -1,3 +1,7 @@
+---
+name: failure-analyst
+---
+
 # Failure Analyst Subagent
 
 A specialized reviewer focused on failure modes, edge cases, and risk.
@@ -8,7 +12,7 @@ Identify how a plan or implementation could fail. Analyze edge cases, numerical 
 
 ## Invocation Context
 
-This agent is invoked by the `/review` skill as one of four perspectives. It receives:
+This agent is invoked by the `/review` skill as one of seven perspectives. It receives:
 - The Implementation Plan
 - The Feature Specification
 - Relevant source files

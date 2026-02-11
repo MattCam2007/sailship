@@ -70,7 +70,7 @@ For each unit, define:
 
 **Location:** `reports/[feature]-implementation-plan-[DATE].md`
 
-### Template (from DEVELOPMENT_PROCESS.md)
+### Template (from CLAUDE.md)
 
 ```markdown
 # [Feature Name] Implementation Plan
@@ -201,4 +201,4 @@ A successful plan:
 
 ## Reference
 
-See DEVELOPMENT_PROCESS.md Phase 2: Planning for the canonical process definition.
+See CLAUDE.md Phase 2: Planning for the canonical process definition.
