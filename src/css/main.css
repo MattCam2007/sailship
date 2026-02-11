@@ -1060,6 +1060,17 @@ body::after {
     color: rgba(76, 158, 232, 0.7);
 }
 
+.tripometer-speed-range {
+    font-size: 10px;
+    color: rgba(76, 158, 232, 0.7);
+    text-shadow: 0 0 4px rgba(76, 158, 232, 0.4);
+}
+
+.tripometer-speed-dash {
+    font-size: 10px;
+    color: rgba(76, 158, 232, 0.3);
+}
+
 .tripometer-reset {
     background: transparent;
     border: 1px solid rgba(76, 158, 232, 0.4);

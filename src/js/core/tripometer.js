@@ -8,6 +8,7 @@
 
 import { getPlayerShip } from '../data/ships.js';
 import { getTime } from './gameState.js';
+import { getShipVelocityKmS } from './shipPhysics.js';
 
 // ============================================================================
 // Tripometer State
@@ -19,6 +20,9 @@ let tripState = {
     distanceAU: 0,          // Cumulative distance traveled in AU
     startTime: 0,           // Game time (days) when trip started
     lastPos: null,          // Last known ship position {x, y, z}
+    minSpeedKmS: Infinity,  // Minimum instantaneous speed recorded
+    maxSpeedKmS: 0,         // Maximum instantaneous speed recorded
+    hasSpeedSample: false,  // True once at least one speed sample taken
 };
 
 // ============================================================================
@@ -50,6 +54,14 @@ export function updateTripometer() {
     }
 
     tripState.lastPos = pos;
+
+    // Track min/max instantaneous speed
+    const speed = getShipVelocityKmS(player);
+    if (isFinite(speed) && speed > 0) {
+        tripState.hasSpeedSample = true;
+        if (speed < tripState.minSpeedKmS) tripState.minSpeedKmS = speed;
+        if (speed > tripState.maxSpeedKmS) tripState.maxSpeedKmS = speed;
+    }
 }
 
 /**
@@ -60,6 +72,9 @@ export function resetTripometer() {
     tripState.distanceAU = 0;
     tripState.startTime = getTime();
     tripState.lastPos = player ? { x: player.x, y: player.y, z: player.z } : null;
+    tripState.minSpeedKmS = Infinity;
+    tripState.maxSpeedKmS = 0;
+    tripState.hasSpeedSample = false;
 }
 
 /**
@@ -87,6 +102,22 @@ export function getTripAvgSpeedKmS() {
     if (days <= 0) return 0;
     // AU/day -> km/s: multiply by KM_PER_AU / 86400
     return (tripState.distanceAU / days) * (KM_PER_AU / 86400);
+}
+
+/**
+ * Get minimum speed in km/s recorded since last reset.
+ * @returns {number}
+ */
+export function getTripMinSpeedKmS() {
+    return tripState.hasSpeedSample ? tripState.minSpeedKmS : 0;
+}
+
+/**
+ * Get maximum speed in km/s recorded since last reset.
+ * @returns {number}
+ */
+export function getTripMaxSpeedKmS() {
+    return tripState.maxSpeedKmS;
 }
 
 /**

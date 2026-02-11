@@ -9,7 +9,7 @@ import { getPlayerShip } from '../data/ships.js';
 import { getThrustInfo, getShipVelocityKmS } from '../core/shipPhysics.js';
 import { SOI_RADII } from '../config.js';
 import { camera } from '../core/camera.js';
-import { formatTripDistance, getTripElapsedDays, getTripAvgSpeedKmS, resetTripometer } from '../core/tripometer.js';
+import { formatTripDistance, getTripElapsedDays, getTripAvgSpeedKmS, getTripMinSpeedKmS, getTripMaxSpeedKmS, resetTripometer } from '../core/tripometer.js';
 
 // Cache DOM elements
 let elements = {};
@@ -83,6 +83,8 @@ export function initUI() {
         tripDist: document.getElementById('tripDist'),
         tripTime: document.getElementById('tripTime'),
         tripAvg: document.getElementById('tripAvg'),
+        tripMinSpeed: document.getElementById('tripMinSpeed'),
+        tripMaxSpeed: document.getElementById('tripMaxSpeed'),
     };
 
     // Initialize sail display with current values
@@ -232,8 +234,9 @@ function updateTimeDisplay() {
 function updateTripometerDisplay() {
     setTextIfChanged(elements.tripDist, formatTripDistance());
     setTextIfChanged(elements.tripTime, 'T+ ' + formatMissionTime(getTripElapsedDays()));
-    const avg = getTripAvgSpeedKmS();
-    setTextIfChanged(elements.tripAvg, 'AVG ' + avg.toFixed(2) + ' km/s');
+    setTextIfChanged(elements.tripAvg, 'AVG ' + getTripAvgSpeedKmS().toFixed(2) + ' km/s');
+    setTextIfChanged(elements.tripMinSpeed, 'MIN ' + getTripMinSpeedKmS().toFixed(2));
+    setTextIfChanged(elements.tripMaxSpeed, 'MAX ' + getTripMaxSpeedKmS().toFixed(2) + ' km/s');
 }
 
 /**
