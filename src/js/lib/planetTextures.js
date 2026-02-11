@@ -394,14 +394,15 @@ export function hasTexture(bodyName) {
 export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, cameraAngleZ = 0, cameraAngleX = 0) {
     if (!initialized || !textures[bodyName]) return null;
 
-    // Determine render resolution: at least 2x screenRadius, capped at renderSize
+    // Determine render resolution: dynamic scaling based on screen radius
+    const idealSize = Math.ceil(screenRadius * PLANET_TEXTURE_CONFIG.renderSizeScaling);
     const size = Math.min(
-        PLANET_TEXTURE_CONFIG.renderSize,
-        Math.max(64, Math.ceil(screenRadius * 2.5))
+        PLANET_TEXTURE_CONFIG.maxRenderSize,
+        Math.max(PLANET_TEXTURE_CONFIG.minRenderSize, idealSize)
     );
 
-    // Round size to nearest power-of-2-friendly value for better cache stability
-    const quantizedSize = Math.ceil(size / 32) * 32;
+    // Round size to nearest quantization step for better cache stability
+    const quantizedSize = Math.ceil(size / PLANET_TEXTURE_CONFIG.renderSizeQuantize) * PLANET_TEXTURE_CONFIG.renderSizeQuantize;
 
     // Calculate planet rotation angle (mod 2PI for numerical stability)
     // gameDays is a Julian date (~2,460,000+), so raw rotation would overflow precision

@@ -567,7 +567,19 @@ export const PLANET_TEXTURE_CONFIG = {
     /** Screen radius range over which gradient→texture crossfade occurs */
     crossfadeRange: 10,
 
-    /** Resolution of the offscreen WebGL render target (square) */
+    /** Minimum resolution of the offscreen WebGL render target (square) */
+    minRenderSize: 512,
+
+    /** Maximum resolution of the offscreen WebGL render target (square) */
+    maxRenderSize: 2048,
+
+    /** Scaling multiplier for dynamic render size (screenRadius * multiplier) */
+    renderSizeScaling: 2.5,
+
+    /** Quantization step for render size (cache stability) */
+    renderSizeQuantize: 32,
+
+    /** Resolution of the offscreen WebGL render target (square) - DEPRECATED, use minRenderSize */
     renderSize: 512,
 
     /** Base path for locally-stored planet textures (derived from ASSET_BASE_URL) */
