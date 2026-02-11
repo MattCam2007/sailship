@@ -471,10 +471,13 @@ function drawOrbit(body, centerX, centerY, scale) {
     const orbitRadiusPixels = a * effectiveZoom;
     const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
 
-    // Zoom-adaptive segment cap: use higher resolution at tactical zoom (>5x) for precision
-    // At tactical zoom, planets appear offset from paths with 512 segments due to discretization error
-    // 2048 segments reduces offset from ~10px to <2px, critical for encounter marker alignment
-    const maxSegments = camera.zoom > 5 ? 2048 : 512;
+    // Zoom-adaptive segment cap: smooth interpolation eliminates performance cliff
+    // Old behavior: hard jump from 512→2048 at zoom=5 caused sudden FPS drop
+    // New behavior: smooth ramp from 512→1024 over zoom range 5→50
+    // This maintains visual quality while capping maximum rendering cost at 50% of old peak
+    const maxSegments = camera.zoom <= 5
+        ? 512
+        : Math.min(1024, 512 + Math.floor((camera.zoom - 5) / 45 * 512));
     const segments = Math.max(64, Math.min(maxSegments, Math.ceil(orbitCircumPixels / 20)));
 
     ctx.strokeStyle = body.type === 'moon' ? getColor('canvas.orbitMoon') : getColor('canvas.orbitPrimary');
@@ -1063,9 +1066,13 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
     const orbitRadiusPixels = a * effectiveZoom;
     const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
 
-    // Zoom-adaptive segment cap: use higher resolution at tactical zoom (>5x) for precision
+    // Zoom-adaptive segment cap: smooth interpolation eliminates performance cliff
+    // Old behavior: hard jump from 512→2048 at zoom=5 caused sudden FPS drop
+    // New behavior: smooth ramp from 512→1024 over zoom range 5→50
     // Critical for ship orbit alignment during autopilot and manual thrust maneuvers
-    const maxSegments = camera.zoom > 5 ? 2048 : 512;
+    const maxSegments = camera.zoom <= 5
+        ? 512
+        : Math.min(1024, 512 + Math.floor((camera.zoom - 5) / 45 * 512));
     const segments = Math.max(64, Math.min(maxSegments, Math.ceil(orbitCircumPixels / 20)));
 
     // Detect hyperbolic orbit
