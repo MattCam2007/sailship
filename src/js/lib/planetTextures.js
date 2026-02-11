@@ -36,6 +36,9 @@ let shaderProgram = null;
 /** @type {Object<string, WebGLTexture>} Loaded textures keyed by body name */
 const textures = {};
 
+/** @type {Object<string, WebGLTexture>} Loaded normal map textures keyed by body name */
+const normalMapTextures = {};
+
 /** @type {Object<string, HTMLCanvasElement>} Cached rendered spheres per body */
 const renderCache = {};
 
@@ -92,12 +95,20 @@ in vec2 vUV;
 out vec4 fragColor;
 
 uniform sampler2D uTexture;
+uniform sampler2D uNormalMap;
 uniform float uRotation;      // Y-axis rotation in radians (planet spin)
 uniform float uAxialTilt;     // Axial tilt in radians
 uniform vec3 uLightDir;       // Direction TO the sun (normalized)
 uniform float uAmbient;       // Ambient light level
 uniform float uCameraAngleZ;  // Camera Z rotation (orbital view)
 uniform float uCameraAngleX;  // Camera X rotation (tilt view)
+uniform bool uUseNormalMap;   // Whether to use normal mapping
+uniform bool uUseSpecular;    // Whether to use specular highlights
+uniform float uShininess;     // Phong exponent for specular highlight
+uniform float uSpecularIntensity;  // Specular strength multiplier
+uniform bool uUseAtmosphere;  // Whether to use atmospheric rim glow
+uniform vec3 uAtmosphereColor;  // RGB color of atmosphere (0-1 range)
+uniform float uAtmosphereIntensity;  // Atmosphere glow strength
 
 // Analytic ray-sphere intersection.
 // Ray origin at (0,0,-2), direction toward pixel on near plane.
@@ -178,9 +189,31 @@ void main() {
 
     vec4 texColor = texture(uTexture, texCoord);
 
-    // Lambertian lighting using the untilted normal for light calculation
+    // Surface normal for lighting (either from normal map or smooth sphere)
+    vec3 surfaceNormal = normal;
+
+    if (uUseNormalMap) {
+        // Sample normal map (RGB encoded, [0,1] -> [-1,1])
+        vec3 normalMapSample = texture(uNormalMap, texCoord).rgb * 2.0 - 1.0;
+
+        // Build tangent space basis
+        // For a sphere, tangent is perpendicular to normal in texture space
+        // Tangent points in longitude direction, bitangent in latitude direction
+        vec3 tangent = normalize(cross(vec3(0.0, 1.0, 0.0), normal));
+        if (length(tangent) < 0.01) {
+            // At poles, choose arbitrary tangent
+            tangent = vec3(1.0, 0.0, 0.0);
+        }
+        vec3 bitangent = normalize(cross(normal, tangent));
+
+        // Transform normal from tangent space to world space
+        mat3 TBN = mat3(tangent, bitangent, normal);
+        surfaceNormal = normalize(TBN * normalMapSample);
+    }
+
+    // Lambertian diffuse lighting using the surface normal
     // (light comes from the sun direction in world space)
-    float NdotL = dot(normal, uLightDir);
+    float NdotL = dot(surfaceNormal, uLightDir);
     float diffuse = max(NdotL, 0.0);
 
     // Smooth terminator (soften day/night boundary)
@@ -188,7 +221,41 @@ void main() {
 
     float lighting = uAmbient + (1.0 - uAmbient) * diffuse * terminator;
 
-    fragColor = vec4(texColor.rgb * lighting, 1.0);
+    // Blinn-Phong specular highlight
+    vec3 specular = vec3(0.0);
+    if (uUseSpecular && NdotL > 0.0) {
+        // View direction (camera is at -Z looking toward origin)
+        vec3 viewDir = normalize(-hitPos);
+
+        // Half vector (Blinn-Phong: halfway between light and view)
+        vec3 halfVec = normalize(uLightDir + viewDir);
+
+        // Specular term: (N·H)^shininess
+        float NdotH = max(dot(surfaceNormal, halfVec), 0.0);
+        float spec = pow(NdotH, uShininess);
+
+        // Apply intensity and ensure it only appears on lit side
+        specular = vec3(spec * uSpecularIntensity * terminator);
+    }
+
+    // Atmospheric rim glow (Fresnel effect)
+    vec3 atmosphere = vec3(0.0);
+    if (uUseAtmosphere) {
+        // View direction (camera is at -Z looking toward origin)
+        vec3 viewDir = normalize(-hitPos);
+
+        // Fresnel term: (1 - N·V)^power
+        // Higher power = tighter rim, lower = wider glow
+        float fresnel = 1.0 - max(dot(normal, viewDir), 0.0);
+        fresnel = pow(fresnel, 3.0);  // Cubic falloff for natural atmospheric scattering
+
+        // Atmosphere is more visible on the lit side
+        float atmosphereLighting = 0.3 + 0.7 * max(NdotL, 0.0);
+
+        atmosphere = uAtmosphereColor * fresnel * uAtmosphereIntensity * atmosphereLighting;
+    }
+
+    fragColor = vec4(texColor.rgb * lighting + specular + atmosphere, 1.0);
 
     // Soft edge anti-aliasing: fade out at sphere rim
     float edgeDist = length(ndc);
@@ -250,12 +317,20 @@ export function initPlanetTextures() {
         gl.useProgram(shaderProgram);
         uniforms = {
             uTexture: gl.getUniformLocation(shaderProgram, 'uTexture'),
+            uNormalMap: gl.getUniformLocation(shaderProgram, 'uNormalMap'),
             uRotation: gl.getUniformLocation(shaderProgram, 'uRotation'),
             uAxialTilt: gl.getUniformLocation(shaderProgram, 'uAxialTilt'),
             uLightDir: gl.getUniformLocation(shaderProgram, 'uLightDir'),
             uAmbient: gl.getUniformLocation(shaderProgram, 'uAmbient'),
             uCameraAngleZ: gl.getUniformLocation(shaderProgram, 'uCameraAngleZ'),
             uCameraAngleX: gl.getUniformLocation(shaderProgram, 'uCameraAngleX'),
+            uUseNormalMap: gl.getUniformLocation(shaderProgram, 'uUseNormalMap'),
+            uUseSpecular: gl.getUniformLocation(shaderProgram, 'uUseSpecular'),
+            uShininess: gl.getUniformLocation(shaderProgram, 'uShininess'),
+            uSpecularIntensity: gl.getUniformLocation(shaderProgram, 'uSpecularIntensity'),
+            uUseAtmosphere: gl.getUniformLocation(shaderProgram, 'uUseAtmosphere'),
+            uAtmosphereColor: gl.getUniformLocation(shaderProgram, 'uAtmosphereColor'),
+            uAtmosphereIntensity: gl.getUniformLocation(shaderProgram, 'uAtmosphereIntensity'),
         };
 
         // Create VAO for fullscreen quad (uses gl_VertexID, no actual buffer needed)
@@ -319,8 +394,9 @@ function compileShader(type, source) {
  * Loads asynchronously — planets render with gradients until textures are ready.
  */
 function loadAllTextures() {
-    const { baseUrl, textures: textureMap, highResTextures } = PLANET_TEXTURE_CONFIG;
+    const { baseUrl, textures: textureMap, highResTextures, normalMaps } = PLANET_TEXTURE_CONFIG;
 
+    // Load base color textures
     for (const [bodyName, filename] of Object.entries(textureMap)) {
         if (loading.has(bodyName) || failed.has(bodyName) || textures[bodyName]) continue;
 
@@ -353,6 +429,30 @@ function loadAllTextures() {
         };
 
         img.src = url;
+    }
+
+    // Load normal map textures (if available)
+    if (normalMaps) {
+        for (const [bodyName, filename] of Object.entries(normalMaps)) {
+            if (normalMapTextures[bodyName]) continue;
+
+            const url = baseUrl + filename;
+            const img = new Image();
+
+            img.onload = () => {
+                const tex = createTextureFromImage(img);
+                if (tex) {
+                    normalMapTextures[bodyName] = tex;
+                    console.log(`[PLANET_TEXTURES] Loaded normal map: ${bodyName} (${img.width}x${img.height})`);
+                }
+            };
+
+            img.onerror = () => {
+                console.warn(`[PLANET_TEXTURES] Failed to load normal map: ${bodyName} from ${url}`);
+            };
+
+            img.src = url;
+        }
     }
 }
 
@@ -471,10 +571,44 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, 
 
     gl.useProgram(shaderProgram);
 
-    // Bind texture
+    // Bind base texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, textures[bodyName]);
     gl.uniform1i(uniforms.uTexture, 0);
+
+    // Bind normal map (if available and enabled)
+    const hasNormalMap = normalMapTextures[bodyName] && displayOptions.useNormalMaps;
+    if (hasNormalMap) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, normalMapTextures[bodyName]);
+        gl.uniform1i(uniforms.uNormalMap, 1);
+    }
+    gl.uniform1i(uniforms.uUseNormalMap, hasNormalMap ? 1 : 0);
+
+    // Set specular parameters
+    const specConfig = PLANET_TEXTURE_CONFIG.specularSettings[bodyName]
+        || PLANET_TEXTURE_CONFIG.specularSettings.DEFAULT;
+    gl.uniform1i(uniforms.uUseSpecular, displayOptions.useSpecular ? 1 : 0);
+    gl.uniform1f(uniforms.uShininess, specConfig.shininess);
+    gl.uniform1f(uniforms.uSpecularIntensity, specConfig.intensity);
+
+    // Set atmosphere parameters
+    const atmoConfig = PLANET_TEXTURE_CONFIG.atmosphereSettings[bodyName];
+    const hasAtmosphere = atmoConfig && displayOptions.useAtmosphereGlow;
+    gl.uniform1i(uniforms.uUseAtmosphere, hasAtmosphere ? 1 : 0);
+    if (hasAtmosphere) {
+        // Convert RGB 0-255 to 0-1
+        gl.uniform3f(
+            uniforms.uAtmosphereColor,
+            atmoConfig.color[0] / 255,
+            atmoConfig.color[1] / 255,
+            atmoConfig.color[2] / 255
+        );
+        gl.uniform1f(uniforms.uAtmosphereIntensity, atmoConfig.intensity);
+    } else {
+        gl.uniform3f(uniforms.uAtmosphereColor, 0, 0, 0);
+        gl.uniform1f(uniforms.uAtmosphereIntensity, 0);
+    }
 
     // Set uniforms
     gl.uniform1f(uniforms.uRotation, quantizedRotation);
@@ -536,6 +670,16 @@ export function clearPlanetTextureCache() {
         }
         delete textures[key];
     }
+
+    // Clear normal map cache
+    for (const key of Object.keys(normalMapTextures)) {
+        const tex = normalMapTextures[key];
+        if (tex && gl) {
+            gl.deleteTexture(tex);
+        }
+        delete normalMapTextures[key];
+    }
+
     loading.clear();
     failed.clear();
 
