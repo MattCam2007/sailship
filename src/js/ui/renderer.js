@@ -437,8 +437,11 @@ function drawOrbit(body, centerX, centerY, scale) {
     const orbitRadiusPixels = a * effectiveZoom;
     const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
 
-    // Target ~20 pixels per segment for smooth appearance, min 64, max 512
-    const segments = Math.max(64, Math.min(512, Math.ceil(orbitCircumPixels / 20)));
+    // Zoom-adaptive segment cap: use higher resolution at tactical zoom (>5x) for precision
+    // At tactical zoom, planets appear offset from paths with 512 segments due to discretization error
+    // 2048 segments reduces offset from ~10px to <2px, critical for encounter marker alignment
+    const maxSegments = camera.zoom > 5 ? 2048 : 512;
+    const segments = Math.max(64, Math.min(maxSegments, Math.ceil(orbitCircumPixels / 20)));
 
     ctx.strokeStyle = body.type === 'moon' ? getColor('canvas.orbitMoon') : getColor('canvas.orbitPrimary');
     ctx.lineWidth = body.type === 'moon' ? 0.5 : 1;
@@ -1015,8 +1018,10 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
     const orbitRadiusPixels = a * effectiveZoom;
     const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
 
-    // Target ~20 pixels per segment for smooth appearance, min 64, max 512
-    const segments = Math.max(64, Math.min(512, Math.ceil(orbitCircumPixels / 20)));
+    // Zoom-adaptive segment cap: use higher resolution at tactical zoom (>5x) for precision
+    // Critical for ship orbit alignment during autopilot and manual thrust maneuvers
+    const maxSegments = camera.zoom > 5 ? 2048 : 512;
+    const segments = Math.max(64, Math.min(maxSegments, Math.ceil(orbitCircumPixels / 20)));
 
     // Detect hyperbolic orbit
     const isHyperbolic = e >= 1;
@@ -1205,9 +1210,15 @@ function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
     if (!trajectory || trajectory.length < 2) return trajectory;
 
     const TARGET_PIXELS_PER_SEGMENT = 18;
+    const MAX_RENDERED_SEGMENTS = 4096;  // Prevent unbounded subdivision at extreme zoom
     const subdivided = [];
 
     for (let i = 0; i < trajectory.length - 1; i++) {
+        // Stop subdivision if we've hit the cap (prevents 960ms frames at extreme zoom)
+        if (subdivided.length >= MAX_RENDERED_SEGMENTS) {
+            break;
+        }
+
         const p1 = trajectory[i];
         const p2 = trajectory[i + 1];
 
@@ -1228,6 +1239,11 @@ function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
 
             // Linear interpolation in 3D space
             for (let j = 1; j < subsegments; j++) {
+                // Check cap again inside subdivision loop
+                if (subdivided.length >= MAX_RENDERED_SEGMENTS) {
+                    break;
+                }
+
                 const t = j / subsegments;
                 subdivided.push({
                     x: p1.x + (p2.x - p1.x) * t,
@@ -1239,8 +1255,10 @@ function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
         }
     }
 
-    // Add final point
-    subdivided.push(trajectory[trajectory.length - 1]);
+    // Add final point (if we haven't hit the cap)
+    if (subdivided.length < MAX_RENDERED_SEGMENTS) {
+        subdivided.push(trajectory[trajectory.length - 1]);
+    }
 
     return subdivided;
 }
