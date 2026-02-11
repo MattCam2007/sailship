@@ -1268,6 +1268,13 @@ function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
     for (let i = 0; i < trajectory.length - 1; i++) {
         // Stop subdivision if we've hit the cap (prevents 960ms frames at extreme zoom)
         if (subdivided.length >= MAX_RENDERED_SEGMENTS) {
+            if (rendererFrameCount % 60 === 0) {  // Log once per second at 60fps
+                console.warn(
+                    `[RENDER_DIAG] Trajectory subdivision cap hit: ${MAX_RENDERED_SEGMENTS} segments | ` +
+                    `Input points: ${trajectory.length} | Processed: ${i}/${trajectory.length - 1} | ` +
+                    `Zoom: ${camera.zoom.toFixed(1)}x`
+                );
+            }
             break;
         }
 
@@ -1310,6 +1317,15 @@ function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
     // Add final point (if we haven't hit the cap)
     if (subdivided.length < MAX_RENDERED_SEGMENTS) {
         subdivided.push(trajectory[trajectory.length - 1]);
+    }
+
+    // DIAGNOSTIC: Log subdivision stats at extreme zoom (once per 5 seconds)
+    if (camera.zoom > 50 && rendererFrameCount % 300 === 0) {
+        const wasCapped = subdivided.length >= MAX_RENDERED_SEGMENTS;
+        console.log(
+            `[RENDER_DIAG] Trajectory subdivision: ${trajectory.length} input → ${subdivided.length} output | ` +
+            `Cap: ${wasCapped ? 'HIT' : 'OK'} | Zoom: ${camera.zoom.toFixed(1)}x`
+        );
     }
 
     return subdivided;
