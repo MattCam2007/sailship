@@ -103,6 +103,9 @@ uniform float uAmbient;       // Ambient light level
 uniform float uCameraAngleZ;  // Camera Z rotation (orbital view)
 uniform float uCameraAngleX;  // Camera X rotation (tilt view)
 uniform bool uUseNormalMap;   // Whether to use normal mapping
+uniform bool uUseSpecular;    // Whether to use specular highlights
+uniform float uShininess;     // Phong exponent for specular highlight
+uniform float uSpecularIntensity;  // Specular strength multiplier
 
 // Analytic ray-sphere intersection.
 // Ray origin at (0,0,-2), direction toward pixel on near plane.
@@ -205,7 +208,7 @@ void main() {
         surfaceNormal = normalize(TBN * normalMapSample);
     }
 
-    // Lambertian lighting using the surface normal
+    // Lambertian diffuse lighting using the surface normal
     // (light comes from the sun direction in world space)
     float NdotL = dot(surfaceNormal, uLightDir);
     float diffuse = max(NdotL, 0.0);
@@ -215,7 +218,24 @@ void main() {
 
     float lighting = uAmbient + (1.0 - uAmbient) * diffuse * terminator;
 
-    fragColor = vec4(texColor.rgb * lighting, 1.0);
+    // Blinn-Phong specular highlight
+    vec3 specular = vec3(0.0);
+    if (uUseSpecular && NdotL > 0.0) {
+        // View direction (camera is at -Z looking toward origin)
+        vec3 viewDir = normalize(-hitPos);
+
+        // Half vector (Blinn-Phong: halfway between light and view)
+        vec3 halfVec = normalize(uLightDir + viewDir);
+
+        // Specular term: (N·H)^shininess
+        float NdotH = max(dot(surfaceNormal, halfVec), 0.0);
+        float spec = pow(NdotH, uShininess);
+
+        // Apply intensity and ensure it only appears on lit side
+        specular = vec3(spec * uSpecularIntensity * terminator);
+    }
+
+    fragColor = vec4(texColor.rgb * lighting + specular, 1.0);
 
     // Soft edge anti-aliasing: fade out at sphere rim
     float edgeDist = length(ndc);
@@ -285,6 +305,9 @@ export function initPlanetTextures() {
             uCameraAngleZ: gl.getUniformLocation(shaderProgram, 'uCameraAngleZ'),
             uCameraAngleX: gl.getUniformLocation(shaderProgram, 'uCameraAngleX'),
             uUseNormalMap: gl.getUniformLocation(shaderProgram, 'uUseNormalMap'),
+            uUseSpecular: gl.getUniformLocation(shaderProgram, 'uUseSpecular'),
+            uShininess: gl.getUniformLocation(shaderProgram, 'uShininess'),
+            uSpecularIntensity: gl.getUniformLocation(shaderProgram, 'uSpecularIntensity'),
         };
 
         // Create VAO for fullscreen quad (uses gl_VertexID, no actual buffer needed)
@@ -538,6 +561,13 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, 
         gl.uniform1i(uniforms.uNormalMap, 1);
     }
     gl.uniform1i(uniforms.uUseNormalMap, hasNormalMap ? 1 : 0);
+
+    // Set specular parameters
+    const specConfig = PLANET_TEXTURE_CONFIG.specularSettings[bodyName]
+        || PLANET_TEXTURE_CONFIG.specularSettings.DEFAULT;
+    gl.uniform1i(uniforms.uUseSpecular, displayOptions.useSpecular ? 1 : 0);
+    gl.uniform1f(uniforms.uShininess, specConfig.shininess);
+    gl.uniform1f(uniforms.uSpecularIntensity, specConfig.intensity);
 
     // Set uniforms
     gl.uniform1f(uniforms.uRotation, quantizedRotation);
