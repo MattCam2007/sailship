@@ -6,7 +6,7 @@ import { destination, getDestinationInfo, predictClosestApproach } from '../core
 import { getTime, getJulianDate, getCurrentZoom, getScale, getClosestApproachForBody } from '../core/gameState.js';
 import { getBodyByName } from '../data/celestialBodies.js';
 import { getPlayerShip } from '../data/ships.js';
-import { getThrustInfo } from '../core/shipPhysics.js';
+import { getThrustInfo, getShipVelocityKmS } from '../core/shipPhysics.js';
 import { SOI_RADII } from '../config.js';
 import { camera } from '../core/camera.js';
 
@@ -482,14 +482,8 @@ export function updateSailDisplay() {
     // Update velocity display (throttled to every 6 frames for performance)
     if (++velocityFrameCounter >= 6) {
         velocityFrameCounter = 0;
-        if (player.velocity) {
-            const { x, y, z } = player.velocity;
-            // AU/day to km/s: 1 AU/day = 1731.46 km/s
-            const velocityKmS = Math.sqrt(x * x + y * y + z * z) * 1731.46;
-            setTextIfChanged(elements.sailVelocity, velocityKmS.toFixed(2) + ' km/s');
-        } else {
-            setTextIfChanged(elements.sailVelocity, '0.00 km/s');
-        }
+        const velocityKmS = getShipVelocityKmS(player);
+        setTextIfChanged(elements.sailVelocity, velocityKmS.toFixed(2) + ' km/s');
     }
 
     // Update slider value displays if sail exists
