@@ -633,6 +633,36 @@ export const PLANET_TEXTURE_CONFIG = {
     },
 
     /**
+     * Specular highlight settings per body.
+     * Controls Blinn-Phong specular reflection for surface shine.
+     * shininess: Phong exponent (higher = tighter highlight, range: 2-256)
+     * intensity: Specular strength multiplier (0-1, higher = brighter)
+     */
+    specularSettings: {
+        EARTH: {
+            shininess: 32,      // Moderate shine (oceans)
+            intensity: 0.4,     // Visible but not overpowering
+        },
+        MARS: {
+            shininess: 8,       // Very diffuse (dust)
+            intensity: 0.1,     // Subtle
+        },
+        EUROPA: {
+            shininess: 64,      // High shine (ice)
+            intensity: 0.6,     // Bright
+        },
+        LUNA: {
+            shininess: 4,       // Very diffuse (regolith)
+            intensity: 0.05,    // Minimal
+        },
+        // Default fallback for other bodies (used if not specified)
+        DEFAULT: {
+            shininess: 16,
+            intensity: 0.2,
+        },
+    },
+
+    /**
      * Per-body rotation rates in degrees per game-day.
      * Used to rotate the texture so the planet visually spins.
      * Values are 360 / sidereal rotation period in Earth days.
