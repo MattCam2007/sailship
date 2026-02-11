@@ -50,6 +50,12 @@ const failed = new Set();
 /** Whether the WebGL system initialized successfully */
 let initialized = false;
 
+/** Anisotropic filtering extension (if available) */
+let anisotropyExt = null;
+
+/** Maximum anisotropy level supported by GPU */
+let maxAnisotropy = 1;
+
 /** Uniform locations */
 let uniforms = {};
 
@@ -260,6 +266,15 @@ export function initPlanetTextures() {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
+        // Check for anisotropic filtering extension
+        anisotropyExt = gl.getExtension('EXT_texture_filter_anisotropic');
+        if (anisotropyExt) {
+            maxAnisotropy = gl.getParameter(anisotropyExt.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+            console.log(`[PLANET_TEXTURES] Anisotropic filtering enabled: ${maxAnisotropy}x`);
+        } else {
+            console.log('[PLANET_TEXTURES] Anisotropic filtering not available');
+        }
+
         initialized = true;
         console.log('[PLANET_TEXTURES] Initialized WebGL2 offscreen renderer');
 
@@ -356,6 +371,11 @@ function createTextureFromImage(img) {
     // Wrap modes (equirectangular wraps horizontally, clamps vertically)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    // Apply anisotropic filtering if available (improves sharpness at oblique angles)
+    if (anisotropyExt) {
+        gl.texParameterf(gl.TEXTURE_2D, anisotropyExt.TEXTURE_MAX_ANISOTROPY_EXT, maxAnisotropy);
+    }
 
     gl.bindTexture(gl.TEXTURE_2D, null);
 
