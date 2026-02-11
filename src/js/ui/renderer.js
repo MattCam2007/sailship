@@ -904,7 +904,7 @@ function drawBody(body, centerX, centerY, scale) {
             const sunAngle = Math.atan2(-dy, dx); // Flip Y for screen coords
 
             const gameDays = getJulianDate();
-            const texCanvas = renderPlanetTexture(body.name, screenRadius, gameDays, sunAngle);
+            const texCanvas = renderPlanetTexture(body.name, screenRadius, gameDays, sunAngle, camera.angleZ, camera.angleX);
 
             if (texCanvas) {
                 ctx.save();
