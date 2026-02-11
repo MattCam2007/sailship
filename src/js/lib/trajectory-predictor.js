@@ -289,6 +289,25 @@ export function predictTrajectory(params) {
         return [];
     }
 
+    // ============================================================================
+    // STATE-VECTOR INTEGRATION (RK4)
+    // ============================================================================
+    // Convert initial orbital elements to state vector (position + velocity).
+    // State becomes the primary representation, eliminating elements→state→elements
+    // roundtrip errors. RK4 provides 4th-order accuracy vs. previous RK2.
+
+    const initialPosition = getPosition(simElements, startTime);
+    const initialVelocity = getVelocity(simElements, startTime);
+
+    let simState = {
+        x: initialPosition.x,
+        y: initialPosition.y,
+        z: initialPosition.z,
+        vx: initialVelocity.vx,
+        vy: initialVelocity.vy,
+        vz: initialVelocity.vz
+    };
+
     // Check if thrust is effectively zero
     const effectiveThrust = sail.deploymentPercent > 0 &&
                             sail.area > 0 &&
