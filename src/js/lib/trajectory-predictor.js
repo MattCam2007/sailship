@@ -10,10 +10,10 @@
  */
 
 import { getPosition, getVelocity, MU_SUN } from './orbital.js';
-import { calculateSailThrust, applyThrust } from './orbital-maneuvers.js';
+import { calculateSailThrust, applyThrust, integrateStateRK4, calculateSailThrustFromState } from './orbital-maneuvers.js';
 import { SOI_RADII, PHYSICS_CONFIG, TRAJECTORY_ROBUSTNESS, TRAJECTORY_RENDER_CONFIG } from '../config.js';
 import { getBodyByName } from '../data/celestialBodies.js';
-import { getGravitationalParam } from './soi.js';
+import { getGravitationalParam, stateToElements } from './soi.js';
 
 // SOI trajectory diagnostic - tracks one-shot logging per SOI stay
 let soiTrajDiag = {
@@ -333,7 +333,7 @@ export function predictTrajectory(params) {
     for (let i = 0; i < adaptiveSteps; i++) {
         const simTime = startTime + i * timeStep;
 
-        // Get position from current orbital elements (planetocentric when in SOI)
+        // Get position from current state vector (planetocentric when in SOI)
         // For extreme eccentricity flybys, use linear interpolation instead of orbital mechanics
         // This matches the behavior in shipPhysics.js for consistency
         let position;
@@ -346,7 +346,12 @@ export function predictTrajectory(params) {
                 z: extremeFlybyState.entryPos.z + extremeFlybyState.entryVel.vz * dt
             };
         } else {
-            position = getPosition(simElements, simTime);
+            // Position comes directly from state vector
+            position = {
+                x: simState.x,
+                y: simState.y,
+                z: simState.z
+            };
         }
 
         // Validate position (guard against numerical issues)
@@ -433,223 +438,73 @@ export function predictTrajectory(params) {
         });
 
         // Apply thrust for next step (if not last step and thrust is active)
-        // Don't apply thrust if too close to sun - physics breaks down and corrupts orbital elements
+        // Don't apply thrust if too close to sun - physics breaks down
         const tooCloseToSun = !isInSOI && distFromOrigin < MIN_HELIOCENTRIC_RADIUS * 2.0;
 
         // Skip thrust application for extreme flybys - the flyby is so fast that sail thrust
-        // has negligible effect, and orbital elements are not meaningful anyway
+        // has negligible effect
         if (i < adaptiveSteps - 1 && effectiveThrust && !tooCloseToSun && !useLinearInterpolation) {
             // ================================================================
-            // RK2 MIDPOINT INTEGRATION WITH ADAPTIVE SUB-STEPPING
+            // RK4 STATE-VECTOR INTEGRATION
             // ================================================================
-            // Primary: RK2 midpoint method for accuracy.
-            // Fallback: If element changes per step exceed thresholds (|Δe| or
-            // |Δa/a| too large), redo the step with N smaller Euler sub-steps.
-            // Sub-steps recompute thrust direction at each sub-position, preventing
-            // the large ΔV that causes stateToElements to produce bad elements.
-            //
-            // Sub-stepping is internal only — the output trajectory point count
-            // is unchanged, so the cache and intersection detection are unaffected.
+            // Integrate state vector using RK4 (4th-order Runge-Kutta).
+            // This eliminates the elements→state→elements roundtrip errors
+            // from the previous RK2 method, providing significantly better
+            // accuracy without complex sub-stepping fallbacks.
 
-            const velocity = getVelocity(simElements, simTime);
-
-            // Get heliocentric position/velocity for thrust calculation
-            let thrustPosition = position;
-            let thrustVelocity = velocity;
-            let distFromSun = distFromOrigin;
+            // Get heliocentric state for thrust calculation (if in SOI, add parent body motion)
+            let thrustState = simState;
 
             if (isInSOI && currentBody !== 'SUN') {
                 const parent = getBodyByName(currentBody);
                 if (parent && parent.elements) {
                     const planetPos = getPosition(parent.elements, simTime);
                     const planetVel = getVelocity(parent.elements, simTime);
-                    thrustPosition = {
-                        x: position.x + planetPos.x,
-                        y: position.y + planetPos.y,
-                        z: position.z + planetPos.z
+                    thrustState = {
+                        x: simState.x + planetPos.x,
+                        y: simState.y + planetPos.y,
+                        z: simState.z + planetPos.z,
+                        vx: simState.vx + planetVel.vx,
+                        vy: simState.vy + planetVel.vy,
+                        vz: simState.vz + planetVel.vz
                     };
-                    thrustVelocity = {
-                        vx: velocity.vx + planetVel.vx,
-                        vy: velocity.vy + planetVel.vy,
-                        vz: velocity.vz + planetVel.vz
-                    };
-                    distFromSun = Math.sqrt(
-                        thrustPosition.x ** 2 +
-                        thrustPosition.y ** 2 +
-                        thrustPosition.z ** 2
-                    );
                 }
             }
 
-            // Step 1: Calculate thrust at start of step
-            const thrustStart = calculateSailThrust(
-                sail,
-                thrustPosition,
-                thrustVelocity,
-                distFromSun,
-                mass
-            );
+            // Integrate state forward one timestep using RK4
+            // RK4 internally computes thrust 4 times (k1, k2, k3, k4) for high accuracy
+            const mu = isInSOI ? getGravitationalParam(currentBody) : MU_SUN;
+            const newState = integrateStateRK4(thrustState, sail, timeStep, mass, mu);
 
-            const thrustStartMag = Math.sqrt(
-                thrustStart.x ** 2 + thrustStart.y ** 2 + thrustStart.z ** 2
-            );
-
-            if (thrustStartMag > MIN_THRUST_THRESHOLD) {
-                const maxE = TRAJECTORY_ROBUSTNESS.maxEccentricity;
-                const prevElements = simElements;  // Save for possible sub-stepping
-
-                // Step 2: Propagate to midpoint using start thrust (half step)
-                const midTime = simTime + timeStep / 2;
-                const midElements = applyThrust(simElements, thrustStart, timeStep / 2, simTime);
-
-                // Validate midpoint elements
-                let stepFailed = false;
-                if (!isFinite(midElements.a) || !isFinite(midElements.e) ||
-                    midElements.e < 0 || midElements.e > maxE) {
-                    // Midpoint failed - fall back to Euler (use start thrust for full step)
-                    const newElements = applyThrust(simElements, thrustStart, timeStep, simTime);
-                    if (!isFinite(newElements.a) || !isFinite(newElements.e) ||
-                        !isFinite(newElements.i) || !isFinite(newElements.Ω) ||
-                        !isFinite(newElements.ω) || !isFinite(newElements.M0) ||
-                        newElements.e < 0 || newElements.e > maxE) {
-                        stepFailed = true;
-                    } else {
-                        simElements = newElements;
-                    }
+            // Convert heliocentric state back to planetocentric if in SOI
+            if (isInSOI && currentBody !== 'SUN') {
+                const parent = getBodyByName(currentBody);
+                if (parent && parent.elements) {
+                    const planetPos = getPosition(parent.elements, simTime + timeStep);
+                    const planetVel = getVelocity(parent.elements, simTime + timeStep);
+                    simState = {
+                        x: newState.x - planetPos.x,
+                        y: newState.y - planetPos.y,
+                        z: newState.z - planetPos.z,
+                        vx: newState.vx - planetVel.vx,
+                        vy: newState.vy - planetVel.vy,
+                        vz: newState.vz - planetVel.vz
+                    };
                 } else {
-                    // Step 3: Get position/velocity at midpoint for thrust recalculation
-                    const midPos = getPosition(midElements, midTime);
-                    const midVel = getVelocity(midElements, midTime);
-
-                    let midThrustPos = midPos;
-                    let midThrustVel = midVel;
-                    let midDistFromSun = Math.sqrt(midPos.x ** 2 + midPos.y ** 2 + midPos.z ** 2);
-
-                    if (isInSOI && currentBody !== 'SUN') {
-                        const parent = getBodyByName(currentBody);
-                        if (parent && parent.elements) {
-                            const planetPosMid = getPosition(parent.elements, midTime);
-                            const planetVelMid = getVelocity(parent.elements, midTime);
-                            midThrustPos = {
-                                x: midPos.x + planetPosMid.x,
-                                y: midPos.y + planetPosMid.y,
-                                z: midPos.z + planetPosMid.z
-                            };
-                            midThrustVel = {
-                                vx: midVel.vx + planetVelMid.vx,
-                                vy: midVel.vy + planetVelMid.vy,
-                                vz: midVel.vz + planetVelMid.vz
-                            };
-                            midDistFromSun = Math.sqrt(
-                                midThrustPos.x ** 2 + midThrustPos.y ** 2 + midThrustPos.z ** 2
-                            );
-                        }
-                    }
-
-                    // Step 4: Calculate thrust at midpoint
-                    const thrustMid = calculateSailThrust(
-                        sail,
-                        midThrustPos,
-                        midThrustVel,
-                        midDistFromSun,
-                        mass
-                    );
-
-                    // Step 5: Apply midpoint thrust for the FULL step from original state
-                    const newElements = applyThrust(prevElements, thrustMid, timeStep, simTime);
-
-                    // Validate new orbital elements
-                    if (!isFinite(newElements.a) || !isFinite(newElements.e) ||
-                        !isFinite(newElements.i) || !isFinite(newElements.Ω) ||
-                        !isFinite(newElements.ω) || !isFinite(newElements.M0) ||
-                        newElements.e < 0 || newElements.e > maxE) {
-                        stepFailed = true;
-                    } else {
-                        simElements = newElements;
-                    }
+                    simState = newState;
                 }
+            } else {
+                simState = newState;
+            }
 
-                // ============================================================
-                // ADAPTIVE SUB-STEPPING
-                // ============================================================
-                // If the RK2 step failed outright, or if element changes are
-                // too large (indicating the step size was too aggressive for
-                // the dynamics), redo from prevElements with smaller sub-steps.
-                // Each sub-step recomputes thrust direction, preventing the
-                // large single-step ΔV that causes stateToElements instability.
-                const {
-                    substepEccentricityThreshold: eThresh,
-                    substepSemiMajorAxisThreshold: aThresh,
-                    substepCount: N
-                } = TRAJECTORY_ROBUSTNESS;
-
-                const needsSubstepping = stepFailed || (
-                    !stepFailed && (
-                        Math.abs(simElements.e - prevElements.e) > eThresh ||
-                        (Math.abs(prevElements.a) > 1e-10 &&
-                         Math.abs(simElements.a - prevElements.a) / Math.abs(prevElements.a) > aThresh)
-                    )
-                );
-
-                if (needsSubstepping) {
-                    // Redo from prevElements with N smaller Euler sub-steps
-                    let subElems = prevElements;
-                    const subDt = timeStep / N;
-                    let subFailed = false;
-
-                    for (let j = 0; j < N; j++) {
-                        const subTime = simTime + j * subDt;
-                        const subPos = getPosition(subElems, subTime);
-                        const subVel = getVelocity(subElems, subTime);
-
-                        // Convert to heliocentric for thrust calculation
-                        let subThrustPos = subPos;
-                        let subThrustVel = subVel;
-                        let subDist = Math.sqrt(subPos.x ** 2 + subPos.y ** 2 + subPos.z ** 2);
-
-                        if (isInSOI && currentBody !== 'SUN') {
-                            const parent = getBodyByName(currentBody);
-                            if (parent && parent.elements) {
-                                const pPos = getPosition(parent.elements, subTime);
-                                const pVel = getVelocity(parent.elements, subTime);
-                                subThrustPos = {
-                                    x: subPos.x + pPos.x,
-                                    y: subPos.y + pPos.y,
-                                    z: subPos.z + pPos.z
-                                };
-                                subThrustVel = {
-                                    vx: subVel.vx + pVel.vx,
-                                    vy: subVel.vy + pVel.vy,
-                                    vz: subVel.vz + pVel.vz
-                                };
-                                subDist = Math.sqrt(
-                                    subThrustPos.x ** 2 + subThrustPos.y ** 2 + subThrustPos.z ** 2
-                                );
-                            }
-                        }
-
-                        const subThrust = calculateSailThrust(
-                            sail, subThrustPos, subThrustVel, subDist, mass
-                        );
-                        const subNew = applyThrust(subElems, subThrust, subDt, subTime);
-
-                        if (!isFinite(subNew.a) || !isFinite(subNew.e) ||
-                            subNew.e < 0 || subNew.e > maxE) {
-                            subFailed = true;
-                            break;
-                        }
-                        subElems = subNew;
-                    }
-
-                    if (subFailed) {
-                        // Sub-stepping also failed — truncate trajectory
-                        if (trajectory.length > 0) {
-                            trajectory[trajectory.length - 1].truncated = 'ORBITAL_INSTABILITY';
-                        }
-                        break;
-                    }
-                    simElements = subElems;
+            // Validate state (check for NaN/Infinity)
+            if (!isFinite(simState.x) || !isFinite(simState.y) || !isFinite(simState.z) ||
+                !isFinite(simState.vx) || !isFinite(simState.vy) || !isFinite(simState.vz)) {
+                // State integration failed - truncate trajectory
+                if (trajectory.length > 0) {
+                    trajectory[trajectory.length - 1].truncated = 'INTEGRATION_FAILURE';
                 }
+                break;
             }
         }
     }
@@ -661,7 +516,7 @@ export function predictTrajectory(params) {
         const lastTruncReason = trajectory.length > 0 ? (trajectory[trajectory.length - 1].truncated || 'NONE') : 'EMPTY';
         console.warn(
             `[TRAJ_DIAG] ⚠️ VERY SHORT TRAJECTORY in ${currentBody} SOI: only ${trajectory.length} points | ` +
-            `truncation=${lastTruncReason} | e=${simElements.e.toFixed(4)} | ` +
+            `truncation=${lastTruncReason} | ` +
             `linearInterp=${useLinearInterpolation} | ` +
             `This will make the predicted path nearly invisible`
         );
