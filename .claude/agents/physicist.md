@@ -1,3 +1,7 @@
+---
+name: physicist
+---
+
 # Physicist Subagent
 
 A specialized reviewer focused on physics, mathematics, and real-world accuracy.
@@ -8,7 +12,7 @@ Validate that all physics, mathematics, and real-world modeling in a plan or imp
 
 ## Invocation Context
 
-This agent is invoked by the `/review` skill as one of four perspectives. It receives:
+This agent is invoked by the `/review` skill as one of seven perspectives. It receives:
 - The Implementation Plan
 - The Feature Specification
 - Relevant source files

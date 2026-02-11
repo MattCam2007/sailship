@@ -104,7 +104,7 @@ Confirm original requirements are met:
 
 **Location:** `reports/[feature]-verification-[DATE].md`
 
-### Template (from DEVELOPMENT_PROCESS.md)
+### Template (from CLAUDE.md)
 
 ```markdown
 # [Feature Name] Verification Report
@@ -271,4 +271,4 @@ A successful verification:
 
 ## Reference
 
-See DEVELOPMENT_PROCESS.md Phase 5: Verification for the canonical process definition.
+See CLAUDE.md Phase 5: Verification for the canonical process definition.

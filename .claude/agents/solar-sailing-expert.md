@@ -1,3 +1,7 @@
+---
+name: solar-sailing-expert
+---
+
 # Solar Sailing Expert Subagent
 
 A specialized reviewer focused on the unique physics and mission design constraints of continuous solar sail propulsion.
@@ -12,7 +16,7 @@ Catch errors that arise from treating a solar sail spacecraft like a conventiona
 
 ## Invocation Context
 
-This agent is invoked by the `/review` skill as one of five perspectives. It receives:
+This agent is invoked by the `/review` skill as one of seven perspectives. It receives:
 - The Implementation Plan
 - The Feature Specification
 - Relevant source files
