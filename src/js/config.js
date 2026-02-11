@@ -427,6 +427,10 @@ export const DEFAULT_DISPLAY_OPTIONS = {
     showGrid: true,
     showPredictedTrajectory: true,  // Spiral path showing where ship will go with thrust
     showIntersectionMarkers: true,  // Ghost planets at trajectory intersection points
+    useHighResTextures: false,      // Use 4k/8k textures where available (requires more memory)
+    useNormalMaps: true,            // Use normal maps for surface detail (if available)
+    useSpecular: true,              // Use specular highlights on planets
+    useAtmosphereGlow: true,        // Use atmospheric rim glow effect
 };
 
 /**
@@ -567,7 +571,19 @@ export const PLANET_TEXTURE_CONFIG = {
     /** Screen radius range over which gradient→texture crossfade occurs */
     crossfadeRange: 10,
 
-    /** Resolution of the offscreen WebGL render target (square) */
+    /** Minimum resolution of the offscreen WebGL render target (square) */
+    minRenderSize: 512,
+
+    /** Maximum resolution of the offscreen WebGL render target (square) */
+    maxRenderSize: 2048,
+
+    /** Scaling multiplier for dynamic render size (screenRadius * multiplier) */
+    renderSizeScaling: 2.5,
+
+    /** Quantization step for render size (cache stability) */
+    renderSizeQuantize: 32,
+
+    /** Resolution of the offscreen WebGL render target (square) - DEPRECATED, use minRenderSize */
     renderSize: 512,
 
     /** Base path for locally-stored planet textures (derived from ASSET_BASE_URL) */
@@ -590,6 +606,85 @@ export const PLANET_TEXTURE_CONFIG = {
         URANUS:   '2k_uranus.jpg',
         NEPTUNE:  '2k_neptune.jpg',
         LUNA:     '2k_moon.jpg',
+    },
+
+    /**
+     * High-resolution texture filenames (4k/8k).
+     * Used when useHighResTextures display option is enabled.
+     * Falls back to standard 2k textures if high-res not available.
+     */
+    highResTextures: {
+        VENUS:    '4k_venus_atmosphere.jpg',
+        JUPITER:  '8k_jupiter.jpg',
+        MARS:     '8k_mars.jpg',
+        MERCURY:  '8k_mercury.jpg',
+        SATURN:   '8k_saturn.jpg',
+    },
+
+    /**
+     * Normal map texture filenames (optional).
+     * Normal maps add surface depth detail via per-pixel lighting.
+     * Falls back to smooth sphere if not provided.
+     */
+    normalMaps: {
+        // Add paths when normal map textures are available
+        // EARTH: 'earth_normal.jpg',
+        // MARS: 'mars_normal.jpg',
+    },
+
+    /**
+     * Specular highlight settings per body.
+     * Controls Blinn-Phong specular reflection for surface shine.
+     * shininess: Phong exponent (higher = tighter highlight, range: 2-256)
+     * intensity: Specular strength multiplier (0-1, higher = brighter)
+     */
+    specularSettings: {
+        EARTH: {
+            shininess: 32,      // Moderate shine (oceans)
+            intensity: 0.4,     // Visible but not overpowering
+        },
+        MARS: {
+            shininess: 8,       // Very diffuse (dust)
+            intensity: 0.1,     // Subtle
+        },
+        EUROPA: {
+            shininess: 64,      // High shine (ice)
+            intensity: 0.6,     // Bright
+        },
+        LUNA: {
+            shininess: 4,       // Very diffuse (regolith)
+            intensity: 0.05,    // Minimal
+        },
+        // Default fallback for other bodies (used if not specified)
+        DEFAULT: {
+            shininess: 16,
+            intensity: 0.2,
+        },
+    },
+
+    /**
+     * Atmospheric rim glow settings per body.
+     * Creates a Fresnel-like atmospheric scattering effect at planet edges.
+     * color: RGB color of atmosphere (0-255 range)
+     * intensity: Glow strength multiplier (0-1)
+     */
+    atmosphereSettings: {
+        EARTH: {
+            color: [100, 150, 255],  // Blue (Rayleigh scattering)
+            intensity: 0.6,
+        },
+        MARS: {
+            color: [200, 120, 80],   // Orange-red (dust)
+            intensity: 0.3,
+        },
+        VENUS: {
+            color: [230, 200, 150],  // Yellow-white (thick CO2)
+            intensity: 0.5,
+        },
+        TITAN: {
+            color: [180, 140, 100],  // Orange-brown (nitrogen + organics)
+            intensity: 0.4,
+        },
     },
 
     /**

@@ -6,6 +6,7 @@ import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
 import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, AUTOPILOT_MODES, setAutoPilotPhase, getAutoPilotPhase, setAutoPilotMode, getAutoPilotMode, setTrajectoryDuration, bodyFilters, saveBodyFilters } from '../core/gameState.js';
 import { exportGameState, importGameState, fetchSaveIndex, loadSaveFile } from '../core/saveState.js';
 import { resizeCanvas } from './renderer.js';
+import { clearPlanetTextureCache } from '../lib/planetTextures.js';
 import {
     setDestination,
     destination,
@@ -324,6 +325,48 @@ function initDisplayOptions() {
         const element = document.getElementById(elementId);
         if (element) {
             element.addEventListener('change', e => setDisplayOption(optionName, e.target.checked));
+        }
+    });
+
+    // High-res texture toggle requires special handling (clear texture cache and reload)
+    const highResTexturesToggle = document.getElementById('useHighResTextures');
+    if (highResTexturesToggle) {
+        // Load saved preference
+        const savedPref = localStorage.getItem('useHighResTextures');
+        if (savedPref !== null) {
+            const enabled = savedPref === 'true';
+            highResTexturesToggle.checked = enabled;
+            setDisplayOption('useHighResTextures', enabled);
+        }
+
+        highResTexturesToggle.addEventListener('change', e => {
+            const enabled = e.target.checked;
+            setDisplayOption('useHighResTextures', enabled);
+            localStorage.setItem('useHighResTextures', enabled.toString());
+            // Clear texture cache to force reload with new resolution
+            clearPlanetTextureCache();
+            console.log(`[CONTROLS] High-res textures ${enabled ? 'enabled' : 'disabled'}, cache cleared`);
+        });
+    }
+
+    // Premium visual feature toggles (simple, no cache clearing needed)
+    const premiumToggles = ['useNormalMaps', 'useSpecular', 'useAtmosphereGlow'];
+    premiumToggles.forEach(toggleName => {
+        const toggle = document.getElementById(toggleName);
+        if (toggle) {
+            // Load saved preference
+            const savedPref = localStorage.getItem(toggleName);
+            if (savedPref !== null) {
+                const enabled = savedPref === 'true';
+                toggle.checked = enabled;
+                setDisplayOption(toggleName, enabled);
+            }
+
+            toggle.addEventListener('change', e => {
+                const enabled = e.target.checked;
+                setDisplayOption(toggleName, enabled);
+                localStorage.setItem(toggleName, enabled.toString());
+            });
         }
     });
 
@@ -765,26 +808,31 @@ function initKeyboardShortcuts() {
                 // Rotate view counter-clockwise
                 camera.angleZ -= rotationStep;
                 if (camera.angleZ < 0) camera.angleZ += 2 * Math.PI;
+                clearPlanetTextureCache();
                 break;
             case 'e':
                 // Rotate view clockwise
                 camera.angleZ += rotationStep;
                 camera.angleZ = camera.angleZ % (2 * Math.PI);
+                clearPlanetTextureCache();
                 break;
             case 'r':
                 // Reset view to default (avoid conflict with browser refresh)
                 if (!e.ctrlKey && !e.metaKey) {
                     camera.angleX = 15 * Math.PI / 180;
                     camera.angleZ = 0;
+                    clearPlanetTextureCache();
                 }
                 break;
             case 'w':
                 // Tilt view more top-down
                 camera.angleX = Math.max(0, camera.angleX - tiltStep);
+                clearPlanetTextureCache();
                 break;
             case 's':
                 // Tilt view more edge-on
                 camera.angleX = Math.min(Math.PI / 2, camera.angleX + tiltStep);
+                clearPlanetTextureCache();
                 break;
         }
 
@@ -975,6 +1023,9 @@ function handleRotation(e) {
 
     rotateState.lastX = e.clientX;
     rotateState.lastY = e.clientY;
+
+    // Clear planet texture cache when camera rotates
+    clearPlanetTextureCache();
 }
 
 // ============================================================================
@@ -1034,6 +1085,9 @@ function handleTouchRotate(touches) {
 
     touchState.lastCenter.x = centerX;
     touchState.lastCenter.y = centerY;
+
+    // Clear planet texture cache when camera rotates
+    clearPlanetTextureCache();
 }
 
 /**

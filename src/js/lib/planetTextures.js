@@ -18,6 +18,7 @@
  */
 
 import { PLANET_TEXTURE_CONFIG } from '../config.js';
+import { displayOptions } from '../core/gameState.js';
 
 // ============================================================================
 // Module State
@@ -35,6 +36,9 @@ let shaderProgram = null;
 /** @type {Object<string, WebGLTexture>} Loaded textures keyed by body name */
 const textures = {};
 
+/** @type {Object<string, WebGLTexture>} Loaded normal map textures keyed by body name */
+const normalMapTextures = {};
+
 /** @type {Object<string, HTMLCanvasElement>} Cached rendered spheres per body */
 const renderCache = {};
 
@@ -49,6 +53,12 @@ const failed = new Set();
 
 /** Whether the WebGL system initialized successfully */
 let initialized = false;
+
+/** Anisotropic filtering extension (if available) */
+let anisotropyExt = null;
+
+/** Maximum anisotropy level supported by GPU */
+let maxAnisotropy = 1;
 
 /** Uniform locations */
 let uniforms = {};
@@ -85,10 +95,20 @@ in vec2 vUV;
 out vec4 fragColor;
 
 uniform sampler2D uTexture;
+uniform sampler2D uNormalMap;
 uniform float uRotation;      // Y-axis rotation in radians (planet spin)
 uniform float uAxialTilt;     // Axial tilt in radians
 uniform vec3 uLightDir;       // Direction TO the sun (normalized)
 uniform float uAmbient;       // Ambient light level
+uniform float uCameraAngleZ;  // Camera Z rotation (orbital view)
+uniform float uCameraAngleX;  // Camera X rotation (tilt view)
+uniform bool uUseNormalMap;   // Whether to use normal mapping
+uniform bool uUseSpecular;    // Whether to use specular highlights
+uniform float uShininess;     // Phong exponent for specular highlight
+uniform float uSpecularIntensity;  // Specular strength multiplier
+uniform bool uUseAtmosphere;  // Whether to use atmospheric rim glow
+uniform vec3 uAtmosphereColor;  // RGB color of atmosphere (0-1 range)
+uniform float uAtmosphereIntensity;  // Atmosphere glow strength
 
 // Analytic ray-sphere intersection.
 // Ray origin at (0,0,-2), direction toward pixel on near plane.
@@ -117,28 +137,49 @@ void main() {
     vec3 hitPos = ro + t * rd;
     vec3 normal = normalize(hitPos);
 
-    // Apply axial tilt (rotate normal around X axis)
-    float cosT = cos(uAxialTilt);
-    float sinT = sin(uAxialTilt);
-    vec3 tiltedNormal = vec3(
-        normal.x,
-        normal.y * cosT - normal.z * sinT,
-        normal.y * sinT + normal.z * cosT
+    // TRANSFORM CHAIN: camera_rotation → planet_rotation → axial_tilt
+    // Use INVERSE camera angles so rotating view right makes planet appear to rotate left
+
+    // 1. Apply inverse camera Z rotation (orbital view)
+    float cosCamZ = cos(-uCameraAngleZ);
+    float sinCamZ = sin(-uCameraAngleZ);
+    vec3 camZNormal = vec3(
+        normal.x * cosCamZ - normal.y * sinCamZ,
+        normal.x * sinCamZ + normal.y * cosCamZ,
+        normal.z
     );
 
-    // Apply planet rotation (around Y axis)
+    // 2. Apply inverse camera X rotation (tilt view)
+    float cosCamX = cos(-uCameraAngleX);
+    float sinCamX = sin(-uCameraAngleX);
+    vec3 camXNormal = vec3(
+        camZNormal.x,
+        camZNormal.y * cosCamX - camZNormal.z * sinCamX,
+        camZNormal.y * sinCamX + camZNormal.z * cosCamX
+    );
+
+    // 3. Apply planet rotation (around Y axis)
     float cosR = cos(uRotation);
     float sinR = sin(uRotation);
     vec3 rotatedNormal = vec3(
-        tiltedNormal.x * cosR + tiltedNormal.z * sinR,
-        tiltedNormal.y,
-        -tiltedNormal.x * sinR + tiltedNormal.z * cosR
+        camXNormal.x * cosR + camXNormal.z * sinR,
+        camXNormal.y,
+        -camXNormal.x * sinR + camXNormal.z * cosR
+    );
+
+    // 4. Apply axial tilt (rotate normal around X axis)
+    float cosT = cos(uAxialTilt);
+    float sinT = sin(uAxialTilt);
+    vec3 tiltedNormal = vec3(
+        rotatedNormal.x,
+        rotatedNormal.y * cosT - rotatedNormal.z * sinT,
+        rotatedNormal.y * sinT + rotatedNormal.z * cosT
     );
 
     // Convert to spherical coordinates for texture sampling
     // longitude = atan(x, z), latitude = asin(y)
-    float lon = atan(rotatedNormal.x, rotatedNormal.z);
-    float lat = asin(clamp(rotatedNormal.y, -1.0, 1.0));
+    float lon = atan(tiltedNormal.x, tiltedNormal.z);
+    float lat = asin(clamp(tiltedNormal.y, -1.0, 1.0));
 
     // Map to UV: lon [-PI, PI] -> [0, 1], lat [-PI/2, PI/2] -> [0, 1]
     vec2 texCoord = vec2(
@@ -148,9 +189,31 @@ void main() {
 
     vec4 texColor = texture(uTexture, texCoord);
 
-    // Lambertian lighting using the untilted normal for light calculation
+    // Surface normal for lighting (either from normal map or smooth sphere)
+    vec3 surfaceNormal = normal;
+
+    if (uUseNormalMap) {
+        // Sample normal map (RGB encoded, [0,1] -> [-1,1])
+        vec3 normalMapSample = texture(uNormalMap, texCoord).rgb * 2.0 - 1.0;
+
+        // Build tangent space basis
+        // For a sphere, tangent is perpendicular to normal in texture space
+        // Tangent points in longitude direction, bitangent in latitude direction
+        vec3 tangent = normalize(cross(vec3(0.0, 1.0, 0.0), normal));
+        if (length(tangent) < 0.01) {
+            // At poles, choose arbitrary tangent
+            tangent = vec3(1.0, 0.0, 0.0);
+        }
+        vec3 bitangent = normalize(cross(normal, tangent));
+
+        // Transform normal from tangent space to world space
+        mat3 TBN = mat3(tangent, bitangent, normal);
+        surfaceNormal = normalize(TBN * normalMapSample);
+    }
+
+    // Lambertian diffuse lighting using the surface normal
     // (light comes from the sun direction in world space)
-    float NdotL = dot(normal, uLightDir);
+    float NdotL = dot(surfaceNormal, uLightDir);
     float diffuse = max(NdotL, 0.0);
 
     // Smooth terminator (soften day/night boundary)
@@ -158,7 +221,41 @@ void main() {
 
     float lighting = uAmbient + (1.0 - uAmbient) * diffuse * terminator;
 
-    fragColor = vec4(texColor.rgb * lighting, 1.0);
+    // Blinn-Phong specular highlight
+    vec3 specular = vec3(0.0);
+    if (uUseSpecular && NdotL > 0.0) {
+        // View direction (camera is at -Z looking toward origin)
+        vec3 viewDir = normalize(-hitPos);
+
+        // Half vector (Blinn-Phong: halfway between light and view)
+        vec3 halfVec = normalize(uLightDir + viewDir);
+
+        // Specular term: (N·H)^shininess
+        float NdotH = max(dot(surfaceNormal, halfVec), 0.0);
+        float spec = pow(NdotH, uShininess);
+
+        // Apply intensity and ensure it only appears on lit side
+        specular = vec3(spec * uSpecularIntensity * terminator);
+    }
+
+    // Atmospheric rim glow (Fresnel effect)
+    vec3 atmosphere = vec3(0.0);
+    if (uUseAtmosphere) {
+        // View direction (camera is at -Z looking toward origin)
+        vec3 viewDir = normalize(-hitPos);
+
+        // Fresnel term: (1 - N·V)^power
+        // Higher power = tighter rim, lower = wider glow
+        float fresnel = 1.0 - max(dot(normal, viewDir), 0.0);
+        fresnel = pow(fresnel, 3.0);  // Cubic falloff for natural atmospheric scattering
+
+        // Atmosphere is more visible on the lit side
+        float atmosphereLighting = 0.3 + 0.7 * max(NdotL, 0.0);
+
+        atmosphere = uAtmosphereColor * fresnel * uAtmosphereIntensity * atmosphereLighting;
+    }
+
+    fragColor = vec4(texColor.rgb * lighting + specular + atmosphere, 1.0);
 
     // Soft edge anti-aliasing: fade out at sphere rim
     float edgeDist = length(ndc);
@@ -220,10 +317,20 @@ export function initPlanetTextures() {
         gl.useProgram(shaderProgram);
         uniforms = {
             uTexture: gl.getUniformLocation(shaderProgram, 'uTexture'),
+            uNormalMap: gl.getUniformLocation(shaderProgram, 'uNormalMap'),
             uRotation: gl.getUniformLocation(shaderProgram, 'uRotation'),
             uAxialTilt: gl.getUniformLocation(shaderProgram, 'uAxialTilt'),
             uLightDir: gl.getUniformLocation(shaderProgram, 'uLightDir'),
             uAmbient: gl.getUniformLocation(shaderProgram, 'uAmbient'),
+            uCameraAngleZ: gl.getUniformLocation(shaderProgram, 'uCameraAngleZ'),
+            uCameraAngleX: gl.getUniformLocation(shaderProgram, 'uCameraAngleX'),
+            uUseNormalMap: gl.getUniformLocation(shaderProgram, 'uUseNormalMap'),
+            uUseSpecular: gl.getUniformLocation(shaderProgram, 'uUseSpecular'),
+            uShininess: gl.getUniformLocation(shaderProgram, 'uShininess'),
+            uSpecularIntensity: gl.getUniformLocation(shaderProgram, 'uSpecularIntensity'),
+            uUseAtmosphere: gl.getUniformLocation(shaderProgram, 'uUseAtmosphere'),
+            uAtmosphereColor: gl.getUniformLocation(shaderProgram, 'uAtmosphereColor'),
+            uAtmosphereIntensity: gl.getUniformLocation(shaderProgram, 'uAtmosphereIntensity'),
         };
 
         // Create VAO for fullscreen quad (uses gl_VertexID, no actual buffer needed)
@@ -234,6 +341,15 @@ export function initPlanetTextures() {
         // Enable blending for soft edges
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        // Check for anisotropic filtering extension
+        anisotropyExt = gl.getExtension('EXT_texture_filter_anisotropic');
+        if (anisotropyExt) {
+            maxAnisotropy = gl.getParameter(anisotropyExt.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+            console.log(`[PLANET_TEXTURES] Anisotropic filtering enabled: ${maxAnisotropy}x`);
+        } else {
+            console.log('[PLANET_TEXTURES] Anisotropic filtering not available');
+        }
 
         initialized = true;
         console.log('[PLANET_TEXTURES] Initialized WebGL2 offscreen renderer');
@@ -278,13 +394,22 @@ function compileShader(type, source) {
  * Loads asynchronously — planets render with gradients until textures are ready.
  */
 function loadAllTextures() {
-    const { baseUrl, textures: textureMap } = PLANET_TEXTURE_CONFIG;
+    const { baseUrl, textures: textureMap, highResTextures, normalMaps } = PLANET_TEXTURE_CONFIG;
 
+    // Load base color textures
     for (const [bodyName, filename] of Object.entries(textureMap)) {
         if (loading.has(bodyName) || failed.has(bodyName) || textures[bodyName]) continue;
 
         loading.add(bodyName);
-        const url = baseUrl + filename;
+
+        // Check if high-res texture should be used
+        let textureFilename = filename;
+        if (displayOptions.useHighResTextures && highResTextures && highResTextures[bodyName]) {
+            textureFilename = highResTextures[bodyName];
+            console.log(`[PLANET_TEXTURES] Loading high-res texture for ${bodyName}: ${textureFilename}`);
+        }
+
+        const url = baseUrl + textureFilename;
 
         const img = new Image();
 
@@ -305,6 +430,30 @@ function loadAllTextures() {
 
         img.src = url;
     }
+
+    // Load normal map textures (if available)
+    if (normalMaps) {
+        for (const [bodyName, filename] of Object.entries(normalMaps)) {
+            if (normalMapTextures[bodyName]) continue;
+
+            const url = baseUrl + filename;
+            const img = new Image();
+
+            img.onload = () => {
+                const tex = createTextureFromImage(img);
+                if (tex) {
+                    normalMapTextures[bodyName] = tex;
+                    console.log(`[PLANET_TEXTURES] Loaded normal map: ${bodyName} (${img.width}x${img.height})`);
+                }
+            };
+
+            img.onerror = () => {
+                console.warn(`[PLANET_TEXTURES] Failed to load normal map: ${bodyName} from ${url}`);
+            };
+
+            img.src = url;
+        }
+    }
 }
 
 /**
@@ -324,13 +473,20 @@ function createTextureFromImage(img) {
     // Generate mipmaps for better filtering at small sizes
     gl.generateMipmap(gl.TEXTURE_2D);
 
-    // Filtering
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    // Filtering: Use LINEAR_MIPMAP_NEAREST for sharper close-up viewing
+    // This selects the nearest mip level without blending, preserving more detail
+    // when planets are viewed at tactical/orbital zoom
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     // Wrap modes (equirectangular wraps horizontally, clamps vertically)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    // Apply anisotropic filtering if available (improves sharpness at oblique angles)
+    if (anisotropyExt) {
+        gl.texParameterf(gl.TEXTURE_2D, anisotropyExt.TEXTURE_MAX_ANISOTROPY_EXT, maxAnisotropy);
+    }
 
     gl.bindTexture(gl.TEXTURE_2D, null);
 
@@ -362,19 +518,22 @@ export function hasTexture(bodyName) {
  * @param {number} screenRadius - Desired screen radius in pixels
  * @param {number} gameDays - Current game time in Julian days (for rotation)
  * @param {number} sunAngle - Angle from body to sun in radians (in the screen plane)
+ * @param {number} cameraAngleZ - Camera Z rotation in radians (orbital view)
+ * @param {number} cameraAngleX - Camera X rotation in radians (tilt view)
  * @returns {HTMLCanvasElement|null} Cached 2D canvas with the rendered sphere, or null
  */
-export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle) {
+export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, cameraAngleZ = 0, cameraAngleX = 0) {
     if (!initialized || !textures[bodyName]) return null;
 
-    // Determine render resolution: at least 2x screenRadius, capped at renderSize
+    // Determine render resolution: dynamic scaling based on screen radius
+    const idealSize = Math.ceil(screenRadius * PLANET_TEXTURE_CONFIG.renderSizeScaling);
     const size = Math.min(
-        PLANET_TEXTURE_CONFIG.renderSize,
-        Math.max(64, Math.ceil(screenRadius * 2.5))
+        PLANET_TEXTURE_CONFIG.maxRenderSize,
+        Math.max(PLANET_TEXTURE_CONFIG.minRenderSize, idealSize)
     );
 
-    // Round size to nearest power-of-2-friendly value for better cache stability
-    const quantizedSize = Math.ceil(size / 32) * 32;
+    // Round size to nearest quantization step for better cache stability
+    const quantizedSize = Math.ceil(size / PLANET_TEXTURE_CONFIG.renderSizeQuantize) * PLANET_TEXTURE_CONFIG.renderSizeQuantize;
 
     // Calculate planet rotation angle (mod 2PI for numerical stability)
     // gameDays is a Julian date (~2,460,000+), so raw rotation would overflow precision
@@ -391,8 +550,12 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle) 
     // Quantize sun angle for cache stability (~1 degree)
     const quantizedSunAngle = Math.round(sunAngle * 57.3) / 57.3;
 
-    // Build cache key
-    const key = `${bodyName}_${quantizedSize}_${quantizedRotation.toFixed(3)}_${quantizedSunAngle.toFixed(2)}`;
+    // Quantize camera angles for cache stability (~1 degree)
+    const quantizedCameraZ = Math.round(cameraAngleZ * 57.3) / 57.3;
+    const quantizedCameraX = Math.round(cameraAngleX * 57.3) / 57.3;
+
+    // Build cache key (includes camera angles)
+    const key = `${bodyName}_${quantizedSize}_${quantizedRotation.toFixed(3)}_${quantizedSunAngle.toFixed(2)}_${quantizedCameraZ.toFixed(2)}_${quantizedCameraX.toFixed(2)}`;
 
     if (cacheKeys[bodyName] === key && renderCache[bodyName]) {
         return renderCache[bodyName];
@@ -408,15 +571,51 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle) 
 
     gl.useProgram(shaderProgram);
 
-    // Bind texture
+    // Bind base texture
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, textures[bodyName]);
     gl.uniform1i(uniforms.uTexture, 0);
+
+    // Bind normal map (if available and enabled)
+    const hasNormalMap = normalMapTextures[bodyName] && displayOptions.useNormalMaps;
+    if (hasNormalMap) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, normalMapTextures[bodyName]);
+        gl.uniform1i(uniforms.uNormalMap, 1);
+    }
+    gl.uniform1i(uniforms.uUseNormalMap, hasNormalMap ? 1 : 0);
+
+    // Set specular parameters
+    const specConfig = PLANET_TEXTURE_CONFIG.specularSettings[bodyName]
+        || PLANET_TEXTURE_CONFIG.specularSettings.DEFAULT;
+    gl.uniform1i(uniforms.uUseSpecular, displayOptions.useSpecular ? 1 : 0);
+    gl.uniform1f(uniforms.uShininess, specConfig.shininess);
+    gl.uniform1f(uniforms.uSpecularIntensity, specConfig.intensity);
+
+    // Set atmosphere parameters
+    const atmoConfig = PLANET_TEXTURE_CONFIG.atmosphereSettings[bodyName];
+    const hasAtmosphere = atmoConfig && displayOptions.useAtmosphereGlow;
+    gl.uniform1i(uniforms.uUseAtmosphere, hasAtmosphere ? 1 : 0);
+    if (hasAtmosphere) {
+        // Convert RGB 0-255 to 0-1
+        gl.uniform3f(
+            uniforms.uAtmosphereColor,
+            atmoConfig.color[0] / 255,
+            atmoConfig.color[1] / 255,
+            atmoConfig.color[2] / 255
+        );
+        gl.uniform1f(uniforms.uAtmosphereIntensity, atmoConfig.intensity);
+    } else {
+        gl.uniform3f(uniforms.uAtmosphereColor, 0, 0, 0);
+        gl.uniform1f(uniforms.uAtmosphereIntensity, 0);
+    }
 
     // Set uniforms
     gl.uniform1f(uniforms.uRotation, quantizedRotation);
     gl.uniform1f(uniforms.uAxialTilt, tilt);
     gl.uniform1f(uniforms.uAmbient, 0.08);
+    gl.uniform1f(uniforms.uCameraAngleZ, quantizedCameraZ);
+    gl.uniform1f(uniforms.uCameraAngleX, quantizedCameraX);
 
     // Light direction: sun angle determines where light comes from.
     // sunAngle is the angle in screen-space from the body to the sun.
@@ -451,14 +650,42 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle) 
 }
 
 /**
- * Clear all cached renders (call on canvas resize or context loss).
+ * Clear all cached renders and reload textures.
+ * Called when resolution settings change (e.g., high-res toggle).
  */
 export function clearPlanetTextureCache() {
+    // Clear render cache
     for (const key of Object.keys(renderCache)) {
         delete renderCache[key];
     }
     for (const key of Object.keys(cacheKeys)) {
         delete cacheKeys[key];
+    }
+
+    // Clear texture cache and reload with new settings
+    for (const key of Object.keys(textures)) {
+        const tex = textures[key];
+        if (tex && gl) {
+            gl.deleteTexture(tex);
+        }
+        delete textures[key];
+    }
+
+    // Clear normal map cache
+    for (const key of Object.keys(normalMapTextures)) {
+        const tex = normalMapTextures[key];
+        if (tex && gl) {
+            gl.deleteTexture(tex);
+        }
+        delete normalMapTextures[key];
+    }
+
+    loading.clear();
+    failed.clear();
+
+    // Reload textures with current settings
+    if (initialized) {
+        loadAllTextures();
     }
 }
 
