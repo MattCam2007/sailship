@@ -89,6 +89,8 @@ uniform float uRotation;      // Y-axis rotation in radians (planet spin)
 uniform float uAxialTilt;     // Axial tilt in radians
 uniform vec3 uLightDir;       // Direction TO the sun (normalized)
 uniform float uAmbient;       // Ambient light level
+uniform float uCameraAngleZ;  // Camera Z rotation (orbital view)
+uniform float uCameraAngleX;  // Camera X rotation (tilt view)
 
 // Analytic ray-sphere intersection.
 // Ray origin at (0,0,-2), direction toward pixel on near plane.
@@ -117,28 +119,49 @@ void main() {
     vec3 hitPos = ro + t * rd;
     vec3 normal = normalize(hitPos);
 
-    // Apply axial tilt (rotate normal around X axis)
-    float cosT = cos(uAxialTilt);
-    float sinT = sin(uAxialTilt);
-    vec3 tiltedNormal = vec3(
-        normal.x,
-        normal.y * cosT - normal.z * sinT,
-        normal.y * sinT + normal.z * cosT
+    // TRANSFORM CHAIN: camera_rotation → planet_rotation → axial_tilt
+    // Use INVERSE camera angles so rotating view right makes planet appear to rotate left
+
+    // 1. Apply inverse camera Z rotation (orbital view)
+    float cosCamZ = cos(-uCameraAngleZ);
+    float sinCamZ = sin(-uCameraAngleZ);
+    vec3 camZNormal = vec3(
+        normal.x * cosCamZ - normal.y * sinCamZ,
+        normal.x * sinCamZ + normal.y * cosCamZ,
+        normal.z
     );
 
-    // Apply planet rotation (around Y axis)
+    // 2. Apply inverse camera X rotation (tilt view)
+    float cosCamX = cos(-uCameraAngleX);
+    float sinCamX = sin(-uCameraAngleX);
+    vec3 camXNormal = vec3(
+        camZNormal.x,
+        camZNormal.y * cosCamX - camZNormal.z * sinCamX,
+        camZNormal.y * sinCamX + camZNormal.z * cosCamX
+    );
+
+    // 3. Apply planet rotation (around Y axis)
     float cosR = cos(uRotation);
     float sinR = sin(uRotation);
     vec3 rotatedNormal = vec3(
-        tiltedNormal.x * cosR + tiltedNormal.z * sinR,
-        tiltedNormal.y,
-        -tiltedNormal.x * sinR + tiltedNormal.z * cosR
+        camXNormal.x * cosR + camXNormal.z * sinR,
+        camXNormal.y,
+        -camXNormal.x * sinR + camXNormal.z * cosR
+    );
+
+    // 4. Apply axial tilt (rotate normal around X axis)
+    float cosT = cos(uAxialTilt);
+    float sinT = sin(uAxialTilt);
+    vec3 tiltedNormal = vec3(
+        rotatedNormal.x,
+        rotatedNormal.y * cosT - rotatedNormal.z * sinT,
+        rotatedNormal.y * sinT + rotatedNormal.z * cosT
     );
 
     // Convert to spherical coordinates for texture sampling
     // longitude = atan(x, z), latitude = asin(y)
-    float lon = atan(rotatedNormal.x, rotatedNormal.z);
-    float lat = asin(clamp(rotatedNormal.y, -1.0, 1.0));
+    float lon = atan(tiltedNormal.x, tiltedNormal.z);
+    float lat = asin(clamp(tiltedNormal.y, -1.0, 1.0));
 
     // Map to UV: lon [-PI, PI] -> [0, 1], lat [-PI/2, PI/2] -> [0, 1]
     vec2 texCoord = vec2(
@@ -224,6 +247,8 @@ export function initPlanetTextures() {
             uAxialTilt: gl.getUniformLocation(shaderProgram, 'uAxialTilt'),
             uLightDir: gl.getUniformLocation(shaderProgram, 'uLightDir'),
             uAmbient: gl.getUniformLocation(shaderProgram, 'uAmbient'),
+            uCameraAngleZ: gl.getUniformLocation(shaderProgram, 'uCameraAngleZ'),
+            uCameraAngleX: gl.getUniformLocation(shaderProgram, 'uCameraAngleX'),
         };
 
         // Create VAO for fullscreen quad (uses gl_VertexID, no actual buffer needed)
@@ -362,9 +387,11 @@ export function hasTexture(bodyName) {
  * @param {number} screenRadius - Desired screen radius in pixels
  * @param {number} gameDays - Current game time in Julian days (for rotation)
  * @param {number} sunAngle - Angle from body to sun in radians (in the screen plane)
+ * @param {number} cameraAngleZ - Camera Z rotation in radians (orbital view)
+ * @param {number} cameraAngleX - Camera X rotation in radians (tilt view)
  * @returns {HTMLCanvasElement|null} Cached 2D canvas with the rendered sphere, or null
  */
-export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle) {
+export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, cameraAngleZ = 0, cameraAngleX = 0) {
     if (!initialized || !textures[bodyName]) return null;
 
     // Determine render resolution: at least 2x screenRadius, capped at renderSize
@@ -391,8 +418,12 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle) 
     // Quantize sun angle for cache stability (~1 degree)
     const quantizedSunAngle = Math.round(sunAngle * 57.3) / 57.3;
 
-    // Build cache key
-    const key = `${bodyName}_${quantizedSize}_${quantizedRotation.toFixed(3)}_${quantizedSunAngle.toFixed(2)}`;
+    // Quantize camera angles for cache stability (~1 degree)
+    const quantizedCameraZ = Math.round(cameraAngleZ * 57.3) / 57.3;
+    const quantizedCameraX = Math.round(cameraAngleX * 57.3) / 57.3;
+
+    // Build cache key (includes camera angles)
+    const key = `${bodyName}_${quantizedSize}_${quantizedRotation.toFixed(3)}_${quantizedSunAngle.toFixed(2)}_${quantizedCameraZ.toFixed(2)}_${quantizedCameraX.toFixed(2)}`;
 
     if (cacheKeys[bodyName] === key && renderCache[bodyName]) {
         return renderCache[bodyName];
@@ -417,6 +448,8 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle) 
     gl.uniform1f(uniforms.uRotation, quantizedRotation);
     gl.uniform1f(uniforms.uAxialTilt, tilt);
     gl.uniform1f(uniforms.uAmbient, 0.08);
+    gl.uniform1f(uniforms.uCameraAngleZ, quantizedCameraZ);
+    gl.uniform1f(uniforms.uCameraAngleX, quantizedCameraX);
 
     // Light direction: sun angle determines where light comes from.
     // sunAngle is the angle in screen-space from the body to the sun.
