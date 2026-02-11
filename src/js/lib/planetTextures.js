@@ -106,6 +106,9 @@ uniform bool uUseNormalMap;   // Whether to use normal mapping
 uniform bool uUseSpecular;    // Whether to use specular highlights
 uniform float uShininess;     // Phong exponent for specular highlight
 uniform float uSpecularIntensity;  // Specular strength multiplier
+uniform bool uUseAtmosphere;  // Whether to use atmospheric rim glow
+uniform vec3 uAtmosphereColor;  // RGB color of atmosphere (0-1 range)
+uniform float uAtmosphereIntensity;  // Atmosphere glow strength
 
 // Analytic ray-sphere intersection.
 // Ray origin at (0,0,-2), direction toward pixel on near plane.
@@ -235,7 +238,24 @@ void main() {
         specular = vec3(spec * uSpecularIntensity * terminator);
     }
 
-    fragColor = vec4(texColor.rgb * lighting + specular, 1.0);
+    // Atmospheric rim glow (Fresnel effect)
+    vec3 atmosphere = vec3(0.0);
+    if (uUseAtmosphere) {
+        // View direction (camera is at -Z looking toward origin)
+        vec3 viewDir = normalize(-hitPos);
+
+        // Fresnel term: (1 - N·V)^power
+        // Higher power = tighter rim, lower = wider glow
+        float fresnel = 1.0 - max(dot(normal, viewDir), 0.0);
+        fresnel = pow(fresnel, 3.0);  // Cubic falloff for natural atmospheric scattering
+
+        // Atmosphere is more visible on the lit side
+        float atmosphereLighting = 0.3 + 0.7 * max(NdotL, 0.0);
+
+        atmosphere = uAtmosphereColor * fresnel * uAtmosphereIntensity * atmosphereLighting;
+    }
+
+    fragColor = vec4(texColor.rgb * lighting + specular + atmosphere, 1.0);
 
     // Soft edge anti-aliasing: fade out at sphere rim
     float edgeDist = length(ndc);
@@ -308,6 +328,9 @@ export function initPlanetTextures() {
             uUseSpecular: gl.getUniformLocation(shaderProgram, 'uUseSpecular'),
             uShininess: gl.getUniformLocation(shaderProgram, 'uShininess'),
             uSpecularIntensity: gl.getUniformLocation(shaderProgram, 'uSpecularIntensity'),
+            uUseAtmosphere: gl.getUniformLocation(shaderProgram, 'uUseAtmosphere'),
+            uAtmosphereColor: gl.getUniformLocation(shaderProgram, 'uAtmosphereColor'),
+            uAtmosphereIntensity: gl.getUniformLocation(shaderProgram, 'uAtmosphereIntensity'),
         };
 
         // Create VAO for fullscreen quad (uses gl_VertexID, no actual buffer needed)
@@ -568,6 +591,24 @@ export function renderPlanetTexture(bodyName, screenRadius, gameDays, sunAngle, 
     gl.uniform1i(uniforms.uUseSpecular, displayOptions.useSpecular ? 1 : 0);
     gl.uniform1f(uniforms.uShininess, specConfig.shininess);
     gl.uniform1f(uniforms.uSpecularIntensity, specConfig.intensity);
+
+    // Set atmosphere parameters
+    const atmoConfig = PLANET_TEXTURE_CONFIG.atmosphereSettings[bodyName];
+    const hasAtmosphere = atmoConfig && displayOptions.useAtmosphereGlow;
+    gl.uniform1i(uniforms.uUseAtmosphere, hasAtmosphere ? 1 : 0);
+    if (hasAtmosphere) {
+        // Convert RGB 0-255 to 0-1
+        gl.uniform3f(
+            uniforms.uAtmosphereColor,
+            atmoConfig.color[0] / 255,
+            atmoConfig.color[1] / 255,
+            atmoConfig.color[2] / 255
+        );
+        gl.uniform1f(uniforms.uAtmosphereIntensity, atmoConfig.intensity);
+    } else {
+        gl.uniform3f(uniforms.uAtmosphereColor, 0, 0, 0);
+        gl.uniform1f(uniforms.uAtmosphereIntensity, 0);
+    }
 
     // Set uniforms
     gl.uniform1f(uniforms.uRotation, quantizedRotation);

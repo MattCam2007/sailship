@@ -663,6 +663,31 @@ export const PLANET_TEXTURE_CONFIG = {
     },
 
     /**
+     * Atmospheric rim glow settings per body.
+     * Creates a Fresnel-like atmospheric scattering effect at planet edges.
+     * color: RGB color of atmosphere (0-255 range)
+     * intensity: Glow strength multiplier (0-1)
+     */
+    atmosphereSettings: {
+        EARTH: {
+            color: [100, 150, 255],  // Blue (Rayleigh scattering)
+            intensity: 0.6,
+        },
+        MARS: {
+            color: [200, 120, 80],   // Orange-red (dust)
+            intensity: 0.3,
+        },
+        VENUS: {
+            color: [230, 200, 150],  // Yellow-white (thick CO2)
+            intensity: 0.5,
+        },
+        TITAN: {
+            color: [180, 140, 100],  // Orange-brown (nitrogen + organics)
+            intensity: 0.4,
+        },
+    },
+
+    /**
      * Per-body rotation rates in degrees per game-day.
      * Used to rotate the texture so the planet visually spins.
      * Values are 360 / sidereal rotation period in Earth days.
