@@ -427,6 +427,7 @@ export const DEFAULT_DISPLAY_OPTIONS = {
     showGrid: true,
     showPredictedTrajectory: true,  // Spiral path showing where ship will go with thrust
     showIntersectionMarkers: true,  // Ghost planets at trajectory intersection points
+    useHighResTextures: false,      // Use 4k/8k textures where available (requires more memory)
 };
 
 /**
@@ -602,6 +603,19 @@ export const PLANET_TEXTURE_CONFIG = {
         URANUS:   '2k_uranus.jpg',
         NEPTUNE:  '2k_neptune.jpg',
         LUNA:     '2k_moon.jpg',
+    },
+
+    /**
+     * High-resolution texture filenames (4k/8k).
+     * Used when useHighResTextures display option is enabled.
+     * Falls back to standard 2k textures if high-res not available.
+     */
+    highResTextures: {
+        VENUS:    '4k_venus_atmosphere.jpg',
+        JUPITER:  '8k_jupiter.jpg',
+        MARS:     '8k_mars.jpg',
+        MERCURY:  '8k_mercury.jpg',
+        SATURN:   '8k_saturn.jpg',
     },
 
     /**
