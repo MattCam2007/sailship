@@ -6,6 +6,7 @@ import { camera, setCameraFollow, stopFollowing } from '../core/camera.js';
 import { setZoom, setDisplayOption, setFocusTarget, getScale, setSpeed, setCustomSpeed, setAutoPilotEnabled, isAutoPilotEnabled, AUTOPILOT_PHASES, AUTOPILOT_MODES, setAutoPilotPhase, getAutoPilotPhase, setAutoPilotMode, getAutoPilotMode, setTrajectoryDuration, bodyFilters, saveBodyFilters } from '../core/gameState.js';
 import { exportGameState, importGameState, fetchSaveIndex, loadSaveFile } from '../core/saveState.js';
 import { resizeCanvas } from './renderer.js';
+import { clearPlanetTextureCache } from '../lib/planetTextures.js';
 import {
     setDestination,
     destination,
@@ -765,26 +766,31 @@ function initKeyboardShortcuts() {
                 // Rotate view counter-clockwise
                 camera.angleZ -= rotationStep;
                 if (camera.angleZ < 0) camera.angleZ += 2 * Math.PI;
+                clearPlanetTextureCache();
                 break;
             case 'e':
                 // Rotate view clockwise
                 camera.angleZ += rotationStep;
                 camera.angleZ = camera.angleZ % (2 * Math.PI);
+                clearPlanetTextureCache();
                 break;
             case 'r':
                 // Reset view to default (avoid conflict with browser refresh)
                 if (!e.ctrlKey && !e.metaKey) {
                     camera.angleX = 15 * Math.PI / 180;
                     camera.angleZ = 0;
+                    clearPlanetTextureCache();
                 }
                 break;
             case 'w':
                 // Tilt view more top-down
                 camera.angleX = Math.max(0, camera.angleX - tiltStep);
+                clearPlanetTextureCache();
                 break;
             case 's':
                 // Tilt view more edge-on
                 camera.angleX = Math.min(Math.PI / 2, camera.angleX + tiltStep);
+                clearPlanetTextureCache();
                 break;
         }
 
@@ -975,6 +981,9 @@ function handleRotation(e) {
 
     rotateState.lastX = e.clientX;
     rotateState.lastY = e.clientY;
+
+    // Clear planet texture cache when camera rotates
+    clearPlanetTextureCache();
 }
 
 // ============================================================================
@@ -1034,6 +1043,9 @@ function handleTouchRotate(touches) {
 
     touchState.lastCenter.x = centerX;
     touchState.lastCenter.y = centerY;
+
+    // Clear planet texture cache when camera rotates
+    clearPlanetTextureCache();
 }
 
 /**
