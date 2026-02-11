@@ -333,11 +333,38 @@ function calculateScreenRadius(body, scale) {
 }
 
 /**
+ * Check if a point in 3D space is within the viewport when projected.
+ * Used for frustum culling to skip rendering off-screen objects.
+ *
+ * @param {number} x - X coordinate in AU
+ * @param {number} y - Y coordinate in AU
+ * @param {number} z - Z coordinate in AU
+ * @param {number} centerX - Canvas center X
+ * @param {number} centerY - Canvas center Y
+ * @param {number} scale - Scale factor (AU to pixels)
+ * @param {number} [margin=100] - Margin in pixels beyond canvas edge (for partial visibility)
+ * @returns {boolean} - True if point would be visible on screen
+ */
+function isInViewport(x, y, z, centerX, centerY, scale, margin = 100) {
+    const projected = project3D(x, y, z, centerX, centerY, scale);
+    return projected.x >= -margin &&
+           projected.x <= canvas.width + margin &&
+           projected.y >= -margin &&
+           projected.y <= canvas.height + margin;
+}
+
+/**
  * Draw the grid overlay
  * Grid always radiates from Sun (origin) regardless of camera target
  */
 function drawGrid(centerX, centerY, scale) {
     if (!displayOptions.showGrid) return;
+
+    // VIEWPORT CULLING: Skip grid if Sun is off-screen
+    // Grid is always centered on Sun, so if Sun is not visible, entire grid is off-screen
+    if (!isInViewport(0, 0, 0, centerX, centerY, scale, canvas.width)) {
+        return;
+    }
 
     // Project Sun position (always at origin) to get grid center
     const sunProjected = project3D(0, 0, 0, centerX, centerY, scale);
@@ -431,16 +458,26 @@ function drawOrbit(body, centerX, centerY, scale) {
 
     const { a, e, i, Ω, ω } = body.elements;
 
+    // VIEWPORT CULLING: Skip orbit if body is far off-screen
+    // Check body's current position, use generous margin (2x semi-major axis) for orbit extent
+    const margin = a * scale * camera.zoom * 2;
+    if (!isInViewport(body.x, body.y, body.z, centerX, centerY, scale, margin)) {
+        return;
+    }
+
     // ZOOM-ADAPTIVE SEGMENTS: At high zoom, increase segment count for smooth curves
     // This prevents ghost planets from appearing off the orbital path at tactical zoom
     const effectiveZoom = scale * camera.zoom;
     const orbitRadiusPixels = a * effectiveZoom;
     const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
 
-    // Zoom-adaptive segment cap: use higher resolution at tactical zoom (>5x) for precision
-    // At tactical zoom, planets appear offset from paths with 512 segments due to discretization error
-    // 2048 segments reduces offset from ~10px to <2px, critical for encounter marker alignment
-    const maxSegments = camera.zoom > 5 ? 2048 : 512;
+    // Zoom-adaptive segment cap: smooth interpolation eliminates performance cliff
+    // Old behavior: hard jump from 512→2048 at zoom=5 caused sudden FPS drop
+    // New behavior: smooth ramp from 512→1024 over zoom range 5→50
+    // This maintains visual quality while capping maximum rendering cost at 50% of old peak
+    const maxSegments = camera.zoom <= 5
+        ? 512
+        : Math.min(1024, 512 + Math.floor((camera.zoom - 5) / 45 * 512));
     const segments = Math.max(64, Math.min(maxSegments, Math.ceil(orbitCircumPixels / 20)));
 
     ctx.strokeStyle = body.type === 'moon' ? getColor('canvas.orbitMoon') : getColor('canvas.orbitPrimary');
@@ -785,6 +822,17 @@ function drawBody(body, centerX, centerY, scale) {
     // Calculate screen radius (hybrid fixed/scaled rendering)
     const screenRadius = calculateScreenRadius(body, scale);
 
+    // VIEWPORT CULLING: Skip body if off-screen
+    // Use generous margin for rings (if present) and glow effects
+    const ringConfig = RING_CONFIG[body.name];
+    const effectiveRadius = ringConfig
+        ? screenRadius * ringConfig.outerRadius * 1.2  // Account for ring extent
+        : screenRadius * 3;  // Account for glow effects
+    if (projected.x < -effectiveRadius || projected.x > canvas.width + effectiveRadius ||
+        projected.y < -effectiveRadius || projected.y > canvas.height + effectiveRadius) {
+        return;
+    }
+
     // Enhanced sun rendering
     if (body.name === 'SOL') {
         // Radial gradient for sun body (cached)
@@ -1018,9 +1066,13 @@ function drawShipOrbit(ship, centerX, centerY, scale) {
     const orbitRadiusPixels = a * effectiveZoom;
     const orbitCircumPixels = 2 * Math.PI * orbitRadiusPixels;
 
-    // Zoom-adaptive segment cap: use higher resolution at tactical zoom (>5x) for precision
+    // Zoom-adaptive segment cap: smooth interpolation eliminates performance cliff
+    // Old behavior: hard jump from 512→2048 at zoom=5 caused sudden FPS drop
+    // New behavior: smooth ramp from 512→1024 over zoom range 5→50
     // Critical for ship orbit alignment during autopilot and manual thrust maneuvers
-    const maxSegments = camera.zoom > 5 ? 2048 : 512;
+    const maxSegments = camera.zoom <= 5
+        ? 512
+        : Math.min(1024, 512 + Math.floor((camera.zoom - 5) / 45 * 512));
     const segments = Math.max(64, Math.min(maxSegments, Math.ceil(orbitCircumPixels / 20)));
 
     // Detect hyperbolic orbit
@@ -1216,6 +1268,13 @@ function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
     for (let i = 0; i < trajectory.length - 1; i++) {
         // Stop subdivision if we've hit the cap (prevents 960ms frames at extreme zoom)
         if (subdivided.length >= MAX_RENDERED_SEGMENTS) {
+            if (rendererFrameCount % 60 === 0) {  // Log once per second at 60fps
+                console.warn(
+                    `[RENDER_DIAG] Trajectory subdivision cap hit: ${MAX_RENDERED_SEGMENTS} segments | ` +
+                    `Input points: ${trajectory.length} | Processed: ${i}/${trajectory.length - 1} | ` +
+                    `Zoom: ${camera.zoom.toFixed(1)}x`
+                );
+            }
             break;
         }
 
@@ -1258,6 +1317,15 @@ function subdivideTrajectoryForRendering(trajectory, centerX, centerY, scale) {
     // Add final point (if we haven't hit the cap)
     if (subdivided.length < MAX_RENDERED_SEGMENTS) {
         subdivided.push(trajectory[trajectory.length - 1]);
+    }
+
+    // DIAGNOSTIC: Log subdivision stats at extreme zoom (once per 5 seconds)
+    if (camera.zoom > 50 && rendererFrameCount % 300 === 0) {
+        const wasCapped = subdivided.length >= MAX_RENDERED_SEGMENTS;
+        console.log(
+            `[RENDER_DIAG] Trajectory subdivision: ${trajectory.length} input → ${subdivided.length} output | ` +
+            `Cap: ${wasCapped ? 'HIT' : 'OK'} | Zoom: ${camera.zoom.toFixed(1)}x`
+        );
     }
 
     return subdivided;

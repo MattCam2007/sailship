@@ -61,7 +61,9 @@ const CLEANUP_INTERVAL = 720;
 // The trajectory prediction itself is NOT throttled (renderer needs it).
 
 /** Minimum interval between intersection detection runs (ms) */
-const DETECTION_MIN_INTERVAL_MS = 200;
+// Phase 1 optimization: Increased from 200ms to 500ms to eliminate 14-34ms spikes
+// during time warp. Encounter markers still update smoothly (2x per second acceptable).
+const DETECTION_MIN_INTERVAL_MS = 500;
 
 /** Timestamp of last detection run */
 let lastDetectionTime = 0;
