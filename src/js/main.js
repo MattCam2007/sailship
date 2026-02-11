@@ -22,6 +22,7 @@ import { initUI, updateUI } from './ui/uiUpdater.js';
 import { initControls, updateAutoPilot, initMobileControls } from './ui/controls.js';
 import { initMobilePanels } from './ui/ui-components.js';
 import { updateShipPhysics } from './core/shipPhysics.js';
+import { updateTripometer } from './core/tripometer.js';
 import { getCachedTrajectory, getTrajectoryHash, clearTrajectoryCache, predictTrajectory } from './lib/trajectory-predictor.js';
 import { detectIntersections, detectClosestApproaches, detectNodeCrossings } from './lib/intersectionDetector.js';
 import {
@@ -119,7 +120,10 @@ function updatePositions() {
         // Physics-based update using orbital mechanics
         updateShipPhysics(player, timeScale);
     }
-    
+
+    // Accumulate tripometer distance from position delta
+    updateTripometer();
+
     // Regenerate flight path (for destination info display)
     generateFlightPath();
 
