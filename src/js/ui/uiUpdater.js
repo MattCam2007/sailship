@@ -35,6 +35,7 @@ function setTextIfChanged(el, text) {
 export function initUI() {
     elements = {
         timeDisplay: document.getElementById('timeDisplay'),
+        mobileTimeDisplay: document.getElementById('mobileTimeDisplay'),
         scaleDisplay: document.getElementById('scaleDisplay'),
         destName: document.getElementById('destName'),
         destDist: document.getElementById('destDist'),
@@ -206,7 +207,9 @@ function updateTimeDisplay() {
         `${String(g.hours).padStart(2, '0')}:${String(g.minutes).padStart(2, '0')}:${String(g.seconds).padStart(2, '0')} UTC`;
     const missionStr = `T+ ${formatMissionTime(elapsed)}`;
 
-    setTextIfChanged(elements.timeDisplay, `${dateStr} // ${missionStr}`);
+    const timeText = `${dateStr} // ${missionStr}`;
+    setTextIfChanged(elements.timeDisplay, timeText);
+    setTextIfChanged(elements.mobileTimeDisplay, timeText);
 }
 
 /**

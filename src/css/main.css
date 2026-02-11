@@ -2178,6 +2178,25 @@ body::after {
     opacity: 1;
 }
 
+/* Mobile time display - shown only on mobile, above quick actions */
+.mobile-time-display {
+    display: none;
+    position: fixed;
+    bottom: 56px;
+    left: 0;
+    right: 0;
+    padding: 4px 12px;
+    background: rgba(10, 10, 15, 0.85);
+    border-top: 1px solid var(--coral-dim);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--coral);
+    text-align: center;
+    z-index: 997;
+    text-shadow: 0 0 4px var(--coral);
+}
+
 /* Mobile quick actions bar */
 .mobile-quick-actions {
     display: none;
@@ -2266,6 +2285,10 @@ body::after {
         display: flex;
     }
 
+    .mobile-time-display {
+        display: block;
+    }
+
     .mobile-panel-overlay {
         display: block;
         pointer-events: none;
@@ -2301,7 +2324,7 @@ body::after {
         top: 0;
         left: 0;
         right: 0;
-        bottom: 56px; /* Leave room for quick actions */
+        bottom: 78px; /* Leave room for time display + quick actions */
     }
 
     /* Corner labels - smaller and repositioned */
@@ -2321,12 +2344,12 @@ body::after {
     }
 
     .corner-label.bottom-left {
-        bottom: 64px;
+        bottom: 86px;
         left: 8px;
     }
 
     .corner-label.bottom-right {
-        bottom: 64px;
+        bottom: 86px;
         right: 8px;
     }
 
