@@ -2173,28 +2173,33 @@ export function updateAutoPilot(deltaTime) {
     }
 
     // Auto-fire thruster if plan recommends it
-    if (plan.thrusterAction && plan.thrusterAction.when === 'NOW') {
-        const now = Date.now();
-        // Use fast cooldown for extreme flybys (e > 50) - ship traverses SOI in seconds
-        const ecc = plan.eccentricity || 0;
-        const cooldown = ecc > 50 ? AUTOPILOT_THRUSTER_COOLDOWN_FAST : AUTOPILOT_THRUSTER_COOLDOWN;
-        if (now - lastAutopilotThrusterTime > cooldown) {
-            const result = fireThruster(player, plan.thrusterAction.direction);
-            if (result.success) {
-                lastAutopilotThrusterTime = now;
-                const label = plan.thrusterAction.direction.toUpperCase();
-                console.log(`[AUTOPILOT] Auto-fired ${label} thruster: ΔV=${result.deltaVApplied.toFixed(2)} km/s, e=${result.newEccentricity.toFixed(4)}`);
+    if (plan.thrusterAction) {
+        const shouldFire = plan.thrusterAction.when === 'NOW' ||
+                          (plan.thrusterAction.when === 'AT_PERIAPSIS' && plan.nearPeriapsis);
 
-                // Update thruster UI
-                const lastBurnDisplay = document.getElementById('thrusterLastBurn');
-                if (lastBurnDisplay) {
-                    lastBurnDisplay.textContent =
-                        `AUTO ${label}: -${result.deltaVApplied.toFixed(2)} km/s | e=${result.newEccentricity.toFixed(4)}`;
-                    lastBurnDisplay.classList.add('success');
-                    lastBurnDisplay.classList.remove('empty');
-                    setTimeout(() => lastBurnDisplay.classList.remove('success'), 2000);
+        if (shouldFire) {
+            const now = Date.now();
+            // Use fast cooldown for extreme flybys (e > 50) - ship traverses SOI in seconds
+            const ecc = plan.eccentricity || 0;
+            const cooldown = ecc > 50 ? AUTOPILOT_THRUSTER_COOLDOWN_FAST : AUTOPILOT_THRUSTER_COOLDOWN;
+            if (now - lastAutopilotThrusterTime > cooldown) {
+                const result = fireThruster(player, plan.thrusterAction.direction);
+                if (result.success) {
+                    lastAutopilotThrusterTime = now;
+                    const label = plan.thrusterAction.direction.toUpperCase();
+                    console.log(`[AUTOPILOT] Auto-fired ${label} thruster: ΔV=${result.deltaVApplied.toFixed(2)} km/s, e=${result.newEccentricity.toFixed(4)}`);
+
+                    // Update thruster UI
+                    const lastBurnDisplay = document.getElementById('thrusterLastBurn');
+                    if (lastBurnDisplay) {
+                        lastBurnDisplay.textContent =
+                            `AUTO ${label}: -${result.deltaVApplied.toFixed(2)} km/s | e=${result.newEccentricity.toFixed(4)}`;
+                        lastBurnDisplay.classList.add('success');
+                        lastBurnDisplay.classList.remove('empty');
+                        setTimeout(() => lastBurnDisplay.classList.remove('success'), 2000);
+                    }
+                    updateSailDisplay();
                 }
-                updateSailDisplay();
             }
         }
     }
