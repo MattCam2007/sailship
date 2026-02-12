@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <h1>Simple Test</h1>
+    <div id="output">Loading...</div>
+    <script>
+        console.log('TEST: Script running');
+        document.getElementById('output').textContent = 'JavaScript is working!';
+        
+        // Test API
+        fetch('/health')
+            .then(r => r.json())
+            .then(data => {
+                console.log('TEST: Health check:', data);
+                document.getElementById('output').innerHTML = 
+                    'JavaScript is working!<br>API is working!<br>Chain: ' + data.chainUrl;
+            })
+            .catch(err => {
+                console.error('TEST: Fetch failed:', err);
+                document.getElementById('output').textContent = 'API failed: ' + err.message;
+            });
+    </script>
+</body>
+</html>

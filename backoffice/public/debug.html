@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug - Backoffice</title>
+</head>
+<body>
+    <h1>Backoffice Debug Page</h1>
+    <div id="results">Testing...</div>
+
+    <script type="module">
+        const results = document.getElementById('results');
+        let output = '<h2>Module Test Results:</h2>';
+
+        try {
+            // Test 1: Can we import?
+            output += '<p>✅ ES6 modules working</p>';
+
+            // Test 2: Can we fetch health?
+            const healthResponse = await fetch('/health');
+            const health = await healthResponse.json();
+            output += `<p>✅ Health check: ${JSON.stringify(health)}</p>`;
+
+            // Test 3: Can we import api.js?
+            const { getHealth } = await import('./js/api.js');
+            const health2 = await getHealth();
+            output += `<p>✅ API module: ${JSON.stringify(health2)}</p>`;
+
+            output += '<hr><h3 style="color: green;">ALL TESTS PASSED</h3>';
+            output += '<p>The backoffice code is working correctly.</p>';
+            output += '<p><strong>If index.html shows "Connecting...", you need to HARD REFRESH (Ctrl+Shift+R or Cmd+Shift+R)</strong></p>';
+
+        } catch (error) {
+            output += `<p style="color: red;">❌ Error: ${error.message}</p>`;
+            output += `<pre>${error.stack}</pre>`;
+        }
+
+        results.innerHTML = output;
+    </script>
+</body>
+</html>
