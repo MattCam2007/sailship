@@ -6,3 +6,19 @@
 
 # macOS
 .DS_Store
+
+# Node modules
+node_modules/
+
+# Blockchain / Phase 1
+backoffice/.env
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+coverage/
+coverage.json
+*.log
+
+# Hardhat
+.openzeppelin/
+deployments/

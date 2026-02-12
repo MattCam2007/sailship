@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sailship Backoffice - Phase 2 Admin</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- Top Navigation Bar -->
+    <nav class="top-nav">
+        <div class="nav-brand">
+            <span class="nav-icon">⛵</span>
+            <span class="nav-title">SAILSHIP BACKOFFICE</span>
+        </div>
+        <div class="nav-status">
+            <div class="status-item">
+                <span class="status-label">CHAIN:</span>
+                <span class="status-value" id="chainStatus">Connecting...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">ADMIN:</span>
+                <span class="status-value mono" id="adminAddress">0x...</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="deploy">
+                    <span class="tab-icon">🚀</span>
+                    <span class="tab-label">DEPLOY</span>
+                </button>
+                <button class="sidebar-tab" data-tab="ships">
+                    <span class="tab-icon">🛸</span>
+                    <span class="tab-label">SHIPS</span>
+                </button>
+                <button class="sidebar-tab" data-tab="resources">
+                    <span class="tab-icon">⚗️</span>
+                    <span class="tab-label">RESOURCES</span>
+                </button>
+                <button class="sidebar-tab" data-tab="bodies">
+                    <span class="tab-icon">🪐</span>
+                    <span class="tab-label">CELESTIAL</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="content" id="mainContent">
+            <!-- Content will be dynamically loaded here -->
+        </main>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Loading Spinner Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p class="loading-text">Processing transaction...</p>
+    </div>
+
+    <!-- ethers.js for blockchain interaction -->
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+    <script src="/app.js"></script>
+</body>
+</html>
