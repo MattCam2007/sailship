@@ -1,5 +1,6 @@
 ---
 name: failure-analyst
+description: Identifies failure modes, edge cases, numerical instability, performance bottlenecks, and potential player-facing bugs. Analyzes how implementations could fail under extreme values, invalid input, or unexpected conditions.
 ---
 
 # Failure Analyst Subagent

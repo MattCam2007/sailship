@@ -1,5 +1,6 @@
 ---
 name: backend-nodejs-expert
+description: Validates server-side JavaScript, Node.js best practices, RESTful API design, authentication, security (OWASP), database patterns, and production readiness. Catches async errors, performance issues, and vulnerabilities.
 ---
 
 # Backend Node.js Expert Subagent

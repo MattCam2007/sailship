@@ -1,5 +1,6 @@
 ---
 name: regression-checker
+description: Systematically verifies changes don't break existing features. Runs test suites, checks core functionality, and identifies regressions. Use after implementation or when validating high-risk changes.
 ---
 
 # Regression Checker Subagent

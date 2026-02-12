@@ -1,5 +1,6 @@
 ---
 name: physicist
+description: Validates physics, mathematics, and real-world accuracy in orbital mechanics, solar radiation pressure, unit conversions, and scientific calculations. Catches formula errors, unit inconsistencies, and numerical stability issues.
 ---
 
 # Physicist Subagent

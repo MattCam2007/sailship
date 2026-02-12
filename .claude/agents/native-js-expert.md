@@ -1,5 +1,6 @@
 ---
 name: native-js-expert
+description: Validates vanilla JavaScript best practices, modern ES6+ features, browser APIs, performance optimization, and memory management. Ensures async patterns, DOM manipulation, and event handling follow native JS standards.
 ---
 
 # Native JavaScript Expert Subagent

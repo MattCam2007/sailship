@@ -1,5 +1,6 @@
 ---
 name: rpg-crafting-expert
+description: Evaluates progression systems, resource economies, crafting mechanics, loot design, and player engagement. Ensures balanced progression curves, meaningful choices, and satisfying feedback loops without tedious grinding.
 ---
 
 # RPG Crafting Expert Subagent
