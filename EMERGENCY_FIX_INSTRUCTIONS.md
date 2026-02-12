@@ -1,0 +1,293 @@
+# Emergency Fix Instructions - Ship Minting
+
+## The Problem
+
+**Error:** `WARNING: Calling an account which is not a contract` with address `0xb7f8bc63bbcad18155201308c8f3540b07f84f5e`
+
+**Root Cause:** The ShipNFT contract address in `deployment.json` is **STALE**. When Hardhat node restarts, all contracts are wiped from the blockchain. The backend is trying to call a contract that no longer exists.
+
+## The Solution
+
+You MUST redeploy contracts after every Hardhat node restart.
+
+---
+
+## Step-by-Step Fix
+
+### 1. Restart Hardhat Node (Terminal 1)
+
+```bash
+cd /Users/mattcameron/Projects/sailship/contracts
+
+# Stop existing Hardhat node (Ctrl+C if running)
+
+# Start fresh Hardhat node
+npx hardhat node
+```
+
+**Important:** Leave this terminal running. This starts a fresh blockchain with NO contracts deployed.
+
+---
+
+### 2. Redeploy Contracts (Terminal 2)
+
+```bash
+cd /Users/mattcameron/Projects/sailship/contracts
+
+# Deploy all contracts to the running Hardhat node
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+**Expected Output:**
+```
+Deploying contracts...
+✓ GameRegistry deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+✓ Resource tokens deployed
+✓ ShipNFT deployed to: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+✓ CelestialBodyRegistry deployed to: 0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+...
+Deployment complete! All contracts deployed.
+```
+
+**Critical:** Note that the ShipNFT address has changed. The old address `0xB7f8BC63...` is now invalid.
+
+---
+
+### 3. Verify Deployment (Terminal 2)
+
+```bash
+# Check deployment.json was updated with new addresses
+cat deployment.json
+```
+
+**What to look for:**
+- `shipNFT` field should have a NEW address (different from `0xB7f8BC63...`)
+- `timestamp` should be recent (within last few minutes)
+
+**Example:**
+```json
+{
+  "chainId": "1337",
+  "timestamp": "2026-02-12T04:15:30.123Z",
+  "contracts": {
+    "shipNFT": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+    ...
+  }
+}
+```
+
+---
+
+### 4. Restart Backoffice Server (Terminal 3)
+
+```bash
+cd /Users/mattcameron/Projects/sailship/backoffice
+
+# Stop existing server (Ctrl+C if running)
+
+# Start server (it will read the updated deployment.json)
+npm start
+```
+
+**Expected Output:**
+```
+Server running on http://localhost:3000
+Using contract addresses from: /Users/mattcameron/Projects/sailship/contracts/deployment.json
+ShipNFT: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+```
+
+**Important:** The server reads `deployment.json` at startup. You MUST restart it after redeploying contracts.
+
+---
+
+### 5. Test Ship Minting
+
+1. Open http://localhost:3000 in your browser
+2. Go to **Ships** section
+3. Click **Mint Test Ship**
+4. Wait for the transaction to complete
+
+**Expected Result:**
+- Success toast: "Ship minted successfully! Token ID: 1"
+- Ship details panel appears below with:
+  - Ship stats (mass, sail area, etc.)
+  - Token Bound Account address
+  - Resource balances table
+
+---
+
+## Verification Checklist
+
+Before testing, verify:
+
+- [ ] Hardhat node is running (Terminal 1)
+- [ ] Contracts are deployed (Terminal 2 shows success)
+- [ ] `deployment.json` has updated addresses (check timestamp)
+- [ ] Backoffice server is restarted (Terminal 3)
+- [ ] Browser has refreshed the page (Ctrl+R or Cmd+R)
+
+---
+
+## What If It Still Fails?
+
+### Error: "ShipNFT contract not deployed yet"
+
+**Cause:** Backoffice server didn't read the new `deployment.json`
+
+**Fix:**
+1. Check that `deployment.json` exists in `/Users/mattcameron/Projects/sailship/contracts/`
+2. Restart the backoffice server (Ctrl+C, then `npm start`)
+3. Verify server logs show the correct ShipNFT address
+
+---
+
+### Error: "ShipMinted event not found in transaction receipt"
+
+**Cause:** The smart contract may not be emitting the `ShipMinted` event correctly
+
+**Fix:**
+1. Check the contract code at `contracts/contracts/ShipNFT.sol`
+2. Verify the `mintShip` function emits `ShipMinted(tokenId, to, className)`
+3. Redeploy contracts (Step 2)
+
+---
+
+### Error: "Unable to load Token Bound Account data"
+
+**Cause:** TBA address lookup failed or resource token addresses are invalid
+
+**Fix:**
+1. Verify all resource tokens are deployed (check `deployment.json`)
+2. Check that `resources` object has all tokens: CH4, O2, H2O, CO2, N2
+3. Redeploy contracts if any are missing (Step 2)
+
+---
+
+### Error: Browser console shows 404 or network errors
+
+**Cause:** Frontend trying to fetch from wrong server URL
+
+**Fix:**
+1. Check that backoffice server is running on http://localhost:3000
+2. Open browser console (F12) and check the Network tab
+3. Verify requests are going to `http://localhost:3000/api/...`
+
+---
+
+## Quick Recovery Commands
+
+If something goes wrong, run these commands in order:
+
+```bash
+# Terminal 1: Stop and restart Hardhat node
+cd /Users/mattcameron/Projects/sailship/contracts
+# Ctrl+C to stop
+npx hardhat node
+
+# Terminal 2: Redeploy contracts
+cd /Users/mattcameron/Projects/sailship/contracts
+npx hardhat run scripts/deploy.js --network localhost
+
+# Terminal 3: Restart backoffice server
+cd /Users/mattcameron/Projects/sailship/backoffice
+# Ctrl+C to stop
+npm start
+```
+
+Then refresh your browser (Ctrl+R or Cmd+R) and try again.
+
+---
+
+## Understanding the Fix
+
+### What Changed in the Code?
+
+**Backend (`server/routes/ships.js`):**
+- **REMOVED** `staticCall` approach (lines 29-38) - it was calling a non-existent contract
+- **REPLACED** with event parsing from transaction receipt
+- **ethers.js v6 syntax:** `shipNFT.interface.parseLog(log)` takes the entire log object
+- **Safety check:** Throws error if `ShipMinted` event is not found
+
+**Frontend (`public/js/ui/ships.js`):**
+- **ADDED** null check for `shipData` structure
+- **ENHANCED** error handling for missing TBA data
+- **IMPROVED** defensive coding to prevent crashes
+
+---
+
+## Why Does This Happen?
+
+Hardhat node is an **in-memory blockchain**. When you restart it:
+1. All contract state is WIPED (like restarting a computer with no hard drive)
+2. All deployed contracts are DELETED
+3. Contract addresses become invalid (they point to empty accounts)
+
+**Solution:** Always redeploy contracts after restarting Hardhat node.
+
+**Alternative:** Use a persistent blockchain like Ganache or a testnet, but Hardhat node is faster for development.
+
+---
+
+## Success Indicators
+
+You'll know it's working when:
+
+1. **Terminal 1** (Hardhat node):
+   - Shows RPC requests without errors
+   - No "revert" messages
+
+2. **Terminal 2** (Deployment):
+   - Shows "Deployment complete!"
+   - `deployment.json` has updated timestamp
+
+3. **Terminal 3** (Backoffice server):
+   - Shows "Server running on http://localhost:3000"
+   - Logs show correct contract addresses
+
+4. **Browser**:
+   - Ship mints successfully (green success toast)
+   - Ship details panel displays correctly
+   - No red error toasts
+
+---
+
+## Maintenance Tip
+
+**Create a startup script** to automate the deployment process:
+
+```bash
+# File: start-dev.sh
+#!/bin/bash
+
+echo "Starting Hardhat node..."
+cd contracts
+npx hardhat node &
+HARDHAT_PID=$!
+
+sleep 5  # Wait for node to start
+
+echo "Deploying contracts..."
+npx hardhat run scripts/deploy.js --network localhost
+
+echo "Starting backoffice server..."
+cd ../backoffice
+npm start
+
+# Cleanup on exit
+trap "kill $HARDHAT_PID" EXIT
+```
+
+Then run: `./start-dev.sh`
+
+---
+
+## Questions?
+
+If you encounter an error not covered here:
+
+1. Check the browser console (F12 → Console tab)
+2. Check the backoffice server logs (Terminal 3)
+3. Check the Hardhat node logs (Terminal 1)
+4. Look for the exact error message and compare to this document
+
+Remember: **Most issues are solved by redeploying contracts and restarting the server.**
