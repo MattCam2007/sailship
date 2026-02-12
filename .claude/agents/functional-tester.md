@@ -1,5 +1,6 @@
 ---
 name: functional-tester
+description: Verifies functionality achieves stated goals, analyzes code paths for completeness, identifies missing features, and assesses test coverage. Ensures all requirements are addressed and implementations are complete.
 ---
 
 # Functional Tester Subagent

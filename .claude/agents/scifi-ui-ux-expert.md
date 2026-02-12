@@ -1,5 +1,6 @@
 ---
 name: scifi-ui-ux-expert
+description: Ensures futuristic interface design, holographic aesthetics, and space game UI conventions. Validates HUD patterns, typography, color schemes, visual feedback, and genre-appropriate design decisions for sci-fi games.
 ---
 
 # Sci-Fi UI/UX Expert Subagent

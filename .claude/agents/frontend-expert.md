@@ -1,5 +1,6 @@
 ---
 name: frontend-expert
+description: Reviews HTML5, CSS3, Canvas rendering, responsive design, browser compatibility, and web standards. Validates accessibility, animation performance, layout techniques, and progressive enhancement patterns.
 ---
 
 # Frontend Expert Subagent

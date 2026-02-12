@@ -1,5 +1,6 @@
 ---
 name: solar-sailing-expert
+description: Catches errors from treating solar sails like chemical rockets. Validates continuous thrust assumptions, spiral trajectories, and mission design constraints unique to solar sail propulsion. Prevents Hohmann transfer and delta-v budget misconceptions.
 ---
 
 # Solar Sailing Expert Subagent

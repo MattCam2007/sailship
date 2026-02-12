@@ -1,5 +1,6 @@
 ---
 name: blockchain-solidity-expert
+description: Reviews smart contract security, gas optimization, and Web3 integration. Identifies reentrancy, overflow, access control issues, and other vulnerabilities. Validates ERC standards, upgradeability patterns, and blockchain best practices.
 ---
 
 # Blockchain Solidity Expert Subagent

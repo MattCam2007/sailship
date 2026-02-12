@@ -1,5 +1,6 @@
 ---
 name: solar-system-expert
+description: Validates planetary science accuracy for resource mining, atmospheric chemistry, geological features, and material properties. Ensures resource distributions reflect real NASA/ESA data, not Hollywood misconceptions or Earth-like assumptions.
 ---
 
 # Solar System Expert Subagent

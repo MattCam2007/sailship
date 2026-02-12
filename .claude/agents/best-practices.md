@@ -1,5 +1,6 @@
 ---
 name: best-practices
+description: Ensures code follows project standards, style conventions, and CLAUDE.md requirements. Validates import conventions, naming patterns, code style, and catches violations of project-specific best practices.
 ---
 
 # Best Practices Subagent

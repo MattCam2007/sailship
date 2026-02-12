@@ -1,5 +1,6 @@
 ---
 name: architect
+description: Evaluates code structure, architectural patterns, separation of concerns, and maintainability. Ensures dependency flow is clean, modules follow project conventions, and code is extensible without over-engineering.
 ---
 
 # Architect Subagent
