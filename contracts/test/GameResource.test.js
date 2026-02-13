@@ -357,4 +357,48 @@ describe("GameResource", function () {
       ).to.be.revertedWithCustomError(o2Token, "WrongResource");
     });
   });
+
+  describe("BurnFrom", function () {
+    let tank;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(player1.address, "HELIOS", 10000, 3000000, 9000, 5, 1000000);
+      await resource.setPlayerShip(player1.address, 1);
+
+      const Tank = await ethers.getContractFactory("StorageTankAccount");
+      tank = await Tank.deploy();
+      await tank.initialize(
+        await shipNFT.getAddress(), 1,
+        await resource.getAddress(), ethers.parseEther("1000"),
+        admin.address
+      );
+      await resource.registerTank(await tank.getAddress(), true);
+
+      // Deposit tokens into tank
+      await resource.mint(player1.address, ethers.parseEther("500"));
+      await resource.connect(player1).transfer(await tank.getAddress(), ethers.parseEther("500"));
+    });
+
+    it("should allow admin to burn from tank", async function () {
+      const tankAddr = await tank.getAddress();
+      await resource.burnFrom(tankAddr, ethers.parseEther("50"));
+      expect(await resource.balanceOf(tankAddr)).to.equal(ethers.parseEther("450"));
+    });
+
+    it("should reduce total supply on burn", async function () {
+      await resource.burnFrom(await tank.getAddress(), ethers.parseEther("50"));
+      expect(await resource.totalSupply()).to.equal(ethers.parseEther("450"));
+    });
+
+    it("should reject burnFrom from non-admin", async function () {
+      await expect(
+        resource.connect(player1).burnFrom(await tank.getAddress(), ethers.parseEther("50"))
+      ).to.be.revertedWithCustomError(resource, "OwnableUnauthorizedAccount");
+    });
+
+    it("should skip all _update checks on burn (to == address(0))", async function () {
+      await resource.burnFrom(await tank.getAddress(), ethers.parseEther("50"));
+      // No revert = success
+    });
+  });
 });

@@ -77,6 +77,13 @@ abstract contract GameResource is ERC20, Ownable {
         super._update(from, to, value);
     }
 
+    /// @notice Burn tokens from a tank (admin only — resource consumption)
+    /// @param tank The tank address to burn from
+    /// @param amount Amount to burn
+    function burnFrom(address tank, uint256 amount) external onlyOwner {
+        _burn(tank, amount);
+    }
+
     /// @notice Register or unregister a storage tank (admin only)
     function registerTank(address tank, bool status) external onlyOwner {
         registeredTanks[tank] = status;
