@@ -52,4 +52,25 @@ abstract contract GameResource is ERC20, Ownable {
     function setShipContract(address shipContract_) external onlyOwner {
         shipContract = IShipNFT(shipContract_);
     }
+
+    /// @notice Register or unregister a storage tank (admin only)
+    function registerTank(address tank, bool status) external onlyOwner {
+        registeredTanks[tank] = status;
+        emit TankRegistered(tank, status);
+    }
+
+    /// @notice Set which ship a player wallet is associated with (admin only)
+    function setPlayerShip(address player, uint256 shipId) external onlyOwner {
+        playerShip[player] = shipId;
+        emit PlayerShipSet(player, shipId);
+    }
+
+    /// @notice Resolve an address to its parent ship's token ID
+    /// @dev For tanks: reads tokenId() from the TBA. For wallets: reads playerShip mapping.
+    function resolveShip(address addr) public view returns (uint256) {
+        if (registeredTanks[addr]) {
+            return IStorageTankAccount(addr).tokenId();
+        }
+        return playerShip[addr];
+    }
 }

@@ -82,4 +82,96 @@ describe("GameResource", function () {
       ).to.be.revertedWithCustomError(resource, "OwnableUnauthorizedAccount");
     });
   });
+
+  describe("Tank Registration", function () {
+    let tank;
+
+    beforeEach(async function () {
+      // Deploy a real StorageTankAccount
+      await shipNFT.mintShip(player1.address, "HELIOS", 10000, 3000000, 9000, 5, 1000000);
+      const Tank = await ethers.getContractFactory("StorageTankAccount");
+      tank = await Tank.deploy();
+      await tank.initialize(
+        await shipNFT.getAddress(), 1,
+        await resource.getAddress(), ethers.parseEther("1000"),
+        admin.address
+      );
+    });
+
+    it("should allow admin to register a tank", async function () {
+      const tankAddr = await tank.getAddress();
+      await resource.registerTank(tankAddr, true);
+      expect(await resource.registeredTanks(tankAddr)).to.be.true;
+    });
+
+    it("should emit TankRegistered event", async function () {
+      const tankAddr = await tank.getAddress();
+      await expect(resource.registerTank(tankAddr, true))
+        .to.emit(resource, "TankRegistered")
+        .withArgs(tankAddr, true);
+    });
+
+    it("should allow admin to unregister a tank", async function () {
+      const tankAddr = await tank.getAddress();
+      await resource.registerTank(tankAddr, true);
+      await resource.registerTank(tankAddr, false);
+      expect(await resource.registeredTanks(tankAddr)).to.be.false;
+    });
+
+    it("should reject registerTank from non-admin", async function () {
+      const tankAddr = await tank.getAddress();
+      await expect(
+        resource.connect(player1).registerTank(tankAddr, true)
+      ).to.be.revertedWithCustomError(resource, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  describe("Player-Ship Association", function () {
+    beforeEach(async function () {
+      await shipNFT.mintShip(player1.address, "HELIOS", 10000, 3000000, 9000, 5, 1000000);
+    });
+
+    it("should allow admin to set player ship", async function () {
+      await resource.setPlayerShip(player1.address, 1);
+      expect(await resource.playerShip(player1.address)).to.equal(1);
+    });
+
+    it("should emit PlayerShipSet event", async function () {
+      await expect(resource.setPlayerShip(player1.address, 1))
+        .to.emit(resource, "PlayerShipSet")
+        .withArgs(player1.address, 1);
+    });
+
+    it("should reject setPlayerShip from non-admin", async function () {
+      await expect(
+        resource.connect(player1).setPlayerShip(player1.address, 1)
+      ).to.be.revertedWithCustomError(resource, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  describe("resolveShip", function () {
+    let tank;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(player1.address, "HELIOS", 10000, 3000000, 9000, 5, 1000000);
+
+      const Tank = await ethers.getContractFactory("StorageTankAccount");
+      tank = await Tank.deploy();
+      await tank.initialize(
+        await shipNFT.getAddress(), 1,
+        await resource.getAddress(), ethers.parseEther("1000"),
+        admin.address
+      );
+      await resource.registerTank(await tank.getAddress(), true);
+      await resource.setPlayerShip(player1.address, 1);
+    });
+
+    it("should resolve tank address to ship token ID", async function () {
+      expect(await resource.resolveShip(await tank.getAddress())).to.equal(1);
+    });
+
+    it("should resolve player wallet to ship token ID", async function () {
+      expect(await resource.resolveShip(player1.address)).to.equal(1);
+    });
+  });
 });
