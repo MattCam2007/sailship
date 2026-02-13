@@ -4,6 +4,8 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title ShipNFT
@@ -11,6 +13,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * @dev Each ship has on-chain stats and a deterministic TBA address
  */
 contract ShipNFT is ERC721Enumerable, Ownable {
+    using Strings for uint256;
     // Ship statistics structure
     struct ShipStats {
         uint256 mass;              // kg (e.g., 10000)
@@ -28,8 +31,23 @@ contract ShipNFT is ERC721Enumerable, Ownable {
     // Mapping from token ID to ship stats
     mapping(uint256 => ShipStats) private _shipStats;
 
+    // Zone tracking
+    mapping(uint256 => uint256) private _shipZones;
+
+    // Proximity tracking (deep space)
+    mapping(uint256 => mapping(uint256 => bool)) private _nearby;
+
+    // Per-token metadata
+    mapping(uint256 => string) private _shipImage;
+    mapping(uint256 => string) private _shipDescription;
+
+    // Custom errors
+    error ArrayLengthMismatch();
+
     // Events
     event ShipMinted(uint256 indexed tokenId, address indexed owner, string className);
+    event ZoneUpdated(uint256 indexed shipId, uint256 zone);
+    event ProximitySet(uint256 indexed shipA, uint256 indexed shipB, bool nearby);
 
     constructor() ERC721("Sailship Fleet", "SHIP") Ownable(msg.sender) {
         _nextTokenId = 1; // Start token IDs at 1
@@ -131,39 +149,93 @@ contract ShipNFT is ERC721Enumerable, Ownable {
      */
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
         _requireOwned(tokenId);
-
         ShipStats memory stats = _shipStats[tokenId];
 
-        // For Phase 1, return a simple JSON string with ship class and token ID
-        // In production, this would point to off-chain metadata
-        return string(
-            abi.encodePacked(
-                "data:application/json;utf8,{",
-                '"name":"', stats.className, ' #', _toString(tokenId), '"',
-                "}"
-            )
-        );
+        string memory json = string(abi.encodePacked(
+            '{"name":"', stats.className, ' #', tokenId.toString(), '"',
+            ',"image":"', _shipImage[tokenId], '"',
+            ',"description":"', _shipDescription[tokenId], '"}'
+        ));
+
+        return string(abi.encodePacked(
+            "data:application/json;base64,",
+            Base64.encode(bytes(json))
+        ));
     }
 
-    /**
-     * @dev Convert uint256 to string
-     */
-    function _toString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) {
-            return "0";
-        }
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-        return string(buffer);
+    /// @notice Get ship image URI
+    function shipImage(uint256 shipId) external view returns (string memory) {
+        return _shipImage[shipId];
     }
+
+    /// @notice Get ship description
+    function shipDescription(uint256 shipId) external view returns (string memory) {
+        return _shipDescription[shipId];
+    }
+
+    /// @notice Set ship image URI (admin only)
+    function setShipImage(uint256 shipId, string calldata imageUri) external onlyOwner {
+        _shipImage[shipId] = imageUri;
+    }
+
+    /// @notice Set ship description (admin only)
+    function setShipDescription(uint256 shipId, string calldata desc) external onlyOwner {
+        _shipDescription[shipId] = desc;
+    }
+
+    /// @notice Check if two ships can exchange resources
+    /// @param shipA First ship token ID
+    /// @param shipB Second ship token ID
+    /// @return True if ships can interact
+    function canInteract(uint256 shipA, uint256 shipB) external view returns (bool) {
+        if (shipA == shipB) return true;
+
+        uint256 zoneA = _shipZones[shipA];
+        uint256 zoneB = _shipZones[shipB];
+
+        // Same non-zero zone = same location
+        if (zoneA != 0 && zoneA == zoneB) return true;
+
+        // Both in deep space with proximity flag
+        if (zoneA == 0 && zoneB == 0 && _nearby[shipA][shipB]) return true;
+
+        return false;
+    }
+
+    /// @notice Set deep space proximity between two ships (admin only)
+    /// @param shipA First ship token ID
+    /// @param shipB Second ship token ID
+    /// @param nearby Whether ships are nearby
+    function setNearby(uint256 shipA, uint256 shipB, bool nearby) external onlyOwner {
+        _nearby[shipA][shipB] = nearby;
+        _nearby[shipB][shipA] = nearby;
+        emit ProximitySet(shipA, shipB, nearby);
+    }
+
+    /// @notice Get a ship's current zone
+    /// @param shipId The token ID
+    /// @return The zone ID (0 = deep space)
+    function shipZone(uint256 shipId) external view returns (uint256) {
+        return _shipZones[shipId];
+    }
+
+    /// @notice Set a ship's zone (admin only)
+    /// @param shipId The token ID
+    /// @param zone The zone ID (0 = deep space)
+    function setShipZone(uint256 shipId, uint256 zone) external onlyOwner {
+        _shipZones[shipId] = zone;
+        emit ZoneUpdated(shipId, zone);
+    }
+
+    /// @notice Batch update ship zones (admin only)
+    /// @param shipIds Array of token IDs
+    /// @param zones Array of zone IDs
+    function setShipZoneBatch(uint256[] calldata shipIds, uint256[] calldata zones) external onlyOwner {
+        if (shipIds.length != zones.length) revert ArrayLengthMismatch();
+        for (uint256 i = 0; i < shipIds.length; i++) {
+            _shipZones[shipIds[i]] = zones[i];
+            emit ZoneUpdated(shipIds[i], zones[i]);
+        }
+    }
+
 }

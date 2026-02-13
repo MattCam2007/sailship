@@ -171,7 +171,248 @@ describe("ShipNFT", function () {
     it("should return a tokenURI for minted ships", async function () {
       await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
       const uri = await shipNFT.tokenURI(1);
-      expect(uri).to.include("1"); // Token ID should be in URI
+      expect(uri).to.match(/^data:application\/json;base64,/);
+      const json = JSON.parse(
+        Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()
+      );
+      expect(json.name).to.include("HELIOS-CLASS");
+      expect(json.name).to.include("#1");
+    });
+  });
+
+  describe("Zone Tracking", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
+      tokenId = 1;
+    });
+
+    it("should default to zone 0 (deep space)", async function () {
+      expect(await shipNFT.shipZone(tokenId)).to.equal(0);
+    });
+
+    it("should allow admin to set ship zone", async function () {
+      await shipNFT.setShipZone(tokenId, 42);
+      expect(await shipNFT.shipZone(tokenId)).to.equal(42);
+    });
+
+    it("should emit ZoneUpdated event", async function () {
+      await expect(shipNFT.setShipZone(tokenId, 42))
+        .to.emit(shipNFT, "ZoneUpdated")
+        .withArgs(tokenId, 42);
+    });
+
+    it("should reject setShipZone from non-owner", async function () {
+      await expect(
+        shipNFT.connect(addr1).setShipZone(tokenId, 42)
+      ).to.be.revertedWithCustomError(shipNFT, "OwnableUnauthorizedAccount");
+    });
+
+    it("should allow batch zone updates", async function () {
+      await shipNFT.mintShip(addr2.address, "CLASS-B", 10000, 3000000, 9000, 5, 1000000);
+      await shipNFT.setShipZoneBatch([1, 2], [10, 20]);
+      expect(await shipNFT.shipZone(1)).to.equal(10);
+      expect(await shipNFT.shipZone(2)).to.equal(20);
+    });
+
+    it("should revert batch with mismatched array lengths", async function () {
+      await expect(
+        shipNFT.setShipZoneBatch([1], [10, 20])
+      ).to.be.revertedWithCustomError(shipNFT, "ArrayLengthMismatch");
+    });
+
+    it("should update zone (ship moves from station to deep space)", async function () {
+      await shipNFT.setShipZone(tokenId, 42);
+      expect(await shipNFT.shipZone(tokenId)).to.equal(42);
+      await shipNFT.setShipZone(tokenId, 0);
+      expect(await shipNFT.shipZone(tokenId)).to.equal(0);
+    });
+  });
+
+  describe("Proximity", function () {
+    let ship1, ship2;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "CLASS-A", 10000, 3000000, 9000, 5, 1000000);
+      await shipNFT.mintShip(addr2.address, "CLASS-B", 10000, 3000000, 9000, 5, 1000000);
+      ship1 = 1;
+      ship2 = 2;
+    });
+
+    it("should allow admin to set nearby", async function () {
+      await shipNFT.setNearby(ship1, ship2, true);
+      // No revert = success
+    });
+
+    it("should set both directions automatically", async function () {
+      await shipNFT.setNearby(ship1, ship2, true);
+      // Verified via canInteract below
+    });
+
+    it("should emit ProximitySet event", async function () {
+      await expect(shipNFT.setNearby(ship1, ship2, true))
+        .to.emit(shipNFT, "ProximitySet")
+        .withArgs(ship1, ship2, true);
+    });
+
+    it("should reject setNearby from non-owner", async function () {
+      await expect(
+        shipNFT.connect(addr1).setNearby(ship1, ship2, true)
+      ).to.be.revertedWithCustomError(shipNFT, "OwnableUnauthorizedAccount");
+    });
+
+    it("should toggle proximity on and off", async function () {
+      await shipNFT.setNearby(ship1, ship2, true);
+      await shipNFT.setNearby(ship1, ship2, false);
+    });
+  });
+
+  describe("canInteract", function () {
+    let ship1, ship2;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "CLASS-A", 10000, 3000000, 9000, 5, 1000000);
+      await shipNFT.mintShip(addr2.address, "CLASS-B", 10000, 3000000, 9000, 5, 1000000);
+      ship1 = 1;
+      ship2 = 2;
+    });
+
+    it("should return true for same ship", async function () {
+      expect(await shipNFT.canInteract(ship1, ship1)).to.be.true;
+    });
+
+    it("should return true for same non-zero zone", async function () {
+      await shipNFT.setShipZone(ship1, 42);
+      await shipNFT.setShipZone(ship2, 42);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.true;
+    });
+
+    it("should return false for different non-zero zones", async function () {
+      await shipNFT.setShipZone(ship1, 10);
+      await shipNFT.setShipZone(ship2, 20);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.false;
+    });
+
+    it("should return false for both in zone 0 without proximity", async function () {
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.false;
+    });
+
+    it("should return true for zone 0 ships with proximity flag", async function () {
+      await shipNFT.setNearby(ship1, ship2, true);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.true;
+    });
+
+    it("should return true bidirectionally for proximity", async function () {
+      await shipNFT.setNearby(ship1, ship2, true);
+      expect(await shipNFT.canInteract(ship2, ship1)).to.be.true;
+    });
+
+    it("should return false after proximity is removed", async function () {
+      await shipNFT.setNearby(ship1, ship2, true);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.true;
+      await shipNFT.setNearby(ship1, ship2, false);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.false;
+    });
+
+    it("should return true after ship docks (zone change)", async function () {
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.false;
+      await shipNFT.setShipZone(ship1, 5);
+      await shipNFT.setShipZone(ship2, 5);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.true;
+    });
+
+    it("should return false after ship undocks", async function () {
+      await shipNFT.setShipZone(ship1, 5);
+      await shipNFT.setShipZone(ship2, 5);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.true;
+      await shipNFT.setShipZone(ship1, 0);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.false;
+    });
+
+    it("should handle one ship at station, one in deep space", async function () {
+      await shipNFT.setShipZone(ship1, 5);
+      expect(await shipNFT.canInteract(ship1, ship2)).to.be.false;
+    });
+  });
+
+  describe("Ship Metadata", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
+      tokenId = 1;
+    });
+
+    it("should default image to empty string", async function () {
+      expect(await shipNFT.shipImage(tokenId)).to.equal("");
+    });
+
+    it("should default description to empty string", async function () {
+      expect(await shipNFT.shipDescription(tokenId)).to.equal("");
+    });
+
+    it("should allow admin to set ship image", async function () {
+      await shipNFT.setShipImage(tokenId, "ipfs://QmTest123");
+      expect(await shipNFT.shipImage(tokenId)).to.equal("ipfs://QmTest123");
+    });
+
+    it("should allow admin to set ship description", async function () {
+      await shipNFT.setShipDescription(tokenId, "A fast solar sailer");
+      expect(await shipNFT.shipDescription(tokenId)).to.equal("A fast solar sailer");
+    });
+
+    it("should reject setShipImage from non-owner", async function () {
+      await expect(
+        shipNFT.connect(addr1).setShipImage(tokenId, "ipfs://hack")
+      ).to.be.revertedWithCustomError(shipNFT, "OwnableUnauthorizedAccount");
+    });
+
+    it("should reject setShipDescription from non-owner", async function () {
+      await expect(
+        shipNFT.connect(addr1).setShipDescription(tokenId, "hacked")
+      ).to.be.revertedWithCustomError(shipNFT, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  describe("tokenURI (enhanced)", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
+      tokenId = 1;
+      await shipNFT.setShipImage(tokenId, "ipfs://QmShipImage");
+      await shipNFT.setShipDescription(tokenId, "A legendary solar sailer");
+    });
+
+    it("should return base64-encoded JSON", async function () {
+      const uri = await shipNFT.tokenURI(tokenId);
+      expect(uri).to.match(/^data:application\/json;base64,/);
+    });
+
+    it("should contain name, image, and description", async function () {
+      const uri = await shipNFT.tokenURI(tokenId);
+      const json = JSON.parse(
+        Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()
+      );
+      expect(json.name).to.include("HELIOS-CLASS");
+      expect(json.name).to.include("#1");
+      expect(json.image).to.equal("ipfs://QmShipImage");
+      expect(json.description).to.equal("A legendary solar sailer");
+    });
+
+    it("should update when image changes", async function () {
+      await shipNFT.setShipImage(tokenId, "ipfs://QmNewImage");
+      const uri = await shipNFT.tokenURI(tokenId);
+      const json = JSON.parse(
+        Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()
+      );
+      expect(json.image).to.equal("ipfs://QmNewImage");
+    });
+
+    it("should revert for nonexistent token", async function () {
+      await expect(shipNFT.tokenURI(999))
+        .to.be.revertedWithCustomError(shipNFT, "ERC721NonexistentToken");
     });
   });
 });

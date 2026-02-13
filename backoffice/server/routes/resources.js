@@ -86,4 +86,94 @@ router.get('/balances/:address', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/resources/:symbol/register-tank
+ * Register a storage tank for a resource token (admin only)
+ */
+router.post('/:symbol/register-tank', async (req, res, next) => {
+  try {
+    const { symbol } = req.params;
+    const { tankAddress, status } = req.body;
+
+    if (!isValidAddress(tankAddress)) {
+      return res.status(400).json({ error: 'Invalid tank address' });
+    }
+
+    const token = getResourceToken(symbol);
+    const tx = await token.registerTank(tankAddress, status !== false);
+    const receipt = await tx.wait();
+
+    res.json({
+      symbol,
+      tankAddress,
+      registered: status !== false,
+      txHash: receipt.hash
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/resources/:symbol/player-ship
+ * Associate a player wallet with a ship for a resource token (admin only)
+ */
+router.post('/:symbol/player-ship', async (req, res, next) => {
+  try {
+    const { symbol } = req.params;
+    const { player, shipId } = req.body;
+
+    if (!isValidAddress(player)) {
+      return res.status(400).json({ error: 'Invalid player address' });
+    }
+    if (shipId === undefined || shipId < 0) {
+      return res.status(400).json({ error: 'shipId must be a non-negative integer' });
+    }
+
+    const token = getResourceToken(symbol);
+    const tx = await token.setPlayerShip(player, shipId);
+    const receipt = await tx.wait();
+
+    res.json({
+      symbol,
+      player,
+      shipId,
+      txHash: receipt.hash
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/resources/:symbol/burn
+ * Burn resources from a tank (admin only — resource consumption)
+ */
+router.post('/:symbol/burn', async (req, res, next) => {
+  try {
+    const { symbol } = req.params;
+    const { tankAddress, amount } = req.body;
+
+    if (!isValidAddress(tankAddress)) {
+      return res.status(400).json({ error: 'Invalid tank address' });
+    }
+    if (!amount || typeof amount !== 'string') {
+      return res.status(400).json({ error: 'amount must be a string (in wei)' });
+    }
+
+    const token = getResourceToken(symbol);
+    const tx = await token.burnFrom(tankAddress, amount);
+    const receipt = await tx.wait();
+
+    res.json({
+      symbol,
+      tankAddress,
+      amount,
+      txHash: receipt.hash
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

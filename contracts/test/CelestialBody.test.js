@@ -4,6 +4,7 @@ const { ethers } = require("hardhat");
 describe("CelestialBody", function () {
   let celestialBody;
   let resourceToken;
+  let shipNFT;
   let owner;
   let addr1;
   let shipTBA;
@@ -12,9 +13,13 @@ describe("CelestialBody", function () {
     [owner, addr1] = await ethers.getSigners();
     shipTBA = addr1.address; // Use addr1 as mock TBA for testing
 
-    // Deploy a resource token
-    const ResourceToken = await ethers.getContractFactory("ResourceToken");
-    resourceToken = await ResourceToken.deploy("Methane", "CH4");
+    // Deploy ShipNFT (needed by GameResource tokens)
+    const ShipNFT = await ethers.getContractFactory("ShipNFT");
+    shipNFT = await ShipNFT.deploy();
+
+    // Deploy a resource token (CH4 as concrete GameResource)
+    const CH4 = await ethers.getContractFactory("CH4");
+    resourceToken = await CH4.deploy(owner.address, await shipNFT.getAddress());
 
     // Deploy celestial body
     const CelestialBody = await ethers.getContractFactory("CelestialBody");
@@ -147,8 +152,8 @@ describe("CelestialBody", function () {
     });
 
     it("should reject harvesting unregistered resource", async function () {
-      const ResourceToken2 = await ethers.getContractFactory("ResourceToken");
-      const otherToken = await ResourceToken2.deploy("Oxygen", "O2");
+      const O2Factory = await ethers.getContractFactory("O2");
+      const otherToken = await O2Factory.deploy(owner.address, await shipNFT.getAddress());
 
       await expect(
         celestialBody.harvest(shipTBA, await otherToken.getAddress(), ethers.parseEther("500"))
@@ -168,8 +173,8 @@ describe("CelestialBody", function () {
 
   describe("Multiple Resources", function () {
     it("should support multiple resources with different rates", async function () {
-      const ResourceToken2 = await ethers.getContractFactory("ResourceToken");
-      const h2oToken = await ResourceToken2.deploy("Water", "H2O");
+      const H2OFactory = await ethers.getContractFactory("H2O");
+      const h2oToken = await H2OFactory.deploy(owner.address, await shipNFT.getAddress());
 
       await celestialBody.addResource(await resourceToken.getAddress(), ethers.parseEther("100"));
       await celestialBody.addResource(await h2oToken.getAddress(), ethers.parseEther("50"));

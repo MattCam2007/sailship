@@ -7,11 +7,17 @@ const path = require("path");
  */
 
 const CONTRACTS = [
-  "GameRegistry",
-  "ResourceToken",
-  "ShipNFT",
-  "CelestialBody",
-  "CelestialBodyRegistry"
+  { name: "GameRegistry", dir: "GameRegistry.sol" },
+  { name: "ShipNFT", dir: "ShipNFT.sol" },
+  { name: "CelestialBody", dir: "CelestialBody.sol" },
+  { name: "CelestialBodyRegistry", dir: "CelestialBodyRegistry.sol" },
+  { name: "GameResource", dir: "GameResource.sol" },
+  { name: "StorageTankAccount", dir: "StorageTankAccount.sol" },
+  { name: "CH4", dir: "tokens/CH4.sol" },
+  { name: "O2", dir: "tokens/O2.sol" },
+  { name: "H2O", dir: "tokens/H2O.sol" },
+  { name: "CO2", dir: "tokens/CO2.sol" },
+  { name: "N2", dir: "tokens/N2.sol" }
 ];
 
 const ARTIFACTS_DIR = path.join(__dirname, "../artifacts/contracts");
@@ -30,10 +36,11 @@ function main() {
 
   let exportedCount = 0;
 
-  for (const contractName of CONTRACTS) {
+  for (const contract of CONTRACTS) {
+    const contractName = contract.name;
     try {
       // Find the artifact JSON file
-      const artifactPath = path.join(ARTIFACTS_DIR, `${contractName}.sol`, `${contractName}.json`);
+      const artifactPath = path.join(ARTIFACTS_DIR, contract.dir, `${contractName}.json`);
 
       if (!fs.existsSync(artifactPath)) {
         console.warn(`⚠️  Artifact not found: ${contractName}`);

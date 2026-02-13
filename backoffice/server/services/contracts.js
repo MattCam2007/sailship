@@ -58,14 +58,22 @@ export function getCelestialBodyRegistry() {
 }
 
 /**
- * Get ResourceToken contract instance by symbol
+ * Get GameResource token contract instance by symbol
+ * Each token (CH4, O2, H2O, CO2, N2) has its own ABI
  */
 export function getResourceToken(symbol) {
   const address = config.contracts.resources[symbol];
   if (!address) {
     throw new Error(`No address configured for resource token ${symbol}`);
   }
-  return getContract('ResourceToken', address);
+  return getContract(symbol, address);
+}
+
+/**
+ * Get StorageTankAccount contract instance by address
+ */
+export function getStorageTank(address) {
+  return getContract('StorageTankAccount', address);
 }
 
 /**
