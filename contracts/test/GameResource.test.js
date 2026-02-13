@@ -174,4 +174,79 @@ describe("GameResource", function () {
       expect(await resource.resolveShip(player1.address)).to.equal(1);
     });
   });
+
+  describe("Transfer — Proximity Enforcement", function () {
+    beforeEach(async function () {
+      // Mint two ships
+      await shipNFT.mintShip(player1.address, "CLASS-A", 10000, 3000000, 9000, 5, 1000000);
+      await shipNFT.mintShip(player2.address, "CLASS-B", 10000, 3000000, 9000, 5, 1000000);
+      // Associate wallets with ships
+      await resource.setPlayerShip(player1.address, 1);
+      await resource.setPlayerShip(player2.address, 2);
+      // Give player1 some tokens
+      await resource.mint(player1.address, ethers.parseEther("1000"));
+    });
+
+    it("should allow transfer between addresses on the same ship", async function () {
+      await resource.connect(player1).transfer(player1.address, ethers.parseEther("100"));
+    });
+
+    it("should allow transfer between ships at the same station", async function () {
+      await shipNFT.setShipZone(1, 42);
+      await shipNFT.setShipZone(2, 42);
+      await resource.connect(player1).transfer(player2.address, ethers.parseEther("100"));
+      expect(await resource.balanceOf(player2.address)).to.equal(ethers.parseEther("100"));
+    });
+
+    it("should revert transfer between ships at different stations", async function () {
+      await shipNFT.setShipZone(1, 10);
+      await shipNFT.setShipZone(2, 20);
+      await expect(
+        resource.connect(player1).transfer(player2.address, ethers.parseEther("100"))
+      ).to.be.revertedWithCustomError(resource, "NoPhysicalPathway");
+    });
+
+    it("should revert transfer between ships both in zone 0 without proximity", async function () {
+      await expect(
+        resource.connect(player1).transfer(player2.address, ethers.parseEther("100"))
+      ).to.be.revertedWithCustomError(resource, "NoPhysicalPathway");
+    });
+
+    it("should allow transfer between ships in zone 0 with proximity", async function () {
+      await shipNFT.setNearby(1, 2, true);
+      await resource.connect(player1).transfer(player2.address, ethers.parseEther("100"));
+      expect(await resource.balanceOf(player2.address)).to.equal(ethers.parseEther("100"));
+    });
+
+    it("should succeed then fail when proximity is removed", async function () {
+      await shipNFT.setNearby(1, 2, true);
+      await resource.connect(player1).transfer(player2.address, ethers.parseEther("100"));
+      await shipNFT.setNearby(1, 2, false);
+      await expect(
+        resource.connect(player1).transfer(player2.address, ethers.parseEther("100"))
+      ).to.be.revertedWithCustomError(resource, "NoPhysicalPathway");
+    });
+
+    it("should succeed after docking, fail after undocking", async function () {
+      await shipNFT.setShipZone(1, 5);
+      await shipNFT.setShipZone(2, 5);
+      await resource.connect(player1).transfer(player2.address, ethers.parseEther("100"));
+      await shipNFT.setShipZone(1, 0); // undock
+      await expect(
+        resource.connect(player1).transfer(player2.address, ethers.parseEther("100"))
+      ).to.be.revertedWithCustomError(resource, "NoPhysicalPathway");
+    });
+
+    it("should enforce proximity on transferFrom too", async function () {
+      await resource.connect(player1).approve(player2.address, ethers.parseEther("100"));
+      await expect(
+        resource.connect(player2).transferFrom(player1.address, player2.address, ethers.parseEther("100"))
+      ).to.be.revertedWithCustomError(resource, "NoPhysicalPathway");
+    });
+
+    it("should skip proximity check on mint (from == address(0))", async function () {
+      await resource.mint(player2.address, ethers.parseEther("500"));
+      expect(await resource.balanceOf(player2.address)).to.equal(ethers.parseEther("500"));
+    });
+  });
 });

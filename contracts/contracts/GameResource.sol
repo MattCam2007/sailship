@@ -53,6 +53,20 @@ abstract contract GameResource is ERC20, Ownable {
         shipContract = IShipNFT(shipContract_);
     }
 
+    /// @dev Override _update to enforce physics on all token movements
+    function _update(address from, address to, uint256 value) internal virtual override {
+        // Proximity check: only on transfers (not mint or burn)
+        if (from != address(0) && to != address(0)) {
+            uint256 fromShip = resolveShip(from);
+            uint256 toShip = resolveShip(to);
+            if (!shipContract.canInteract(fromShip, toShip)) {
+                revert NoPhysicalPathway();
+            }
+        }
+
+        super._update(from, to, value);
+    }
+
     /// @notice Register or unregister a storage tank (admin only)
     function registerTank(address tank, bool status) external onlyOwner {
         registeredTanks[tank] = status;
