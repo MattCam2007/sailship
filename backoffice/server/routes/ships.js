@@ -219,4 +219,92 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/ships/:tokenId/zone
+ * Set a ship's zone (admin only)
+ */
+router.post('/:tokenId/zone', async (req, res, next) => {
+  try {
+    const validation = validateTokenId(req.params.tokenId);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    const { zone } = req.body;
+    if (zone === undefined || zone < 0) {
+      return res.status(400).json({ error: 'zone must be a non-negative integer' });
+    }
+
+    const shipNFT = getShipNFT();
+    const tx = await shipNFT.setShipZone(validation.value, zone);
+    const receipt = await tx.wait();
+
+    res.json({
+      tokenId: validation.value,
+      zone,
+      txHash: receipt.hash
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/ships/zones/batch
+ * Batch update ship zones (admin only)
+ */
+router.post('/zones/batch', async (req, res, next) => {
+  try {
+    const { shipIds, zones } = req.body;
+
+    if (!Array.isArray(shipIds) || !Array.isArray(zones)) {
+      return res.status(400).json({ error: 'shipIds and zones must be arrays' });
+    }
+    if (shipIds.length !== zones.length) {
+      return res.status(400).json({ error: 'shipIds and zones must have the same length' });
+    }
+
+    const shipNFT = getShipNFT();
+    const tx = await shipNFT.setShipZoneBatch(shipIds, zones);
+    const receipt = await tx.wait();
+
+    res.json({
+      updated: shipIds.length,
+      txHash: receipt.hash
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/ships/nearby
+ * Set proximity between two ships (admin only)
+ */
+router.post('/nearby', async (req, res, next) => {
+  try {
+    const { shipA, shipB, nearby } = req.body;
+
+    if (!shipA || !shipB) {
+      return res.status(400).json({ error: 'shipA and shipB are required' });
+    }
+    if (typeof nearby !== 'boolean') {
+      return res.status(400).json({ error: 'nearby must be a boolean' });
+    }
+
+    const shipNFT = getShipNFT();
+    const tx = await shipNFT.setNearby(shipA, shipB, nearby);
+    const receipt = await tx.wait();
+
+    res.json({
+      shipA,
+      shipB,
+      nearby,
+      txHash: receipt.hash
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
