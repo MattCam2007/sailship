@@ -14,9 +14,9 @@ describe("StorageTankAccount", function () {
     shipNFT = await ShipNFT.deploy();
     await shipNFT.mintShip(player1.address, "HELIOS", 10000, 3000000, 9000, 5, 1000000);
 
-    // Deploy a mock ERC20 as the allowed resource
-    const MockToken = await ethers.getContractFactory("ResourceToken");
-    mockToken = await MockToken.deploy("Oxygen", "O2");
+    // Deploy a GameResource token as the allowed resource
+    const MockToken = await ethers.getContractFactory("O2");
+    mockToken = await MockToken.deploy(admin.address, await shipNFT.getAddress());
 
     // Deploy StorageTankAccount
     const Tank = await ethers.getContractFactory("StorageTankAccount");

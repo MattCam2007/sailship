@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 /**
- * Deploy all Phase 1 contracts in correct order
+ * Deploy all contracts in correct order
  * Outputs deployment addresses to JSON file
  */
 async function main() {
@@ -28,34 +28,8 @@ async function main() {
   console.log("GameRegistry deployed to:", gameRegistryAddress);
   deploymentData.contracts.gameRegistry = gameRegistryAddress;
 
-  // 2. Deploy Resource Tokens (CH4, O2, H2O, CO2, N2)
-  console.log("\n2. Deploying Resource Tokens...");
-  const ResourceToken = await ethers.getContractFactory("ResourceToken");
-
-  const resourceTokens = [
-    { name: "Methane", symbol: "CH4" },
-    { name: "Oxygen", symbol: "O2" },
-    { name: "Water", symbol: "H2O" },
-    { name: "Carbon Dioxide", symbol: "CO2" },
-    { name: "Nitrogen", symbol: "N2" }
-  ];
-
-  deploymentData.contracts.resources = {};
-
-  for (const resource of resourceTokens) {
-    const token = await ResourceToken.deploy(resource.name, resource.symbol);
-    await token.waitForDeployment();
-    const tokenAddress = await token.getAddress();
-    console.log(`  ${resource.symbol} (${resource.name}) deployed to:`, tokenAddress);
-    deploymentData.contracts.resources[resource.symbol] = tokenAddress;
-
-    // Register in GameRegistry
-    await gameRegistry.setResourceToken(resource.symbol, tokenAddress);
-    console.log(`  ${resource.symbol} registered in GameRegistry`);
-  }
-
-  // 3. Deploy ShipNFT
-  console.log("\n3. Deploying ShipNFT...");
+  // 2. Deploy ShipNFT (needed by GameResource tokens)
+  console.log("\n2. Deploying ShipNFT...");
   const ShipNFT = await ethers.getContractFactory("ShipNFT");
   const shipNFT = await ShipNFT.deploy();
   await shipNFT.waitForDeployment();
@@ -66,6 +40,32 @@ async function main() {
   // Register in GameRegistry
   await gameRegistry.setShipNFT(shipNFTAddress);
   console.log("ShipNFT registered in GameRegistry");
+
+  // 3. Deploy GameResource Tokens (CH4, O2, H2O, CO2, N2)
+  console.log("\n3. Deploying GameResource Tokens...");
+  const resourceConfigs = [
+    { symbol: "CH4", factory: "CH4" },
+    { symbol: "O2", factory: "O2" },
+    { symbol: "H2O", factory: "H2O" },
+    { symbol: "CO2", factory: "CO2" },
+    { symbol: "N2", factory: "N2" }
+  ];
+
+  deploymentData.contracts.resources = {};
+
+  for (const config of resourceConfigs) {
+    const Factory = await ethers.getContractFactory(config.factory);
+    const token = await Factory.deploy(deployer.address, shipNFTAddress);
+    await token.waitForDeployment();
+    const tokenAddress = await token.getAddress();
+    const name = await token.name();
+    console.log(`  ${config.symbol} (${name}) deployed to:`, tokenAddress);
+    deploymentData.contracts.resources[config.symbol] = tokenAddress;
+
+    // Register in GameRegistry
+    await gameRegistry.setResourceToken(config.symbol, tokenAddress);
+    console.log(`  ${config.symbol} registered in GameRegistry`);
+  }
 
   // 4. Deploy CelestialBodyRegistry
   console.log("\n4. Deploying CelestialBodyRegistry...");
