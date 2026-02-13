@@ -20,6 +20,19 @@ contract StorageTankAccount {
     error NotShipOwner();
     error InsufficientBalance();
 
+    event CapacityUpdated(uint256 newCapacity);
+    event Withdrawal(address indexed to, uint256 amount);
+
+    modifier onlyAdmin() {
+        if (msg.sender != _admin) revert NotAdmin();
+        _;
+    }
+
+    modifier onlyShipOwner() {
+        if (msg.sender != owner()) revert NotShipOwner();
+        _;
+    }
+
     /// @notice Initialize the tank (called once after deployment)
     function initialize(
         address shipNFTAddr,
@@ -60,5 +73,20 @@ contract StorageTankAccount {
     /// @notice Get the ship owner (resolves via NFT ownership)
     function owner() public view returns (address) {
         return IERC721(_shipNFT).ownerOf(_tokenId);
+    }
+
+    /// @notice Update tank capacity (admin only)
+    /// @param newCapacity New capacity value
+    function setCapacity(uint256 newCapacity) external onlyAdmin {
+        _capacity = newCapacity;
+        emit CapacityUpdated(newCapacity);
+    }
+
+    /// @notice Withdraw resources from the tank (ship owner only)
+    /// @param amount Amount to withdraw
+    /// @param to Recipient address
+    function withdraw(uint256 amount, address to) external onlyShipOwner {
+        IERC20(_allowedResource).transfer(to, amount);
+        emit Withdrawal(to, amount);
     }
 }
