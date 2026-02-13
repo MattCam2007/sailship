@@ -4,6 +4,8 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title ShipNFT
@@ -11,6 +13,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * @dev Each ship has on-chain stats and a deterministic TBA address
  */
 contract ShipNFT is ERC721Enumerable, Ownable {
+    using Strings for uint256;
     // Ship statistics structure
     struct ShipStats {
         uint256 mass;              // kg (e.g., 10000)
@@ -33,6 +36,10 @@ contract ShipNFT is ERC721Enumerable, Ownable {
 
     // Proximity tracking (deep space)
     mapping(uint256 => mapping(uint256 => bool)) private _nearby;
+
+    // Per-token metadata
+    mapping(uint256 => string) private _shipImage;
+    mapping(uint256 => string) private _shipDescription;
 
     // Custom errors
     error ArrayLengthMismatch();
@@ -142,18 +149,38 @@ contract ShipNFT is ERC721Enumerable, Ownable {
      */
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
         _requireOwned(tokenId);
-
         ShipStats memory stats = _shipStats[tokenId];
 
-        // For Phase 1, return a simple JSON string with ship class and token ID
-        // In production, this would point to off-chain metadata
-        return string(
-            abi.encodePacked(
-                "data:application/json;utf8,{",
-                '"name":"', stats.className, ' #', _toString(tokenId), '"',
-                "}"
-            )
-        );
+        string memory json = string(abi.encodePacked(
+            '{"name":"', stats.className, ' #', tokenId.toString(), '"',
+            ',"image":"', _shipImage[tokenId], '"',
+            ',"description":"', _shipDescription[tokenId], '"}'
+        ));
+
+        return string(abi.encodePacked(
+            "data:application/json;base64,",
+            Base64.encode(bytes(json))
+        ));
+    }
+
+    /// @notice Get ship image URI
+    function shipImage(uint256 shipId) external view returns (string memory) {
+        return _shipImage[shipId];
+    }
+
+    /// @notice Get ship description
+    function shipDescription(uint256 shipId) external view returns (string memory) {
+        return _shipDescription[shipId];
+    }
+
+    /// @notice Set ship image URI (admin only)
+    function setShipImage(uint256 shipId, string calldata imageUri) external onlyOwner {
+        _shipImage[shipId] = imageUri;
+    }
+
+    /// @notice Set ship description (admin only)
+    function setShipDescription(uint256 shipId, string calldata desc) external onlyOwner {
+        _shipDescription[shipId] = desc;
     }
 
     /// @notice Check if two ships can exchange resources
@@ -211,25 +238,4 @@ contract ShipNFT is ERC721Enumerable, Ownable {
         }
     }
 
-    /**
-     * @dev Convert uint256 to string
-     */
-    function _toString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) {
-            return "0";
-        }
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-        return string(buffer);
-    }
 }

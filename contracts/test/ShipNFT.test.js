@@ -171,7 +171,12 @@ describe("ShipNFT", function () {
     it("should return a tokenURI for minted ships", async function () {
       await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
       const uri = await shipNFT.tokenURI(1);
-      expect(uri).to.include("1"); // Token ID should be in URI
+      expect(uri).to.match(/^data:application\/json;base64,/);
+      const json = JSON.parse(
+        Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()
+      );
+      expect(json.name).to.include("HELIOS-CLASS");
+      expect(json.name).to.include("#1");
     });
   });
 
@@ -328,6 +333,86 @@ describe("ShipNFT", function () {
     it("should handle one ship at station, one in deep space", async function () {
       await shipNFT.setShipZone(ship1, 5);
       expect(await shipNFT.canInteract(ship1, ship2)).to.be.false;
+    });
+  });
+
+  describe("Ship Metadata", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
+      tokenId = 1;
+    });
+
+    it("should default image to empty string", async function () {
+      expect(await shipNFT.shipImage(tokenId)).to.equal("");
+    });
+
+    it("should default description to empty string", async function () {
+      expect(await shipNFT.shipDescription(tokenId)).to.equal("");
+    });
+
+    it("should allow admin to set ship image", async function () {
+      await shipNFT.setShipImage(tokenId, "ipfs://QmTest123");
+      expect(await shipNFT.shipImage(tokenId)).to.equal("ipfs://QmTest123");
+    });
+
+    it("should allow admin to set ship description", async function () {
+      await shipNFT.setShipDescription(tokenId, "A fast solar sailer");
+      expect(await shipNFT.shipDescription(tokenId)).to.equal("A fast solar sailer");
+    });
+
+    it("should reject setShipImage from non-owner", async function () {
+      await expect(
+        shipNFT.connect(addr1).setShipImage(tokenId, "ipfs://hack")
+      ).to.be.revertedWithCustomError(shipNFT, "OwnableUnauthorizedAccount");
+    });
+
+    it("should reject setShipDescription from non-owner", async function () {
+      await expect(
+        shipNFT.connect(addr1).setShipDescription(tokenId, "hacked")
+      ).to.be.revertedWithCustomError(shipNFT, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  describe("tokenURI (enhanced)", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
+      tokenId = 1;
+      await shipNFT.setShipImage(tokenId, "ipfs://QmShipImage");
+      await shipNFT.setShipDescription(tokenId, "A legendary solar sailer");
+    });
+
+    it("should return base64-encoded JSON", async function () {
+      const uri = await shipNFT.tokenURI(tokenId);
+      expect(uri).to.match(/^data:application\/json;base64,/);
+    });
+
+    it("should contain name, image, and description", async function () {
+      const uri = await shipNFT.tokenURI(tokenId);
+      const json = JSON.parse(
+        Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()
+      );
+      expect(json.name).to.include("HELIOS-CLASS");
+      expect(json.name).to.include("#1");
+      expect(json.image).to.equal("ipfs://QmShipImage");
+      expect(json.description).to.equal("A legendary solar sailer");
+    });
+
+    it("should update when image changes", async function () {
+      await shipNFT.setShipImage(tokenId, "ipfs://QmNewImage");
+      const uri = await shipNFT.tokenURI(tokenId);
+      const json = JSON.parse(
+        Buffer.from(uri.replace("data:application/json;base64,", ""), "base64").toString()
+      );
+      expect(json.image).to.equal("ipfs://QmNewImage");
+    });
+
+    it("should revert for nonexistent token", async function () {
+      await expect(shipNFT.tokenURI(999))
+        .to.be.revertedWithCustomError(shipNFT, "ERC721NonexistentToken");
     });
   });
 });
