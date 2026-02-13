@@ -31,12 +31,16 @@ contract ShipNFT is ERC721Enumerable, Ownable {
     // Zone tracking
     mapping(uint256 => uint256) private _shipZones;
 
+    // Proximity tracking (deep space)
+    mapping(uint256 => mapping(uint256 => bool)) private _nearby;
+
     // Custom errors
     error ArrayLengthMismatch();
 
     // Events
     event ShipMinted(uint256 indexed tokenId, address indexed owner, string className);
     event ZoneUpdated(uint256 indexed shipId, uint256 zone);
+    event ProximitySet(uint256 indexed shipA, uint256 indexed shipB, bool nearby);
 
     constructor() ERC721("Sailship Fleet", "SHIP") Ownable(msg.sender) {
         _nextTokenId = 1; // Start token IDs at 1
@@ -150,6 +154,35 @@ contract ShipNFT is ERC721Enumerable, Ownable {
                 "}"
             )
         );
+    }
+
+    /// @notice Check if two ships can exchange resources
+    /// @param shipA First ship token ID
+    /// @param shipB Second ship token ID
+    /// @return True if ships can interact
+    function canInteract(uint256 shipA, uint256 shipB) external view returns (bool) {
+        if (shipA == shipB) return true;
+
+        uint256 zoneA = _shipZones[shipA];
+        uint256 zoneB = _shipZones[shipB];
+
+        // Same non-zero zone = same location
+        if (zoneA != 0 && zoneA == zoneB) return true;
+
+        // Both in deep space with proximity flag
+        if (zoneA == 0 && zoneB == 0 && _nearby[shipA][shipB]) return true;
+
+        return false;
+    }
+
+    /// @notice Set deep space proximity between two ships (admin only)
+    /// @param shipA First ship token ID
+    /// @param shipB Second ship token ID
+    /// @param nearby Whether ships are nearby
+    function setNearby(uint256 shipA, uint256 shipB, bool nearby) external onlyOwner {
+        _nearby[shipA][shipB] = nearby;
+        _nearby[shipB][shipA] = nearby;
+        emit ProximitySet(shipA, shipB, nearby);
     }
 
     /// @notice Get a ship's current zone
