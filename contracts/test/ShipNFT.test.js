@@ -174,4 +174,54 @@ describe("ShipNFT", function () {
       expect(uri).to.include("1"); // Token ID should be in URI
     });
   });
+
+  describe("Zone Tracking", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(addr1.address, "HELIOS-CLASS", 10000, 3000000, 9000, 5, 1000000);
+      tokenId = 1;
+    });
+
+    it("should default to zone 0 (deep space)", async function () {
+      expect(await shipNFT.shipZone(tokenId)).to.equal(0);
+    });
+
+    it("should allow admin to set ship zone", async function () {
+      await shipNFT.setShipZone(tokenId, 42);
+      expect(await shipNFT.shipZone(tokenId)).to.equal(42);
+    });
+
+    it("should emit ZoneUpdated event", async function () {
+      await expect(shipNFT.setShipZone(tokenId, 42))
+        .to.emit(shipNFT, "ZoneUpdated")
+        .withArgs(tokenId, 42);
+    });
+
+    it("should reject setShipZone from non-owner", async function () {
+      await expect(
+        shipNFT.connect(addr1).setShipZone(tokenId, 42)
+      ).to.be.revertedWithCustomError(shipNFT, "OwnableUnauthorizedAccount");
+    });
+
+    it("should allow batch zone updates", async function () {
+      await shipNFT.mintShip(addr2.address, "CLASS-B", 10000, 3000000, 9000, 5, 1000000);
+      await shipNFT.setShipZoneBatch([1, 2], [10, 20]);
+      expect(await shipNFT.shipZone(1)).to.equal(10);
+      expect(await shipNFT.shipZone(2)).to.equal(20);
+    });
+
+    it("should revert batch with mismatched array lengths", async function () {
+      await expect(
+        shipNFT.setShipZoneBatch([1], [10, 20])
+      ).to.be.revertedWithCustomError(shipNFT, "ArrayLengthMismatch");
+    });
+
+    it("should update zone (ship moves from station to deep space)", async function () {
+      await shipNFT.setShipZone(tokenId, 42);
+      expect(await shipNFT.shipZone(tokenId)).to.equal(42);
+      await shipNFT.setShipZone(tokenId, 0);
+      expect(await shipNFT.shipZone(tokenId)).to.equal(0);
+    });
+  });
 });

@@ -28,8 +28,15 @@ contract ShipNFT is ERC721Enumerable, Ownable {
     // Mapping from token ID to ship stats
     mapping(uint256 => ShipStats) private _shipStats;
 
+    // Zone tracking
+    mapping(uint256 => uint256) private _shipZones;
+
+    // Custom errors
+    error ArrayLengthMismatch();
+
     // Events
     event ShipMinted(uint256 indexed tokenId, address indexed owner, string className);
+    event ZoneUpdated(uint256 indexed shipId, uint256 zone);
 
     constructor() ERC721("Sailship Fleet", "SHIP") Ownable(msg.sender) {
         _nextTokenId = 1; // Start token IDs at 1
@@ -143,6 +150,32 @@ contract ShipNFT is ERC721Enumerable, Ownable {
                 "}"
             )
         );
+    }
+
+    /// @notice Get a ship's current zone
+    /// @param shipId The token ID
+    /// @return The zone ID (0 = deep space)
+    function shipZone(uint256 shipId) external view returns (uint256) {
+        return _shipZones[shipId];
+    }
+
+    /// @notice Set a ship's zone (admin only)
+    /// @param shipId The token ID
+    /// @param zone The zone ID (0 = deep space)
+    function setShipZone(uint256 shipId, uint256 zone) external onlyOwner {
+        _shipZones[shipId] = zone;
+        emit ZoneUpdated(shipId, zone);
+    }
+
+    /// @notice Batch update ship zones (admin only)
+    /// @param shipIds Array of token IDs
+    /// @param zones Array of zone IDs
+    function setShipZoneBatch(uint256[] calldata shipIds, uint256[] calldata zones) external onlyOwner {
+        if (shipIds.length != zones.length) revert ArrayLengthMismatch();
+        for (uint256 i = 0; i < shipIds.length; i++) {
+            _shipZones[shipIds[i]] = zones[i];
+            emit ZoneUpdated(shipIds[i], zones[i]);
+        }
     }
 
     /**
