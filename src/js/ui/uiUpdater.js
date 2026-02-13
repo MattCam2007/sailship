@@ -95,6 +95,7 @@ export function initUI() {
     if (tripResetBtn) {
         tripResetBtn.addEventListener('click', () => {
             resetTripometer();
+            updateTripometerDisplay();
         });
     }
 }
