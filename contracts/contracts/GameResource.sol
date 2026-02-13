@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./interfaces/IShipNFT.sol";
+import "./interfaces/IStorageTankAccount.sol";
+
+/// @title GameResource
+/// @notice Abstract ERC-20 with physics-enforced transfers
+/// @dev All resource tokens inherit from this. _update enforces proximity, compatibility, and capacity.
+abstract contract GameResource is ERC20, Ownable {
+    error NoPhysicalPathway();
+    error WrongResource();
+    error ExceedsCapacity();
+    error ShipNotRegistered();
+
+    event TankRegistered(address indexed tank, bool status);
+    event PlayerShipSet(address indexed player, uint256 indexed shipId);
+
+    IShipNFT public shipContract;
+    mapping(address => bool) public registeredTanks;
+    mapping(address => uint256) public playerShip;
+    string public image;
+    string public description;
+
+    constructor(
+        string memory name_,
+        string memory symbol_,
+        address admin_,
+        address shipContract_
+    ) ERC20(name_, symbol_) Ownable(admin_) {
+        shipContract = IShipNFT(shipContract_);
+    }
+
+    /// @notice Mint new tokens (admin only — mining faucet)
+    function mint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
+    }
+
+    /// @notice Set resource image URI (admin only)
+    function setImage(string calldata uri) external onlyOwner {
+        image = uri;
+    }
+
+    /// @notice Set resource description (admin only)
+    function setDescription(string calldata desc) external onlyOwner {
+        description = desc;
+    }
+
+    /// @notice Update the ship contract reference (admin only)
+    function setShipContract(address shipContract_) external onlyOwner {
+        shipContract = IShipNFT(shipContract_);
+    }
+}
