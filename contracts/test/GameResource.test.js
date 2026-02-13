@@ -249,4 +249,112 @@ describe("GameResource", function () {
       expect(await resource.balanceOf(player2.address)).to.equal(ethers.parseEther("500"));
     });
   });
+
+  describe("Transfer — Tank Compatibility", function () {
+    let ch4Tank, o2Token;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(player1.address, "HELIOS", 10000, 3000000, 9000, 5, 1000000);
+      await resource.setPlayerShip(player1.address, 1);
+      await resource.mint(player1.address, ethers.parseEther("1000"));
+
+      // Deploy CH4 tank for ship 1
+      const Tank = await ethers.getContractFactory("StorageTankAccount");
+      ch4Tank = await Tank.deploy();
+      await ch4Tank.initialize(
+        await shipNFT.getAddress(), 1,
+        await resource.getAddress(), ethers.parseEther("500"),
+        admin.address
+      );
+      await resource.registerTank(await ch4Tank.getAddress(), true);
+
+      // Deploy a second resource (O2) for wrong-resource testing
+      const O2Factory = await ethers.getContractFactory("O2");
+      o2Token = await O2Factory.deploy(admin.address, await shipNFT.getAddress());
+    });
+
+    it("should allow transfer of correct resource to matching tank", async function () {
+      const tankAddr = await ch4Tank.getAddress();
+      await resource.connect(player1).transfer(tankAddr, ethers.parseEther("100"));
+      expect(await resource.balanceOf(tankAddr)).to.equal(ethers.parseEther("100"));
+    });
+
+    it("should revert transfer of wrong resource to tank", async function () {
+      // Try to send O2 to a CH4 tank
+      await o2Token.setPlayerShip(player1.address, 1);
+      await o2Token.registerTank(await ch4Tank.getAddress(), true);
+      await o2Token.mint(player1.address, ethers.parseEther("100"));
+      await expect(
+        o2Token.connect(player1).transfer(await ch4Tank.getAddress(), ethers.parseEther("50"))
+      ).to.be.revertedWithCustomError(o2Token, "WrongResource");
+    });
+  });
+
+  describe("Transfer — Tank Capacity", function () {
+    let tank;
+
+    beforeEach(async function () {
+      await shipNFT.mintShip(player1.address, "HELIOS", 10000, 3000000, 9000, 5, 1000000);
+      await resource.setPlayerShip(player1.address, 1);
+      await resource.mint(player1.address, ethers.parseEther("2000"));
+
+      const Tank = await ethers.getContractFactory("StorageTankAccount");
+      tank = await Tank.deploy();
+      await tank.initialize(
+        await shipNFT.getAddress(), 1,
+        await resource.getAddress(), ethers.parseEther("500"),
+        admin.address
+      );
+      await resource.registerTank(await tank.getAddress(), true);
+    });
+
+    it("should allow transfer up to capacity", async function () {
+      const tankAddr = await tank.getAddress();
+      await resource.connect(player1).transfer(tankAddr, ethers.parseEther("500"));
+      expect(await resource.balanceOf(tankAddr)).to.equal(ethers.parseEther("500"));
+    });
+
+    it("should revert transfer exceeding capacity", async function () {
+      const tankAddr = await tank.getAddress();
+      await expect(
+        resource.connect(player1).transfer(tankAddr, ethers.parseEther("501"))
+      ).to.be.revertedWithCustomError(resource, "ExceedsCapacity");
+    });
+
+    it("should handle cumulative transfers up to capacity", async function () {
+      const tankAddr = await tank.getAddress();
+      await resource.connect(player1).transfer(tankAddr, ethers.parseEther("300"));
+      await resource.connect(player1).transfer(tankAddr, ethers.parseEther("200"));
+      // Now at 500 (capacity). Next transfer should fail.
+      await expect(
+        resource.connect(player1).transfer(tankAddr, ethers.parseEther("1"))
+      ).to.be.revertedWithCustomError(resource, "ExceedsCapacity");
+    });
+
+    it("should allow transfer after withdrawal frees space", async function () {
+      const tankAddr = await tank.getAddress();
+      await resource.connect(player1).transfer(tankAddr, ethers.parseEther("500"));
+      // Withdraw 100 from tank
+      await tank.connect(player1).withdraw(ethers.parseEther("100"), player1.address);
+      // Now can deposit 100 more
+      await resource.connect(player1).transfer(tankAddr, ethers.parseEther("100"));
+      expect(await resource.balanceOf(tankAddr)).to.equal(ethers.parseEther("500"));
+    });
+
+    it("should check capacity on mint to tank", async function () {
+      const tankAddr = await tank.getAddress();
+      await expect(
+        resource.mint(tankAddr, ethers.parseEther("501"))
+      ).to.be.revertedWithCustomError(resource, "ExceedsCapacity");
+    });
+
+    it("should check resource compatibility on mint to tank", async function () {
+      const O2Factory = await ethers.getContractFactory("O2");
+      const o2Token = await O2Factory.deploy(admin.address, await shipNFT.getAddress());
+      await o2Token.registerTank(await tank.getAddress(), true);
+      await expect(
+        o2Token.mint(await tank.getAddress(), ethers.parseEther("100"))
+      ).to.be.revertedWithCustomError(o2Token, "WrongResource");
+    });
+  });
 });

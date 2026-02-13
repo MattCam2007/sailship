@@ -64,6 +64,16 @@ abstract contract GameResource is ERC20, Ownable {
             }
         }
 
+        // Tank checks: on any movement TO a registered tank (including mint)
+        if (to != address(0) && registeredTanks[to]) {
+            if (IStorageTankAccount(to).allowedResource() != address(this)) {
+                revert WrongResource();
+            }
+            if (balanceOf(to) + value > IStorageTankAccount(to).capacity()) {
+                revert ExceedsCapacity();
+            }
+        }
+
         super._update(from, to, value);
     }
 
