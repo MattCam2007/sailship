@@ -51,17 +51,17 @@ export function updateTripometer() {
         if (dist < 1) {
             tripState.distanceAU += dist;
         }
+
+        // Track min/max instantaneous speed (only after baseline position established)
+        const speed = getShipVelocityKmS(player);
+        if (isFinite(speed) && speed > 0) {
+            tripState.hasSpeedSample = true;
+            if (speed < tripState.minSpeedKmS) tripState.minSpeedKmS = speed;
+            if (speed > tripState.maxSpeedKmS) tripState.maxSpeedKmS = speed;
+        }
     }
 
     tripState.lastPos = pos;
-
-    // Track min/max instantaneous speed
-    const speed = getShipVelocityKmS(player);
-    if (isFinite(speed) && speed > 0) {
-        tripState.hasSpeedSample = true;
-        if (speed < tripState.minSpeedKmS) tripState.minSpeedKmS = speed;
-        if (speed > tripState.maxSpeedKmS) tripState.maxSpeedKmS = speed;
-    }
 }
 
 /**
@@ -71,7 +71,7 @@ export function resetTripometer() {
     const player = getPlayerShip();
     tripState.distanceAU = 0;
     tripState.startTime = getTime();
-    tripState.lastPos = player ? { x: player.x, y: player.y, z: player.z } : null;
+    tripState.lastPos = null;
     tripState.minSpeedKmS = Infinity;
     tripState.maxSpeedKmS = 0;
     tripState.hasSpeedSample = false;
