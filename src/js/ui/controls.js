@@ -108,7 +108,7 @@ const touchState = {
  * Each mode defines step sizes for angles and deployment
  */
 export const RESOLUTION_MODES = {
-    COARSE: { name: 'COARSE', angleStep: 10, deployStep: 25, sailCountStep: 5 },
+    COARSE: { name: 'COARSE', angleStep: 10, deployStep: 25, sailCountStep: 10 },
     NORMAL: { name: 'NORMAL', angleStep: 5, deployStep: 10, sailCountStep: 1 },
     FINE:   { name: 'FINE',   angleStep: 1, deployStep: 1, sailCountStep: 1 },
     ULTRA:  { name: 'ULTRA',  angleStep: 0.1, deployStep: 0.1, sailCountStep: 1 },
@@ -896,7 +896,7 @@ function initKeyboardShortcuts() {
                 case SAIL_CONTROLS.SAIL_COUNT:
                     if (sailCountSlider) {
                         const currentCount = parseInt(sailCountSlider.value, 10);
-                        const newCount = Math.max(1, Math.min(20, currentCount + direction * mode.sailCountStep));
+                        const newCount = Math.max(1, Math.min(50, currentCount + direction * mode.sailCountStep));
                         sailCountSlider.value = newCount;
                         sailCountSlider.dispatchEvent(new Event('input'));
                     }

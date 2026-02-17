@@ -38,12 +38,12 @@ describe('setSailCount', () => {
         assert.strictEqual(mockShip.sail.sailCount, 1);
     });
 
-    it('clamps to maximum of 20', () => {
-        setSailCount(mockShip, 21);
-        assert.strictEqual(mockShip.sail.sailCount, 20);
+    it('clamps to maximum of 50', () => {
+        setSailCount(mockShip, 51);
+        assert.strictEqual(mockShip.sail.sailCount, 50);
 
         setSailCount(mockShip, 100);
-        assert.strictEqual(mockShip.sail.sailCount, 20);
+        assert.strictEqual(mockShip.sail.sailCount, 50);
     });
 
     it('rounds fractional values to nearest integer', () => {
@@ -62,9 +62,9 @@ describe('setSailCount', () => {
         assert.strictEqual(mockShip.sail.sailCount, 1);
     });
 
-    it('handles edge case of exactly 20', () => {
-        setSailCount(mockShip, 20);
-        assert.strictEqual(mockShip.sail.sailCount, 20);
+    it('handles edge case of exactly 50', () => {
+        setSailCount(mockShip, 50);
+        assert.strictEqual(mockShip.sail.sailCount, 50);
     });
 
     it('does nothing if ship has no sail', () => {
@@ -73,8 +73,8 @@ describe('setSailCount', () => {
         assert.strictEqual(shipWithoutSail.sail, undefined);
     });
 
-    it('allows all valid integer values from 1 to 20', () => {
-        for (let i = 1; i <= 20; i++) {
+    it('allows all valid integer values from 1 to 50', () => {
+        for (let i = 1; i <= 50; i++) {
             setSailCount(mockShip, i);
             assert.strictEqual(mockShip.sail.sailCount, i);
         }
@@ -87,7 +87,7 @@ describe('setSailCount', () => {
 
     it('handles very large values', () => {
         setSailCount(mockShip, 1000000);
-        assert.strictEqual(mockShip.sail.sailCount, 20); // Clamped to maximum
+        assert.strictEqual(mockShip.sail.sailCount, 50); // Clamped to maximum
     });
 });
 
@@ -148,11 +148,11 @@ describe('getCurrentThrustAccel with sailCount', () => {
         assert.ok(approxEqual(thrust3, thrust1 * 3, 1e-10));
     });
 
-    it('scales thrust linearly for all sail counts 1-20', () => {
+    it('scales thrust linearly for all sail counts 1-50', () => {
         mockShip.sail.sailCount = 1;
         const baseThrust = getCurrentThrustAccel(mockShip);
 
-        for (let count = 2; count <= 20; count++) {
+        for (let count = 2; count <= 50; count++) {
             mockShip.sail.sailCount = count;
             const scaledThrust = getCurrentThrustAccel(mockShip);
 
@@ -213,22 +213,22 @@ describe('getCurrentThrustAccel with sailCount', () => {
         assert.strictEqual(thrust, 0);
     });
 
-    it('returns zero thrust when sailCount = 20 and deployment = 0', () => {
+    it('returns zero thrust when sailCount = 50 and deployment = 0', () => {
         mockShip.sail.deploymentPercent = 0;
-        mockShip.sail.sailCount = 20;
+        mockShip.sail.sailCount = 50;
         const thrust = getCurrentThrustAccel(mockShip);
         assert.strictEqual(thrust, 0);
     });
 
-    it('produces 20x thrust with sailCount = 20', () => {
+    it('produces 50x thrust with sailCount = 50', () => {
         mockShip.sail.sailCount = 1;
         const thrust1 = getCurrentThrustAccel(mockShip);
 
-        mockShip.sail.sailCount = 20;
-        const thrust20 = getCurrentThrustAccel(mockShip);
+        mockShip.sail.sailCount = 50;
+        const thrust50 = getCurrentThrustAccel(mockShip);
 
-        assert.ok(approxEqual(thrust20, thrust1 * 20, 1e-10));
-        assert.ok(thrust20 > thrust1, 'Should be greater than 1x');
+        assert.ok(approxEqual(thrust50, thrust1 * 50, 1e-10));
+        assert.ok(thrust50 > thrust1, 'Should be greater than 1x');
     });
 
     it('thrust scales correctly at different distances from sun', () => {
@@ -301,7 +301,7 @@ describe('sailCount physics validation', () => {
     it('thrust increases monotonically with sail count', () => {
         let previousThrust = 0;
 
-        for (let count = 1; count <= 20; count++) {
+        for (let count = 1; count <= 50; count++) {
             mockShip.sail.sailCount = count;
             const thrust = getCurrentThrustAccel(mockShip);
 
@@ -346,13 +346,13 @@ describe('sailCount physics validation', () => {
         mockShip.sail.sailCount = 1;
         const thrust1 = getCurrentThrustAccel(mockShip);
 
-        mockShip.sail.sailCount = 20;
-        const thrust20 = getCurrentThrustAccel(mockShip);
+        mockShip.sail.sailCount = 50;
+        const thrust50 = getCurrentThrustAccel(mockShip);
 
-        const actualRatio = thrust20 / thrust1;
+        const actualRatio = thrust50 / thrust1;
 
         assert.ok(
-            approxEqual(actualRatio, 20, 1e-9),
+            approxEqual(actualRatio, 50, 1e-9),
             'Should maintain precision at maximum sail count'
         );
     });

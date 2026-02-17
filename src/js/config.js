@@ -93,7 +93,7 @@ export const DEFAULT_SAIL = {
     pitchAngle: 0,           // Out-of-plane angle (radians) - 0 = in orbital plane
     deploymentPercent: 100,  // Fully deployed
     condition: 100,          // Perfect condition
-    sailCount: 1,            // Number of sails (1-20) - multiplies thrust linearly
+    sailCount: 1,            // Number of sails (1-50) - multiplies thrust linearly
 };
 
 // ============================================================================

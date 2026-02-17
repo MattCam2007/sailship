@@ -142,11 +142,11 @@ export function setSailPitch(ship, pitch) {
  * Set the number of sails (thrust multiplier).
  *
  * @param {Object} ship - Ship object with sail state
- * @param {number} count - Number of sails (1-20)
+ * @param {number} count - Number of sails (1-50)
  */
 export function setSailCount(ship, count) {
     if (ship.sail) {
-        ship.sail.sailCount = Math.max(1, Math.min(20, Math.round(count)));
+        ship.sail.sailCount = Math.max(1, Math.min(50, Math.round(count)));
     }
 }
 
