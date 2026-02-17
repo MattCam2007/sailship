@@ -1689,7 +1689,7 @@ function drawIntersectionMarkers(centerX, centerY, scale) {
         const timeOffset = formatTimeOffset(julianDate, intersection.time);
         const KM_PER_AU = 149597870.7;
         const distKm = intersection.distance * KM_PER_AU;
-        const distLabel = intersection.distance < 0.01
+        const distLabel = intersection.distance < 0.5
             ? `${Math.round(distKm).toLocaleString()} km`
             : `${intersection.distance.toFixed(2)} AU`;
 
