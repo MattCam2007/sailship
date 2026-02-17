@@ -75,23 +75,6 @@ export const SPEED_PRESETS = {
 export const DEFAULT_SHIP_MASS = 10000;
 
 /**
- * Mass per additional sail in kg.
- *
- * Each sail has an areal density of ~1.5 g/m². With a 3 km² sail
- * (3,000,000 m²), each sail masses approximately 4,500 kg.
- * Rounded to 4,000 kg for gameplay balance.
- *
- * The first sail's mass is included in DEFAULT_SHIP_MASS (the hull
- * includes structure, life support, and one sail). Additional sails
- * add mass, creating diminishing returns:
- *   1 sail:  10,000 kg → baseline acceleration
- *   5 sails: 26,000 kg → ~1.9x acceleration (not 5x)
- *  10 sails: 46,000 kg → ~2.2x acceleration (not 10x)
- *  20 sails: 86,000 kg → ~2.3x acceleration (not 20x)
- */
-export const SAIL_MASS_PER_UNIT = 4000;
-
-/**
  * Default sail configuration for player ship.
  *
  * A 3 km² sail is a large interplanetary solar sail vessel.

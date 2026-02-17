@@ -29,7 +29,6 @@ import { stateToElements } from './soi.js';
 import {
     SOLAR_PRESSURE_1AU,
     ACCEL_CONVERSION,
-    SAIL_MASS_PER_UNIT,
     TRAJECTORY_ROBUSTNESS,
 } from '../config.js';
 
@@ -235,12 +234,8 @@ export function calculateSailThrust(sailState, shipPosition, shipVelocity, dista
     const thrustMagnitudeN = 2 * pressure * effectiveArea *
                              cosYaw * cosYaw * cosPitch * cosPitch * reflectivity * sailCount;
 
-    // Effective mass: hull mass + mass of additional sails (first sail included in hull)
-    // This creates diminishing returns for adding more sails, which is physically realistic
-    const effectiveMass = shipMass + Math.max(0, sailCount - 1) * SAIL_MASS_PER_UNIT;
-
     // Convert to acceleration in m/s²
-    const accelMS2 = thrustMagnitudeN / effectiveMass;
+    const accelMS2 = thrustMagnitudeN / shipMass;
 
     // Convert to AU/day²
     const accelAUDay2 = accelMS2 * ACCEL_CONVERSION;
@@ -682,11 +677,8 @@ export function calculateSailThrustFromState(state, sailState, shipMass = 10000,
     const thrustMagnitudeN = 2 * pressure * effectiveArea *
                              cosYaw * cosYaw * cosPitch * cosPitch * reflectivity * sailCount;
 
-    // Effective mass
-    const effectiveMass = shipMass + Math.max(0, sailCount - 1) * SAIL_MASS_PER_UNIT;
-
     // Convert to acceleration in AU/day²
-    const accelMS2 = thrustMagnitudeN / effectiveMass;
+    const accelMS2 = thrustMagnitudeN / shipMass;
     const accelAUDay2 = accelMS2 * ACCEL_CONVERSION;
 
     // Build RTN frame from state vectors

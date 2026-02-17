@@ -2,27 +2,18 @@
  * Unit tests for sail count feature
  *
  * Tests the setSailCount function and getCurrentThrustAccel with
- * mass scaling (diminishing returns from additional sail mass).
+ * linear thrust scaling: N sails = Nx acceleration.
  */
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { setSailCount, getCurrentThrustAccel } from './ships.js';
-import { DEFAULT_SAIL, DEFAULT_SHIP_MASS, SAIL_MASS_PER_UNIT } from '../config.js';
+import { DEFAULT_SAIL, DEFAULT_SHIP_MASS } from '../config.js';
 
 const TOLERANCE = 1e-6;
 
 function approxEqual(actual, expected, tolerance = TOLERANCE) {
     return Math.abs(actual - expected) < tolerance;
-}
-
-/**
- * Expected acceleration ratio for N sails vs 1 sail.
- * With mass scaling: thrust scales by N, but mass increases too.
- * ratio = N * shipMass / (shipMass + max(0, N - 1) * SAIL_MASS_PER_UNIT)
- */
-function expectedRatio(sailCount, shipMass) {
-    return sailCount * shipMass / (shipMass + Math.max(0, sailCount - 1) * SAIL_MASS_PER_UNIT);
 }
 
 describe('setSailCount', () => {
@@ -137,41 +128,37 @@ describe('getCurrentThrustAccel with sailCount', () => {
         assert.ok(thrust1 > 0, 'Thrust should be positive');
     });
 
-    it('scales thrust with mass-adjusted ratio for sailCount = 2', () => {
+    it('scales thrust linearly for sailCount = 2', () => {
         mockShip.sail.sailCount = 1;
         const thrust1 = getCurrentThrustAccel(mockShip);
 
         mockShip.sail.sailCount = 2;
         const thrust2 = getCurrentThrustAccel(mockShip);
 
-        const ratio = expectedRatio(2, mockShip.mass);
-        assert.ok(approxEqual(thrust2, thrust1 * ratio, 1e-10));
+        assert.ok(approxEqual(thrust2, thrust1 * 2, 1e-10));
     });
 
-    it('scales thrust with mass-adjusted ratio for sailCount = 3', () => {
+    it('scales thrust linearly for sailCount = 3', () => {
         mockShip.sail.sailCount = 1;
         const thrust1 = getCurrentThrustAccel(mockShip);
 
         mockShip.sail.sailCount = 3;
         const thrust3 = getCurrentThrustAccel(mockShip);
 
-        const ratio = expectedRatio(3, mockShip.mass);
-        assert.ok(approxEqual(thrust3, thrust1 * ratio, 1e-10));
+        assert.ok(approxEqual(thrust3, thrust1 * 3, 1e-10));
     });
 
-    it('shows diminishing returns for all sail counts 1-20', () => {
+    it('scales thrust linearly for all sail counts 1-20', () => {
         mockShip.sail.sailCount = 1;
         const baseThrust = getCurrentThrustAccel(mockShip);
 
         for (let count = 2; count <= 20; count++) {
             mockShip.sail.sailCount = count;
             const scaledThrust = getCurrentThrustAccel(mockShip);
-            const ratio = expectedRatio(count, mockShip.mass);
-            const expected = baseThrust * ratio;
 
             assert.ok(
-                approxEqual(scaledThrust, expected, 1e-10),
-                `Thrust with ${count} sails should be ${ratio.toFixed(4)}x baseline (mass-scaled)`
+                approxEqual(scaledThrust, baseThrust * count, 1e-10),
+                `Thrust with ${count} sails should be ${count}x baseline`
             );
         }
     });
@@ -184,8 +171,7 @@ describe('getCurrentThrustAccel with sailCount', () => {
         mockShip.sail.sailCount = 5;
         const thrust5 = getCurrentThrustAccel(mockShip);
 
-        const ratio = expectedRatio(5, mockShip.mass);
-        assert.ok(approxEqual(thrust5, thrust1 * ratio, 1e-10));
+        assert.ok(approxEqual(thrust5, thrust1 * 5, 1e-10));
     });
 
     it('works correctly with angled sail', () => {
@@ -196,8 +182,7 @@ describe('getCurrentThrustAccel with sailCount', () => {
         mockShip.sail.sailCount = 4;
         const thrust4 = getCurrentThrustAccel(mockShip);
 
-        const ratio = expectedRatio(4, mockShip.mass);
-        assert.ok(approxEqual(thrust4, thrust1 * ratio, 1e-10));
+        assert.ok(approxEqual(thrust4, thrust1 * 4, 1e-10));
     });
 
     it('works correctly with pitched sail', () => {
@@ -208,8 +193,7 @@ describe('getCurrentThrustAccel with sailCount', () => {
         mockShip.sail.sailCount = 7;
         const thrust7 = getCurrentThrustAccel(mockShip);
 
-        const ratio = expectedRatio(7, mockShip.mass);
-        assert.ok(approxEqual(thrust7, thrust1 * ratio, 1e-10));
+        assert.ok(approxEqual(thrust7, thrust1 * 7, 1e-10));
     });
 
     it('defaults to sailCount = 1 if not specified', () => {
@@ -236,15 +220,14 @@ describe('getCurrentThrustAccel with sailCount', () => {
         assert.strictEqual(thrust, 0);
     });
 
-    it('produces mass-scaled maximum thrust with sailCount = 20', () => {
+    it('produces 20x thrust with sailCount = 20', () => {
         mockShip.sail.sailCount = 1;
         const thrust1 = getCurrentThrustAccel(mockShip);
 
         mockShip.sail.sailCount = 20;
         const thrust20 = getCurrentThrustAccel(mockShip);
 
-        const ratio = expectedRatio(20, mockShip.mass);
-        assert.ok(approxEqual(thrust20, thrust1 * ratio, 1e-10));
+        assert.ok(approxEqual(thrust20, thrust1 * 20, 1e-10));
         assert.ok(thrust20 > thrust1, 'Should be greater than 1x');
     });
 
@@ -260,8 +243,7 @@ describe('getCurrentThrustAccel with sailCount', () => {
         mockShip.sail.sailCount = 6;
         const thrust6at2AU = getCurrentThrustAccel(mockShip);
 
-        const ratio = expectedRatio(6, mockShip.mass);
-        assert.ok(approxEqual(thrust6at2AU, thrust1at2AU * ratio, 1e-10));
+        assert.ok(approxEqual(thrust6at2AU, thrust1at2AU * 6, 1e-10));
     });
 
     it('produces consistent results with combined sail parameters', () => {
@@ -331,7 +313,7 @@ describe('sailCount physics validation', () => {
         }
     });
 
-    it('mass scaling produces different ratios for different hull masses', () => {
+    it('all ship masses get same 10x ratio from 10 sails', () => {
         const masses = [5000, 10000, 20000, 50000];
 
         for (const mass of masses) {
@@ -343,51 +325,21 @@ describe('sailCount physics validation', () => {
             const thrust10 = getCurrentThrustAccel(mockShip);
 
             const ratio = thrust10 / thrust1;
-            const expected = expectedRatio(10, mass);
             assert.ok(
-                approxEqual(ratio, expected, 1e-6),
-                `Thrust ratio for ${mass} kg ship should be ${expected.toFixed(4)}x, got ${ratio.toFixed(4)}`
+                approxEqual(ratio, 10, 1e-6),
+                `Thrust ratio for ${mass} kg ship should be 10x, got ${ratio.toFixed(4)}`
             );
         }
     });
 
-    it('heavier ships benefit more from additional sails', () => {
-        const lightMass = 5000;
-        const heavyMass = 50000;
-
-        // Light ship
-        mockShip.mass = lightMass;
-        mockShip.sail.sailCount = 1;
-        const lightThrust1 = getCurrentThrustAccel(mockShip);
-        mockShip.sail.sailCount = 10;
-        const lightThrust10 = getCurrentThrustAccel(mockShip);
-        const lightRatio = lightThrust10 / lightThrust1;
-
-        // Heavy ship
-        mockShip.mass = heavyMass;
-        mockShip.sail.sailCount = 1;
-        const heavyThrust1 = getCurrentThrustAccel(mockShip);
-        mockShip.sail.sailCount = 10;
-        const heavyThrust10 = getCurrentThrustAccel(mockShip);
-        const heavyRatio = heavyThrust10 / heavyThrust1;
-
-        // Heavy ship should get a better ratio from extra sails
-        assert.ok(heavyRatio > lightRatio,
-            `Heavy ship ratio (${heavyRatio.toFixed(4)}) should exceed light ship ratio (${lightRatio.toFixed(4)})`);
-    });
-
     it('very small sail count edge case', () => {
-        // Test boundary: what happens if someone forces sailCount = 0.1?
-        // setSailCount should clamp it, but test direct assignment
         mockShip.sail.sailCount = 0.1;
         const thrust = getCurrentThrustAccel(mockShip);
 
         mockShip.sail.sailCount = 1;
         const thrust1 = getCurrentThrustAccel(mockShip);
 
-        // With sailCount = 0.1, thrust force is 0.1x but mass may also change
-        const ratio = expectedRatio(0.1, mockShip.mass);
-        assert.ok(approxEqual(thrust, thrust1 * ratio, 1e-10));
+        assert.ok(approxEqual(thrust, thrust1 * 0.1, 1e-10));
     });
 
     it('handles floating point precision for large sail counts', () => {
@@ -397,12 +349,10 @@ describe('sailCount physics validation', () => {
         mockShip.sail.sailCount = 20;
         const thrust20 = getCurrentThrustAccel(mockShip);
 
-        // Verify no accumulated floating point error
-        const expected = expectedRatio(20, mockShip.mass);
         const actualRatio = thrust20 / thrust1;
 
         assert.ok(
-            approxEqual(actualRatio, expected, 1e-9),
+            approxEqual(actualRatio, 20, 1e-9),
             'Should maintain precision at maximum sail count'
         );
     });
