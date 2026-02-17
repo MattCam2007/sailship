@@ -9,13 +9,13 @@ Tests for the `setSailCount()` function and `getCurrentThrustAccel()` with sail 
 
 **Coverage:**
 - `setSailCount()` function validation
-  - Valid integer values (1-20)
-  - Boundary clamping (min: 1, max: 20)
+  - Valid integer values (1-50)
+  - Boundary clamping (min: 1, max: 50)
   - Fractional value rounding
   - Edge cases (negative, zero, large values)
   - Ships without sail objects
 - `getCurrentThrustAccel()` with sail count multiplier
-  - Linear scaling validation (1x, 2x, 3x, ..., 20x)
+  - Linear scaling validation (1x, 2x, 3x, ..., 50x)
   - Interaction with deployment percentage
   - Interaction with sail angles (yaw/pitch)
   - Default value handling
@@ -103,7 +103,7 @@ node --test src/js/**/*.test.js
 
 1. **Linear Scaling Verification**
    - Ensures thrust scales exactly N× with N sails
-   - Validates for all counts from 1 to 20
+   - Validates for all counts from 1 to 50
 
 2. **Physics Consistency**
    - Thrust increases monotonically with sail count
@@ -117,7 +117,7 @@ node --test src/js/**/*.test.js
 
 4. **Boundary Protection**
    - Minimum enforced at 1 sail
-   - Maximum enforced at 20 sails
+   - Maximum enforced at 50 sails
    - Fractional values rounded to integers
 
 ## Continuous Integration

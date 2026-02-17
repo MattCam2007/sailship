@@ -64,13 +64,13 @@ describe('calculateSailThrust with sailCount', () => {
         assert.ok(approxEqual(thrust2.z, thrust1.z * 2, 1e-10));
     });
 
-    it('scales thrust linearly for sail counts 1-20', () => {
+    it('scales thrust linearly for sail counts 1-50', () => {
         const shipMass = 10000;
         baseSailState.sailCount = 1;
         const thrust1 = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
         const baseMagnitude = vectorMagnitude(thrust1);
 
-        for (let count = 2; count <= 20; count++) {
+        for (let count = 2; count <= 50; count++) {
             baseSailState.sailCount = count;
             const thrust = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
             const magnitude = vectorMagnitude(thrust);
@@ -194,11 +194,11 @@ describe('calculateSailThrust with sailCount', () => {
         baseSailState.sailCount = 1;
         const thrust1 = calculateSailThrust(baseSailState, position, velocity, 1.0, 10000);
 
-        baseSailState.sailCount = 20;
-        const thrust20 = calculateSailThrust(baseSailState, position, velocity, 1.0, 10000);
+        baseSailState.sailCount = 50;
+        const thrust50 = calculateSailThrust(baseSailState, position, velocity, 1.0, 10000);
 
         assert.strictEqual(vectorMagnitude(thrust1), 0);
-        assert.strictEqual(vectorMagnitude(thrust20), 0);
+        assert.strictEqual(vectorMagnitude(thrust50), 0);
     });
 
     it('works at different distances from sun', () => {
@@ -236,9 +236,9 @@ describe('calculateSailThrust with sailCount', () => {
         assert.ok(approxEqual(heavyRatio, 5, 1e-10), 'Heavy ship ratio should be 5x');
     });
 
-    it('produces 20x thrust at sailCount = 20', () => {
+    it('produces 50x thrust at sailCount = 50', () => {
         const shipMass = 10000;
-        baseSailState.sailCount = 20;
+        baseSailState.sailCount = 50;
         const thrustMax = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
         const magMax = vectorMagnitude(thrustMax);
 
@@ -246,7 +246,7 @@ describe('calculateSailThrust with sailCount', () => {
         const thrust1 = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
         const mag1 = vectorMagnitude(thrust1);
 
-        assert.ok(approxEqual(magMax, mag1 * 20, 1e-10));
+        assert.ok(approxEqual(magMax, mag1 * 50, 1e-10));
     });
 });
 
@@ -325,13 +325,13 @@ describe('sailCount edge cases in calculateSailThrust', () => {
         const thrust1 = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
         const mag1 = vectorMagnitude(thrust1);
 
-        baseSailState.sailCount = 20;
-        const thrust20 = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
-        const mag20 = vectorMagnitude(thrust20);
+        baseSailState.sailCount = 50;
+        const thrust50 = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
+        const mag50 = vectorMagnitude(thrust50);
 
-        const ratio = mag20 / mag1;
+        const ratio = mag50 / mag1;
 
-        assert.ok(approxEqual(ratio, 20, 1e-12));
+        assert.ok(approxEqual(ratio, 50, 1e-12));
     });
 });
 
@@ -465,7 +465,7 @@ describe('linear scaling validation', () => {
         const thrust1 = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
         const baseAccel = vectorMagnitude(thrust1);
 
-        for (let count = 2; count <= 20; count++) {
+        for (let count = 2; count <= 50; count++) {
             baseSailState.sailCount = count;
             const thrust = calculateSailThrust(baseSailState, position, velocity, 1.0, shipMass);
             const accel = vectorMagnitude(thrust);
