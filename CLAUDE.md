@@ -467,15 +467,35 @@ Located in `.claude/agents/[name].md`:
 ## Running the Project
 
 ```bash
-cd src && python3 -m http.server 8080
-# Open http://localhost:8080
+docker compose up --build
 ```
 
-**Note**: `npx serve` has issues with clean URLs. Use Python's http.server.
+This starts all services:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| **Frontend** | http://localhost:8080 | Game client (nginx) |
+| **Backoffice** | http://localhost:3000 | Admin API (Express.js) |
+| **Hardhat Node** | http://localhost:8545 | Local blockchain |
+| **Contracts Deploy** | (exits after deploy) | One-shot contract deployer |
+
+```bash
+# Run in background
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+
+# Stop and reset blockchain state
+docker compose down -v
+```
 
 ## Build/Lint/Test
 
-No build tooling exists. This is a vanilla JS project that runs directly in browser with no compilation, linting, or test framework configured.
+No build tooling exists. The frontend is a vanilla JS project that runs directly in browser with no compilation, linting, or test framework configured.
 
 ## Architecture
 
@@ -691,7 +711,7 @@ The selected control is highlighted in the SAIL panel. Click control rows or the
 ## Console Tests
 
 Run test suites in browser console. The path depends on your environment:
-- **localhost:8080** (via `cd src && python3 -m http.server 8080`): Use `/js/lib/...`
+- **localhost:8080** (via `docker compose up`): Use `/js/lib/...`
 - **GitHub Pages** (mattcam2007.github.io): Use `/src/js/lib/...`
 
 ```javascript

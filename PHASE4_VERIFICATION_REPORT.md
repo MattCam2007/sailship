@@ -31,9 +31,8 @@ Phase 4 implementation is **COMPLETE**. All code has been written and is ready f
 
 **Verification Needed:**
 ```bash
-# Restart server first:
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm start  # or your start command
+# Restart services first:
+docker compose up --build
 
 # Then test endpoint:
 curl http://localhost:3000/api/abis/CelestialBody | head -20

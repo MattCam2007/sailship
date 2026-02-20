@@ -2,36 +2,25 @@
 
 ## Pre-Test Setup
 
-### 1. Start Hardhat Node
-```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat node
-```
-**Expected:** Node starts on http://127.0.0.1:8545/
+### Start All Services
 
-### 2. Deploy Contracts
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat run scripts/deploy.js --network localhost
+# From the project root
+docker compose up --build
 ```
+
 **Expected:**
-- All contracts deploy successfully
-- `deployment.json` is created/updated
-- Console shows contract addresses
-
-### 3. Start Backoffice Server
-```bash
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm run dev
-```
-**Expected:** Server starts on http://localhost:3001
+- Hardhat node starts on http://localhost:8545
+- Contracts auto-deploy (check logs: `docker compose logs contracts-deploy`)
+- Backoffice server starts on http://localhost:3000
+- Frontend starts on http://localhost:8080
 
 ---
 
 ## Test Case 1: Token ID Extraction
 
 ### Steps:
-1. Open browser to http://localhost:3001
+1. Open browser to http://localhost:3000
 2. Navigate to "Ships" section
 3. Fill out the mint form:
    - **Owner Address:** 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (default Hardhat account)
@@ -171,19 +160,18 @@ npm run dev
 
 ### Check contract deployment status:
 ```bash
-cat /Users/mattcameron/Projects/sailship/contracts/deployment.json
+docker compose exec contracts-deploy cat /app/deployment.json
 ```
 
 ### Check server logs for errors:
-Look in terminal running `npm run dev` for:
+Check backoffice logs (`docker compose logs backoffice`) for:
 - Event parsing errors
 - ABI loading errors
 - Network connection errors
 
 ### Verify ethers.js version:
 ```bash
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm ls ethers
+docker compose exec backoffice npm ls ethers
 ```
 **Expected:** ethers@^6.10.0
 
@@ -210,18 +198,12 @@ npm ls ethers
 If you just want to verify the fix works:
 
 ```bash
-# Terminal 1: Start everything
-cd /Users/mattcameron/Projects/sailship/contracts && npx hardhat node
-
-# Terminal 2: Deploy
-cd /Users/mattcameron/Projects/sailship/contracts && npx hardhat run scripts/deploy.js --network localhost
-
-# Terminal 3: Start server
-cd /Users/mattcameron/Projects/sailship/backoffice && npm run dev
+# Start all services from the project root
+docker compose up --build
 ```
 
 Then in browser:
-1. Go to http://localhost:3001
+1. Go to http://localhost:3000
 2. Go to Ships → Mint Ship
 3. Fill form with any valid values
 4. Click "Mint Ship"

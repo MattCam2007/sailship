@@ -207,8 +207,7 @@ If all verified and still failing, check the "What If It Still Fails?" section i
 **A:** Use the diagnostic commands in `VERIFICATION_OUTPUTS.md` (Quick Diagnostic Commands section):
 
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat console --network localhost
+docker compose exec hardhat-node npx hardhat console --network localhost
 
 > const ShipNFT = await ethers.getContractFactory("ShipNFT");
 > const shipNFT = ShipNFT.attach("0x<your-address>");
@@ -238,23 +237,14 @@ All fix documentation is in the project root:
 
 ### Start fresh (full reset)
 ```bash
-# Terminal 1
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat node
-
-# Terminal 2
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat run scripts/deploy.js --network localhost
-
-# Terminal 3
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm start
+docker compose down -v
+docker compose up --build
 ```
 
 ### Verify deployment
 ```bash
-cat /Users/mattcameron/Projects/sailship/contracts/deployment.json | grep timestamp
-# Should show recent time (last few minutes)
+docker compose logs contracts-deploy | grep timestamp
+# Should show recent deployment time
 ```
 
 ### Test in browser

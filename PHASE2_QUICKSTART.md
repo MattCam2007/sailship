@@ -15,30 +15,16 @@ Phase 2 adds list/view functionality to the backoffice UI. All backend APIs alre
 
 ## Prerequisites
 
-Before starting, ensure:
+Before starting, ensure all services are running:
 
-1. **Hardhat node running:**
-   ```bash
-   cd /Users/mattcameron/Projects/sailship/contracts
-   npx hardhat node
-   ```
+```bash
+# From project root
+docker compose up --build
+```
 
-2. **Contracts deployed:**
-   ```bash
-   npx hardhat run scripts/deploy.js --network localhost
-   ```
+This starts the Hardhat node, auto-deploys contracts, and starts the backoffice server at http://localhost:3000.
 
-3. **Backoffice server running:**
-   ```bash
-   cd /Users/mattcameron/Projects/sailship/backoffice
-   npm start
-   # Server at http://localhost:3000
-   ```
-
-4. **Test data exists:**
-   - At least 1 ship minted
-   - At least 1 celestial body created
-   - (Use backoffice UI to create test data)
+**Test data:** At least 1 ship minted and 1 celestial body created (use the backoffice UI to create test data).
 
 ---
 
@@ -187,14 +173,14 @@ After each unit implementation:
 **Solution:** Check if ships exist. Mint a test ship using the mint form.
 
 ### Issue: "Contract not deployed"
-**Solution:** Run deployment script:
+**Solution:** Restart services to redeploy contracts:
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat run scripts/deploy.js --network localhost
+docker compose down -v
+docker compose up --build
 ```
 
 ### Issue: "Network error"
-**Solution:** Verify Hardhat node is running at localhost:8545
+**Solution:** Verify services are running: `docker compose ps`
 
 ### Issue: "Admin address is 0x..."
 **Solution:** Backoffice server not connected. Check server logs.

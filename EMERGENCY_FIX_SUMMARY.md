@@ -160,22 +160,12 @@ function mintShip(...) external returns (uint256) {
 ## Testing Strategy
 
 ### Manual Test Steps
-1. **Terminal 1:** Start Hardhat node
+1. **Start all services:**
    ```bash
-   cd contracts && npx hardhat node
+   docker compose up --build
    ```
 
-2. **Terminal 2:** Deploy contracts
-   ```bash
-   cd contracts && npx hardhat run scripts/deploy.js --network localhost
-   ```
-
-3. **Terminal 3:** Start backoffice server
-   ```bash
-   cd backoffice && npm start
-   ```
-
-4. **Browser:** Test minting
+2. **Browser:** Test minting
    - Open http://localhost:3000
    - Go to Ships section
    - Click "Mint Test Ship"

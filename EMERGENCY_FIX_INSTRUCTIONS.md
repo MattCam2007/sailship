@@ -14,25 +14,24 @@ You MUST redeploy contracts after every Hardhat node restart.
 
 ## Step-by-Step Fix
 
-### 1. Restart Hardhat Node (Terminal 1)
+### 1. Restart All Services
 
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-
-# Stop existing Hardhat node (Ctrl+C if running)
-
-# Start fresh Hardhat node
-npx hardhat node
+# From the project root - stops everything and starts fresh
+docker compose down -v
+docker compose up --build
 ```
 
-**Important:** Leave this terminal running. This starts a fresh blockchain with NO contracts deployed.
+This starts a fresh Hardhat blockchain, auto-deploys contracts, and starts the backoffice server.
 
 ---
 
-### 2. Redeploy Contracts (Terminal 2)
+### 2. (Legacy) Manual Redeploy Contracts
+
+If not using Docker:
 
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
+cd contracts
 
 # Deploy all contracts to the running Hardhat node
 npx hardhat run scripts/deploy.js --network localhost
@@ -78,25 +77,15 @@ cat deployment.json
 
 ---
 
-### 4. Restart Backoffice Server (Terminal 3)
+### 4. Restart All Services
 
 ```bash
-cd /Users/mattcameron/Projects/sailship/backoffice
-
-# Stop existing server (Ctrl+C if running)
-
-# Start server (it will read the updated deployment.json)
-npm start
+# From the project root
+docker compose down -v
+docker compose up --build
 ```
 
-**Expected Output:**
-```
-Server running on http://localhost:3000
-Using contract addresses from: /Users/mattcameron/Projects/sailship/contracts/deployment.json
-ShipNFT: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
-```
-
-**Important:** The server reads `deployment.json` at startup. You MUST restart it after redeploying contracts.
+This restarts the Hardhat node, redeploys contracts, and restarts the backoffice server.
 
 ---
 
@@ -120,10 +109,9 @@ ShipNFT: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
 
 Before testing, verify:
 
-- [ ] Hardhat node is running (Terminal 1)
-- [ ] Contracts are deployed (Terminal 2 shows success)
-- [ ] `deployment.json` has updated addresses (check timestamp)
-- [ ] Backoffice server is restarted (Terminal 3)
+- [ ] All services are running (`docker compose ps`)
+- [ ] Contracts deployed successfully (`docker compose logs contracts-deploy`)
+- [ ] Backoffice is healthy (`curl http://localhost:3000/health`)
 - [ ] Browser has refreshed the page (Ctrl+R or Cmd+R)
 
 ---
@@ -135,9 +123,9 @@ Before testing, verify:
 **Cause:** Backoffice server didn't read the new `deployment.json`
 
 **Fix:**
-1. Check that `deployment.json` exists in `/Users/mattcameron/Projects/sailship/contracts/`
-2. Restart the backoffice server (Ctrl+C, then `npm start`)
-3. Verify server logs show the correct ShipNFT address
+1. Check deployment logs: `docker compose logs contracts-deploy`
+2. Restart services: `docker compose restart backoffice`
+3. Verify server logs show the correct ShipNFT address: `docker compose logs backoffice`
 
 ---
 
@@ -176,22 +164,11 @@ Before testing, verify:
 
 ## Quick Recovery Commands
 
-If something goes wrong, run these commands in order:
+If something goes wrong, rebuild everything from scratch:
 
 ```bash
-# Terminal 1: Stop and restart Hardhat node
-cd /Users/mattcameron/Projects/sailship/contracts
-# Ctrl+C to stop
-npx hardhat node
-
-# Terminal 2: Redeploy contracts
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat run scripts/deploy.js --network localhost
-
-# Terminal 3: Restart backoffice server
-cd /Users/mattcameron/Projects/sailship/backoffice
-# Ctrl+C to stop
-npm start
+docker compose down -v
+docker compose up --build
 ```
 
 Then refresh your browser (Ctrl+R or Cmd+R) and try again.
@@ -253,31 +230,16 @@ You'll know it's working when:
 
 ## Maintenance Tip
 
-**Create a startup script** to automate the deployment process:
+**Docker Compose handles all startup automation:**
 
 ```bash
-# File: start-dev.sh
-#!/bin/bash
+# Start everything (blockchain, deploy, backoffice, frontend)
+docker compose up --build
 
-echo "Starting Hardhat node..."
-cd contracts
-npx hardhat node &
-HARDHAT_PID=$!
-
-sleep 5  # Wait for node to start
-
-echo "Deploying contracts..."
-npx hardhat run scripts/deploy.js --network localhost
-
-echo "Starting backoffice server..."
-cd ../backoffice
-npm start
-
-# Cleanup on exit
-trap "kill $HARDHAT_PID" EXIT
+# Full reset (wipe blockchain state)
+docker compose down -v
+docker compose up --build
 ```
-
-Then run: `./start-dev.sh`
 
 ---
 

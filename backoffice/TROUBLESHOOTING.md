@@ -66,7 +66,7 @@ console.log('Ready')
 
 ### 6. Server Logs
 
-Check the terminal where you ran `npm start` for any error messages.
+Check the backoffice container logs: `docker compose logs backoffice`
 
 ---
 
@@ -108,16 +108,9 @@ curl -X POST http://localhost:3000/api/resources/mint \
 **Nuclear option - restart everything:**
 
 ```bash
-# Terminal 1 - Stop and restart Hardhat (Ctrl+C)
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat node
-
-# Terminal 2 - Redeploy contracts
-npx hardhat run scripts/deploy.js --network localhost
-
-# Terminal 3 - Restart backoffice (Ctrl+C)
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm start
+# From the project root, stop and rebuild everything
+docker compose down -v
+docker compose up --build
 ```
 
 Then open http://localhost:3000 in a **new incognito window**.

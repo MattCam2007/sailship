@@ -4,12 +4,12 @@ This document shows exactly what you should see in each terminal during the setu
 
 ---
 
-## Terminal 1: Hardhat Node
+## Hardhat Node
 
 ### Command
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat node
+docker compose up --build
+# Or view hardhat logs: docker compose logs hardhat-node
 ```
 
 ### Expected Output
@@ -57,12 +57,12 @@ This means a contract call failed (usually wrong parameters or contract not depl
 
 ---
 
-## Terminal 2: Contract Deployment
+## Contract Deployment
 
 ### Command
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat run scripts/deploy.js --network localhost
+# Handled automatically by the contracts-deploy service
+# View deployment logs: docker compose logs contracts-deploy
 ```
 
 ### Expected Output
@@ -143,12 +143,12 @@ cat deployment.json
 
 ---
 
-## Terminal 3: Backoffice Server
+## Backoffice Server
 
 ### Command
 ```bash
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm start
+docker compose up --build
+# Or view backoffice logs: docker compose logs backoffice
 ```
 
 ### Expected Output
@@ -425,14 +425,13 @@ curl http://localhost:3000
 
 ### Check deployment.json exists and is valid
 ```bash
-cat /Users/mattcameron/Projects/sailship/contracts/deployment.json | grep shipNFT
+docker compose exec hardhat-node cat /app/deployment.json | grep shipNFT
 # Should show: "shipNFT": "0x..."
 ```
 
 ### Check contract is actually deployed
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat console --network localhost
+docker compose exec hardhat-node npx hardhat console --network localhost
 
 # In the console:
 > const ShipNFT = await ethers.getContractFactory("ShipNFT");
@@ -455,7 +454,7 @@ npx hardhat console --network localhost
 
 2. **Didn't restart backoffice server after redeploying**
    - Symptom: Server uses old contract addresses
-   - Fix: Restart server (Ctrl+C, then `npm start`)
+   - Fix: `docker compose restart backoffice`
 
 3. **Wrong terminal directory**
    - Symptom: "command not found" or "file not found"

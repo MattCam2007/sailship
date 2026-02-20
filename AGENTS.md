@@ -30,11 +30,19 @@ src/
 ## Running the Project
 
 ```bash
-
-# Open http://localhost:8080
+docker compose up --build
 ```
 
-**Note**: `npx serve` has issues with clean URLs. Use Python's http.server.
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:8080 | Game client (nginx) |
+| Backoffice | http://localhost:3000 | Admin API (Express.js) |
+| Hardhat Node | http://localhost:8545 | Local blockchain |
+
+```bash
+docker compose down     # Stop
+docker compose down -v  # Stop and reset blockchain
+```
 
 ## Build/Lint/Test Commands
 

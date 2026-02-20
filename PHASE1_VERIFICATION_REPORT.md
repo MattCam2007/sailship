@@ -418,18 +418,9 @@ POST /api/celestial-bodies/TITAN/harvest
 
 ## System Access
 
-**Local Hardhat Node:**
+**All Services:**
 ```bash
-# Terminal 1
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat node
-```
-
-**Backoffice Server:**
-```bash
-# Terminal 2
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm start
+docker compose up --build
 ```
 
 **Admin UI:**

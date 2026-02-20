@@ -117,19 +117,10 @@ const balancesHTML = (tbaData.balances && Array.isArray(tbaData.balances))
 
 ### Manual Testing Commands:
 ```bash
-# Terminal 1: Start Hardhat node
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat node
+# Start all services
+docker compose up --build
 
-# Terminal 2: Deploy contracts
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat run scripts/deploy.js --network localhost
-
-# Terminal 3: Start backoffice server
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm run dev
-
-# Open browser: http://localhost:3001
+# Open browser: http://localhost:3000
 ```
 
 ---

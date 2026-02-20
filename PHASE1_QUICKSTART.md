@@ -5,24 +5,21 @@
 
 ---
 
-## 🚀 Start the System
+## Start the System
 
-### Terminal 1: Blockchain
+From the project root:
+
 ```bash
-cd /Users/mattcameron/Projects/sailship/contracts
-npx hardhat node
+docker compose up --build
 ```
-Keep this running. Hardhat will show transactions in real-time.
 
-### Terminal 2: Backoffice
-```bash
-cd /Users/mattcameron/Projects/sailship/backoffice
-npm start
-```
-Server starts at `http://localhost:3000`
+This starts all services:
+- **Hardhat Node** at http://localhost:8545 (blockchain)
+- **Contracts** auto-deploy on startup
+- **Backoffice** at http://localhost:3000 (admin UI)
+- **Frontend** at http://localhost:8080 (game client)
 
-### Browser
-Open `http://localhost:3000` for the admin UI.
+Open http://localhost:3000 for the admin UI.
 
 ---
 
@@ -85,18 +82,14 @@ All contract addresses are in:
 
 ---
 
-## 🔄 Reset Everything
+## Reset Everything
 
 ```bash
-# Stop Hardhat node (Ctrl+C in Terminal 1)
-# Restart it - this resets the blockchain
-npx hardhat node
+# Stop all services and reset blockchain state
+docker compose down -v
 
-# Redeploy contracts
-npx hardhat run scripts/deploy.js --network localhost
-
-# Update .env with new addresses from deployment.json
-# Restart backoffice server
+# Rebuild and start fresh
+docker compose up --build
 ```
 
 ---

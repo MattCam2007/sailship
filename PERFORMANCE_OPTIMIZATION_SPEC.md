@@ -402,7 +402,7 @@ The following are explicitly **not** included in this optimization effort:
 
 3. **Development tools:**
    - Chrome DevTools Performance profiler (for validation)
-   - Python http.server (for local testing)
+   - Docker + nginx (for local testing)
 
 ---
 

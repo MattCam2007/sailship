@@ -34,7 +34,7 @@ The verify skill ensures a fully implemented feature works correctly as a whole.
 Verify the feature works as a complete system:
 
 **For UI Features:**
-- Start the application (`python3 -m http.server 8080`)
+- Start the application (`docker compose up --build`)
 - Navigate to relevant screens
 - Test user flows end-to-end
 - Verify visual correctness

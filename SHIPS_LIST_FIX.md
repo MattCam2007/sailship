@@ -100,8 +100,7 @@ Added comprehensive debug logging to both backend and frontend to help diagnose 
 
 2. **Restart the backend server**
    ```bash
-   cd backoffice
-   npm run dev
+   docker compose restart backoffice
    ```
 
 3. **Open the backoffice UI**

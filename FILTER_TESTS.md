@@ -2,7 +2,7 @@
 
 ## Quick Verification
 
-Open http://localhost:8080 and check:
+Start all services with `docker compose up --build`, then open http://localhost:8080 and check:
 
 ### Body Count Verification
 Open browser console and run:

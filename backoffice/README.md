@@ -49,20 +49,37 @@ backoffice/
 
 ## Quick Start
 
-### 1. Install Dependencies
+### Using Docker (Recommended)
+
+From the project root:
+
+```bash
+docker compose up --build
+```
+
+This starts the backoffice at http://localhost:3000 along with the Hardhat blockchain node and auto-deploys contracts. No manual configuration needed.
+
+```bash
+docker compose down     # Stop all services
+docker compose down -v  # Stop and reset blockchain state
+```
+
+### Manual Setup (Without Docker)
+
+#### 1. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Configure Environment
+#### 2. Configure Environment
 
 ```bash
 cp .env.example .env
 # Edit .env with your chain URL and admin private key
 ```
 
-### 3. Run Server
+#### 3. Run Server
 
 ```bash
 # Development mode (auto-reload)
@@ -72,14 +89,14 @@ npm run dev
 npm start
 ```
 
-### 4. Run Tests
+#### 4. Run Tests
 
 ```bash
 npm test           # Run all tests
 npm run test:watch # Watch mode
 ```
 
-### 5. Open Frontend
+#### 5. Open Frontend
 
 Open browser to `http://localhost:3000`
 

@@ -865,7 +865,7 @@ All reviews passed. Ready to proceed to Implementation Phase with TDD approach.
 ## How to Test
 
 ```bash
-cd src && python3 -m http.server 8080
+docker compose up --build
 # Open http://localhost:8080
 ```
 

@@ -1,0 +1,81 @@
+services:
+  # Local Hardhat blockchain node
+  hardhat-node:
+    build:
+      context: ./contracts
+      dockerfile: Dockerfile
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "-X", "POST", "-H", "Content-Type: application/json",
+             "-d", "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}",
+             "http://localhost:8545"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - sailship
+
+  # One-shot contract deployer (runs once, then exits)
+  contracts-deploy:
+    build:
+      context: ./contracts
+      dockerfile: Dockerfile
+    entrypoint: ["sh", "/app/deploy-entrypoint.sh"]
+    environment:
+      - HARDHAT_NODE_URL=http://hardhat-node:8545
+    depends_on:
+      hardhat-node:
+        condition: service_healthy
+    volumes:
+      - contracts-shared:/shared
+    networks:
+      - sailship
+
+  # Admin backoffice API
+  backoffice:
+    build:
+      context: ./backoffice
+      dockerfile: Dockerfile
+    ports:
+      - "3009:3009"
+    environment:
+      - NODE_ENV=development
+      - PORT=3009
+      - CHAIN_URL=http://hardhat-node:8545
+      - CHAIN_ID=1337
+      # Hardhat default account #0 private key
+      - ADMIN_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+      # Deterministic Hardhat deployment addresses
+      - GAME_REGISTRY_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+      - SHIP_NFT_ADDRESS=0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e
+      - CELESTIAL_BODY_REGISTRY_ADDRESS=0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82
+      - CH4_TOKEN_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+      - O2_TOKEN_ADDRESS=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+      - H2O_TOKEN_ADDRESS=0x5FC8d32690cc91D4c39d9d3abcBD16989F875707
+      - CO2_TOKEN_ADDRESS=0xa513E6E4b8f2a923D98304ec87F64353C4D5C853
+      - N2_TOKEN_ADDRESS=0x8A791620dd6260079BF849Dc5567aDC3F2FdC318
+    depends_on:
+      hardhat-node:
+        condition: service_healthy
+      contracts-deploy:
+        condition: service_completed_successfully
+    networks:
+      - sailship
+
+  # Game frontend (static files via nginx)
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - sailship
+
+volumes:
+  contracts-shared:
+
+networks:
+  sailship:
+    driver: bridge

@@ -127,7 +127,7 @@ See MATH_VERIFICATION.md for detailed calculations.
 ### Run the Game
 
 ```bash
-cd src && python3 -m http.server 8080
+docker compose up --build
 # Open http://localhost:8080
 ```
 
