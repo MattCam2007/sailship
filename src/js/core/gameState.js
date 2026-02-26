@@ -571,7 +571,7 @@ export function getFocusTarget() {
  * @param {string} speedName - Speed preset name
  */
 export function setSpeed(speedName) {
-    if (!speedPresets[speedName]) {
+    if (!(speedName in speedPresets)) {
         console.warn(`Unknown speed preset: ${speedName}`);
         return;
     }

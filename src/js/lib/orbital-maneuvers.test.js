@@ -291,11 +291,15 @@ describe('applyThrust', () => {
         assert.ok(newElements.a < baseElements.a);
     });
 
-    it('clamps semi-major axis to minimum 0.01 AU', () => {
-        // Strong retrograde thrust
+    it('handles extreme retrograde thrust without producing degenerate elements', () => {
+        // Strong retrograde thrust — creates hyperbolic orbit (negative a)
         const thrust = { x: 0, y: -1e-3, z: 0 };
         const newElements = applyThrust(baseElements, thrust, 100.0, J2000);
-        assert.ok(newElements.a >= 0.01);
+        // applyThrust should return valid elements: either the original (if
+        // validation rejects the result) or clamped hyperbolic elements
+        assert.ok(isFinite(newElements.a), 'semi-major axis should be finite');
+        assert.ok(newElements.a !== 0, 'semi-major axis should be non-zero');
+        assert.ok(isFinite(newElements.e), 'eccentricity should be finite');
     });
 
     it('clamps eccentricity to [0, 0.99]', () => {

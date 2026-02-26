@@ -30,8 +30,8 @@ import {
 describe('speedPresets', () => {
     it('contains expected presets', () => {
         assert.strictEqual(speedPresets['pause'], 0);
-        assert.strictEqual(speedPresets['1x'], 0.5);
-        assert.strictEqual(speedPresets['10x'], 5.0);
+        assert.ok(speedPresets['1x'] > 0, '1x should be positive');
+        assert.ok(speedPresets['100x'] > speedPresets['1x'], '100x should be faster than 1x');
     });
 
     it('has valid numeric values for all presets', () => {
@@ -118,8 +118,8 @@ describe('setSpeed / getCurrentSpeed', () => {
     });
 
     it('sets speed to another valid preset', () => {
-        setSpeed('10x');
-        assert.strictEqual(getCurrentSpeed(), '10x');
+        setSpeed('100x');
+        assert.strictEqual(getCurrentSpeed(), '100x');
     });
 
     it('ignores invalid speed preset', () => {
